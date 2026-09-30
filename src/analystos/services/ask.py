@@ -36,6 +36,7 @@ from analystos.core.errors import (
     InvalidInput,
     ModelRouteUnavailable,
     ModelUnavailable,
+    NotAnswerable,
     NotFound,
     PolicyDenied,
     QueryTimeout,
@@ -87,6 +88,9 @@ REFUSALS: dict[str, dict[str, str]] = {
                     "remedy": "Choose a value for each missing input and ask again. Nothing was guessed."},
     "clarify": {"title": "The question needs more detail",
                 "remedy": "Say what to measure (a count, a rate, an average), over which records and period, and how to group it."},
+    "not_answerable": {"title": "The data in scope cannot answer this",
+                       "remedy": "Nothing was guessed. Ask about the tables and columns you can see, or add a source that "
+                                 "holds this data. Ask only reads data: changes go through the owning system."},
     "sql_rejected": {"title": "The query gateway refused the SQL",
                      "remedy": "Rephrase the question around the tables you can see, or paste the SQL into Explain to see why."},
     "policy_denied": {"title": "Your access does not cover this",
@@ -174,7 +178,9 @@ def refusal_for(exc: AnalystOSError) -> dict[str, Any]:
     if isinstance(exc, ModelUnavailable):
         reason = str(exc.details.get("reason") or "")
         return refusal(MODEL_REFUSALS.get(reason, "no_model"), exc.message, **{**exc.details, "code": exc.code})
-    if isinstance(exc, SQLRejected):
+    if isinstance(exc, NotAnswerable):
+        kind = "not_answerable"
+    elif isinstance(exc, SQLRejected):
         kind = "sql_rejected"
     elif isinstance(exc, SpendCapReached):
         kind = "spend_cap"
@@ -190,7 +196,7 @@ def refusal_for(exc: AnalystOSError) -> dict[str, Any]:
         kind = "no_model"
     else:
         kind = "failed"
-    return refusal(kind, exc.message, code=exc.code, **({k: v for k, v in exc.details.items() if k in ("scope", "used", "limit", "cap", "spent_usd", "limit_usd", "resets_at")}))
+    return refusal(kind, exc.message, code=exc.code, **({k: v for k, v in exc.details.items() if k in ("scope", "used", "limit", "cap", "spent_usd", "limit_usd", "resets_at", "reason", "by")}))
 
 
 # ------------------------------------------------------------------------------ ad hoc context

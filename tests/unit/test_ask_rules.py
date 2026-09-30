@@ -218,7 +218,8 @@ def test_a_rules_clarify_runs_nothing(gate, monkeypatch):
 
 
 def test_a_registry_match_still_wins_and_an_unresolved_question_still_generates(gate, monkeypatch):
-    monkeypatch.setattr(sql_agent, "llm_json", lambda *a, **k: ({"sql": "SELECT 1"}, "m"))
+    monkeypatch.setattr(sql_agent, "llm_json", lambda *a, **k: ({"sql": "SELECT priority, AVG(hours) FROM t GROUP BY priority"}, "m"))
+    monkeypatch.setattr(sql_agent, "_known_values", lambda ctx: {})
     monkeypatch.setattr(sql_agent, "catalog_for_prompt", lambda ctx, **kw: "catalog")
     monkeypatch.setattr(sql_agent, "compile_for", lambda ctx, purpose, required, **kw: required)
     ctx, _ = _ask_ctx()

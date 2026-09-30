@@ -24,7 +24,7 @@ from urllib.parse import urlsplit
 from analystos.core.errors import EgressBlocked, ModelRouteUnavailable
 from analystos.llm.config import ProviderConfig
 
-OPENROUTER_ONLY_FIELDS = ("usage",)  # `usage: {include: true}` is an OpenRouter extension
+OPENROUTER_ONLY_FIELDS = ("usage", "reasoning")  # `usage: {include: true}` and `reasoning: {effort}` are OpenRouter extensions
 
 
 class PostTransport(Protocol):

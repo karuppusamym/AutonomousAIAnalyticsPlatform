@@ -8,6 +8,8 @@ seeded ITSM, sales and finance datasets with planted effects and null controls.
   # the same with the configured model provider (OpenRouter key, or an air-gapped local model via
   # ANALYSTOS_AIR_GAPPED=true ANALYSTOS_MODELS_CONFIG=config/models.airgapped.yaml)
   python scripts/benchmark_analytical.py --tier platform --models live --report auto
+  # ... with a settings preset applied to this process only (max_quality = model first for every purpose)
+  python scripts/benchmark_analytical.py --tier platform --models live --preset max_quality --report auto
 
 `--report auto` writes docs/60-delivery/evidence/<date>-analytical-benchmark-<tier>-<models>.md (+ .json).
 Exit code 1 with --check when a threshold (evaluation.analytical.THRESHOLDS) is missed.
@@ -67,7 +69,11 @@ def render(results: dict, args: argparse.Namespace, problems: list[str]) -> str:
              f"(Python {platform.python_version()}). Models: **{args.models}**"
              + (f" ({os.environ.get('ANALYSTOS_MODELS_CONFIG', 'config/models.yaml')}"
                 f"{', air-gapped' if os.environ.get('ANALYSTOS_AIR_GAPPED', '').lower() == 'true' else ''})" if args.models == "live" else
-                " (no provider key: every model purpose takes its rule path)") + ".", "",
+                " (no provider key: every model purpose takes its rule path)") + "."
+             + (f" Settings preset **{args.preset}** applied to the benchmark process only (evaluation/live.py)."
+                if args.preset else "")
+             + (f" Models re-enabled for this process only (the stored settings had them disabled): {args.enable_models}."
+                if args.enable_models else "") + "", "",
              "Datasets: `evaluation.datasets` — one table per domain generated from an explicit causal graph "
              "(ITSM incidents with 4 planted effects, sales orders with 3, accounts-payable invoices with 3; two null columns "
              "each, drawn independently of everything). Global-null replicates regenerate the same tables with every planted "
@@ -102,6 +108,17 @@ def render(results: dict, args: argparse.Namespace, problems: list[str]) -> str:
                   "", "False verified findings: " + ("; ".join(s.false_findings) if s.false_findings else "none") + "."]
         if s.incomplete:
             lines += ["", "Runs that did not complete: " + "; ".join(s.incomplete) + "."]
+        usage = getattr(args, "usage", {}).get(tier)
+        if usage is not None:
+            lines += ["", "### Model use (model_call rows of these runs)", "",
+                      f"Provider calls {usage['calls']} (errors {usage['errors']}), tokens in/out {usage['input_tokens']}/"
+                      f"{usage['output_tokens']}, recorded cost ${usage['cost_usd']:.4f}; purposes answered by rules or "
+                      f"deterministic rungs {usage['skipped']}, cache hits {usage['cache_hits']}, calls stopped for a missing "
+                      f"price / approval {usage['approval_required']}.", ""]
+            if usage["by_purpose"]:
+                lines += ["| Purpose / model | calls | errors | tokens in | tokens out | USD |", "|---|---|---|---|---|---|"]
+                lines += [f"| {k} | {v['calls']} | {v['errors']} | {v['input_tokens']} | {v['output_tokens']} | {v['cost_usd']:.4f} |"
+                          for k, v in sorted(usage["by_purpose"].items())]
         lines.append("")
     lines += LIMITS.splitlines() + ["", "## Verdict", "",
                                      "PASS — every threshold met." if not problems else "FAIL — " + "; ".join(problems), ""]
@@ -116,6 +133,9 @@ def main() -> int:
     ap.add_argument("--domains", default="itsm,sales,finance")
     ap.add_argument("--models", choices=["off", "live"], default="off",
                     help="platform tier: off removes provider keys (rule path); live uses the configured provider")
+    ap.add_argument("--preset", default=None, help="settings preset for this process only (evaluation/live.py), e.g. max_quality")
+    ap.add_argument("--enable-models", default="", help="comma-separated model ids to re-enable for this process only when "
+                    "the stored settings disabled them (evaluation/live.py)")
     ap.add_argument("--check", action="store_true", help="exit 1 when a threshold is missed")
     ap.add_argument("--report", default=None, help="markdown path, or `auto` for docs/60-delivery/evidence/")
     args = ap.parse_args()
@@ -126,27 +146,36 @@ def main() -> int:
     os.environ.setdefault("ANALYSTOS_ORCHESTRATOR", "local")
 
     from evaluation.analytical import as_dict, check, run_component_suite, run_platform_suite
+    from evaluation.live import model_usage, process_preset
 
     domains = tuple(d.strip() for d in args.domains.split(",") if d.strip())
     results = {}
+    args.usage = {}
     if args.tier in ("component", "all"):
         results["component"] = run_component_suite(_ints(args.seeds or "1-10"), null_seeds=_ints(args.null_seeds or "101-105"),
                                                    domains=domains)
     if args.tier in ("platform", "all"):
-        results["platform"] = run_platform_suite(_ints(args.seeds or "1"), null_seeds=_ints(args.null_seeds or "101"),
-                                                 domains=domains)
+        with process_preset(args.preset, [m for m in args.enable_models.split(",") if m]):
+            results["platform"] = run_platform_suite(_ints(args.seeds or "1"), null_seeds=_ints(args.null_seeds or "101"),
+                                                     domains=domains)
+        args.usage["platform"] = model_usage(run_ids=[sc.run_id for sc in results["platform"][1] if sc.run_id])
     problems = [p for summary, _ in results.values() for p in check(summary)]
     for tier, (s, _) in results.items():
         print(f"[{tier}] replicates={s.replicates} verified={s.verified} precision={_fmt(s.precision)} "
               f"recall={_fmt(s.recall)} ({s.planted_found}/{s.planted_total}) FDR={_fmt(s.fdr)} null_FDR={_fmt(s.null_fdr)} "
               f"null_raw_p<α={_fmt(s.null_raw_rate)}")
+        if tier in args.usage:
+            u = args.usage[tier]
+            print(f"[{tier}] model calls={u['calls']} errors={u['errors']} cost=${u['cost_usd']:.4f} skipped={u['skipped']} "
+                  f"approval_required={u['approval_required']}")
     if args.report:
         tiers = "-".join(results)
         path = (ROOT / "docs" / "60-delivery" / "evidence" /
-                f"{datetime.now(UTC):%Y-%m-%d}-analytical-benchmark-{tiers}-{args.models}.md") if args.report == "auto" else Path(args.report)
+                f"{datetime.now(UTC):%Y-%m-%d}-analytical-benchmark-{tiers}-{args.models}{'-' + args.preset if args.preset else ''}.md") if args.report == "auto" else Path(args.report)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(render(results, args, problems))
-        path.with_suffix(".json").write_text(json.dumps({t: as_dict(s, sc) for t, (s, sc) in results.items()}, indent=1, default=str))
+        path.write_text(render(results, args, problems), encoding="utf-8")
+        path.with_suffix(".json").write_text(json.dumps({t: {**as_dict(s, sc), "model_usage": args.usage.get(t)}
+                                                         for t, (s, sc) in results.items()}, indent=1, default=str))
         print(f"report: {path}")
     for p in problems:
         print(f"THRESHOLD MISSED: {p}", file=sys.stderr)

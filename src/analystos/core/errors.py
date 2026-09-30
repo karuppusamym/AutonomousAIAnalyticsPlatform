@@ -95,6 +95,13 @@ class SQLRejected(AnalystOSError):
     code, http_status = "sql_rejected", 422
 
 
+class NotAnswerable(AnalystOSError):
+    """The data in scope cannot answer the question (or it asks Ask to change data): a refusal, never a
+    placeholder answer. Raised by the Ask shape check or when the model itself says it cannot answer."""
+
+    code, http_status = "not_answerable", 422
+
+
 class QueryTimeout(AnalystOSError):
     code, http_status, retryable = "query_timeout", 504, False
 

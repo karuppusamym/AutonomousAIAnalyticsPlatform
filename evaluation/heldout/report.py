@@ -49,7 +49,7 @@ def coverage(corpus: Any) -> str:
             "single domain, so per-domain rates are small-sample; the suite cannot claim capability beyond these tasks.")
 
 
-def render(runs: dict, corpus: Any) -> str:
+def render(runs: dict, corpus: Any, *, preset: str | None = None, enabled_models: str = "") -> str:
     now = datetime.now(UTC)
     rev = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
     live = any(os.environ.get(k) for k in KEYS)
@@ -57,7 +57,9 @@ def render(runs: dict, corpus: Any) -> str:
              f"Generated {now:%Y-%m-%d %H:%M} UTC by the held-out runner (`evaluation/heldout`) at `{rev or 'unknown'}` "
              f"(Python {platform.python_version()}). Corpus `evaluation/heldout/corpus.yaml` version {corpus.version} "
              f"(frozen {corpus.frozen}, sha256 `{corpus.digest[:12]}`). Models: "
-             + ("**live** (a provider key is set)." if live else "**off** (no provider key: every model purpose takes its rule path)."),
+             + ("**live** (a provider key is set)." if live else "**off** (no provider key: every model purpose takes its rule path).")
+             + (f" Settings preset **{preset}** applied to the benchmark process only (evaluation/live.py)." if preset else "")
+             + (f" Models re-enabled for this process only (the stored settings had them disabled): {enabled_models}." if enabled_models else ""),
              "", "Every task ends in one status (`evaluation/heldout/runner.py`): accepted, correct_abstention, confident_wrong, "
              "incomplete, unnecessary_abstention, wrong_abstention or error. Rubrics were sealed before the first scored run; "
              "the corpus lock (`corpus.lock.json`) hashes every task's data, reference and rubric.", "",

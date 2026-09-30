@@ -639,3 +639,13 @@ The 2026-09-28 N-2 (`services/existing_dashboard.py`) and N-3 (`services/externa
 | N-12 + column language | `skills/lexicon.py`, `skills/{catalog,profiling}.py`, `agents/investigator.py`, `evaluation/classification.py` | `test_n12_classification_confidence.py`, `test_column_language_invariance.py` (42 total) | Held-out v2 component (models off) 37/43 → 39/43, transfer 1/3 → 3/3; confident-classification error 2.3% unseen (`evidence/2026-09-29-heldout-v2-column-language.md`) |
 | P7-17 wheel + images | `hatch_build.py`, `core/config.py` (`DATA_ROOT`/`STATE_ROOT`), `deploy/docker/Dockerfile` (wheel stage) | `test_wheel_contents.py` | API 1.44 GB / full 1.70 GB; cold start 4.2 s / 4.1 s (`evidence/p7-17-images-2026-09-29.md`). Helm 2-CPU install not run |
 | Migrations | 0047_n3 → 0048_n2 → 0050_n8 → 0051_n9 → 0052_n11 → 0054_n7 | upgrade → downgrade 0045 → upgrade on a scratch Postgres (2026-09-29) | One head |
+
+## 2026-09-29 — Live-model benchmarks (P4-V01, P4-V02, P4-08)
+
+| Row | Code | Coverage | Measured / limits |
+|---|---|---|---|
+| P4-V01 live tier | `evaluation/live.py` (`--preset`, `--enable-models` overlay for the benchmark process only), `scripts/benchmark_analytical.py` | `evidence/2026-09-29-analytical-benchmark-live.md` (+ same-seed models-off pair) | Precision 0.964, recall 20/20, FDR 0.033, null FDR 0; $0.20. Small/mid-tier models only (stored dev settings disable the strong tier, N-14) |
+| P4-V02 live | `services/ask.py` (placeholder/write refusal, `cannot_answer`), `agents/{prompts,sql_agent}.py`, `llm/{config,router}.py` (`reasoning_effort`) | `test_ask_placeholder_answers.py`, `test_ask_rules.py`, `test_model_router.py::test_json_profiles_ask_openrouter_for_minimal_reasoning`, `evidence/2026-09-29-ask-benchmark-live.md` | Execution 0.962, confident-wrong 2/162, leaks 0; residual misses sales-a31 (fraction vs percent), sales-a29 (scoring artefact), sales-a06 (malformed JSON, refused), finance-a24 (rule path) |
+| P4-08 live | `agents/investigator.py` (`_round1_selection`: model proposals take a quarter of round 1) | `test_hypotheses_model_adds.py`, `evidence/2026-09-29-heldout-v2-live.md` | 39/43, confident-wrong 0, abstention 1.000, identical statuses to models off; $0.24. Practitioner baseline outstanding |
+
+Total OpenRouter spend for the three live benchmarks: about $3.7 (key usage $10.34 → $14.07). JEV never ran (N-13).

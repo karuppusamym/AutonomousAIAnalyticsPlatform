@@ -63,30 +63,35 @@ profiles:
     temperature: 0.2
     max_tokens: 4000
     timeout_seconds: 120
+    reasoning_effort: minimal  # strict-JSON purposes checked by code: no hidden reasoning eating max_tokens
   coding:
     models: [deepseek/deepseek-v4-flash-0731, qwen/qwen3-32b]
     escalation_models: [openai/gpt-oss-120b]
     temperature: 0.0
     max_tokens: 2500
     timeout_seconds: 90
+    reasoning_effort: minimal  # strict-JSON purposes checked by code: no hidden reasoning eating max_tokens
   analytical_reasoning:
     models: [qwen/qwen3-32b, deepseek/deepseek-v4-flash-0731]
     escalation_models: [openai/gpt-oss-120b]
     temperature: 0.2
     max_tokens: 4000
     timeout_seconds: 120
+    reasoning_effort: minimal  # strict-JSON purposes checked by code: no hidden reasoning eating max_tokens
   low_cost:
     models: [qwen/qwen3-14b, deepseek/deepseek-v4-flash-0731]
     escalation_models: [qwen/qwen3-32b]  # a narrative the numbers guard rejects
     temperature: 0.2
     max_tokens: 2000
     timeout_seconds: 60
+    reasoning_effort: minimal  # strict-JSON purposes checked by code: no hidden reasoning eating max_tokens
   # Verification must come from a different model family than the primary analyst profile.
   independent_model_family:
     models: [deepseek/deepseek-v4-flash-0731, openai/gpt-oss-120b]
     temperature: 0.0
     max_tokens: 2000
     timeout_seconds: 90
+    reasoning_effort: minimal  # strict-JSON purposes checked by code: no hidden reasoning eating max_tokens
     exclude_families: [anthropic]
   decision:
     provider: typesafe

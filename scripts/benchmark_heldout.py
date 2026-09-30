@@ -43,6 +43,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--only", default=None, help="comma-separated task ids (smoke runs)")
     ap.add_argument("--models", choices=["off", "live"], default="off",
                     help="off removes provider keys (rule path); live uses the configured provider")
+    ap.add_argument("--preset", default=None, help="settings preset for this process only (evaluation/live.py), e.g. max_quality")
+    ap.add_argument("--enable-models", default="", help="comma-separated model ids to re-enable for this process only when "
+                    "the stored settings disabled them (evaluation/live.py)")
     ap.add_argument("--cpu-usd-per-hour", type=float, default=None)
     ap.add_argument("--report", default=None, help="markdown path, or `auto` for docs/60-delivery/evidence/")
     ap.add_argument("--check", action="store_true", help="exit 1 when a proposed threshold is missed")
@@ -66,7 +69,10 @@ def main(argv: list[str] | None = None) -> int:
     families = tuple(f.strip() for f in args.families.split(",") if f.strip())
     only = {t.strip() for t in args.only.split(",")} if args.only else None
     tiers = ["component", "platform"] if args.tier == "all" else [args.tier]
-    runs = {t: R.run(t, families=families, only=only, cpu_usd_per_hour=args.cpu_usd_per_hour, corpus=corpus) for t in tiers}
+    from evaluation.live import process_preset
+
+    with process_preset(args.preset, [m for m in args.enable_models.split(",") if m]):
+        runs = {t: R.run(t, families=families, only=only, cpu_usd_per_hour=args.cpu_usd_per_hour, corpus=corpus) for t in tiers}
     problems = []
     for tier, r in runs.items():
         o = r.summary["overall"]
@@ -88,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         path = (ROOT / "docs" / "60-delivery" / "evidence" / f"{now:%Y-%m-%d}-heldout-{'-'.join(runs)}-{args.models}.md"
                 if args.report == "auto" else Path(args.report))
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(render(runs, corpus))
+        path.write_text(render(runs, corpus, preset=args.preset, enabled_models=args.enable_models), encoding="utf-8")
         path.with_suffix(".json").write_text(json.dumps({t: R.as_dict(r) for t, r in runs.items()}, indent=1, default=str) + "\n")
         print(f"report: {path}")
     for p in problems:

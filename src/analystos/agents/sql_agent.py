@@ -6,6 +6,8 @@ from typing import Any
 
 import sqlglot
 from sqlalchemy import select
+from sqlglot import exp
+from sqlglot.optimizer.simplify import simplify
 
 from analystos.agents.common import (
     ModelOutcome,
@@ -22,7 +24,7 @@ from analystos.artifacts.registry import link, save_artifact
 from analystos.capabilities import packs as pack_registry
 from analystos.contracts.analysis import AnalysisSpec, Derivation, Filter
 from analystos.contracts.bi import DatasetDef
-from analystos.core.errors import AnalystOSError, InvalidInput, ModelUnavailable, SQLRejected
+from analystos.core.errors import AnalystOSError, InvalidInput, ModelUnavailable, NotAnswerable, SQLRejected
 from analystos.db.base import session_scope
 from analystos.db.models import Hypothesis, Insight, Relationship, SourceAsset, by_code
 from analystos.governance.budgets import ASK_PURPOSE, ask_actor, check_ask_budget
@@ -35,6 +37,61 @@ from analystos.skills.literals import check_literals
 def has_sql(data: Any) -> str | None:
     """Escalation check for SQL generation/repair: the answer must carry a statement."""
     return None if isinstance(data, dict) and str(data.get("sql") or "").strip() else "no SQL statement in the answer"
+
+
+CANNOT_ANSWER_KINDS = ("not_in_data", "write", "ambiguous", "missing_input")
+# A question that opens with a data-changing verb: Ask only reads, so it is refused before a model writes a
+# SELECT that pretends to have done it. Verbs that also open analytics questions as nouns (change, close,
+# add, cancel) are left to the model's `cannot_answer: write`.
+WRITE_REQUEST = re.compile(r"^\s*(?:please\s+)?(?:delete|remove|update|insert|mark|set|drop|truncate|alter|reopen|assign|"
+                           r"approve|reject|modify|edit|rename|merge|archive|purge)\b", re.I)
+
+
+def cannot_answer(data: Any) -> dict[str, str] | None:
+    """The model's explicit refusal ({"sql": null, "cannot_answer": {kind, reason}}), or None."""
+    if not isinstance(data, dict) or str(data.get("sql") or "").strip():
+        return None
+    ca = data.get("cannot_answer")
+    if isinstance(ca, dict) and ca.get("kind") in CANNOT_ANSWER_KINDS:
+        return {"kind": str(ca["kind"]), "reason": str(ca.get("reason") or "")[:300]}
+    return None
+
+
+def sql_or_refusal(data: Any) -> str | None:
+    """Generation check: a statement, or a well-formed refusal (a refusal is never escalated to a larger model)."""
+    return None if cannot_answer(data) is not None else has_sql(data)
+
+
+def placeholder_problem(sql: str, dialect: str) -> str | None:
+    """Why a model-written SELECT is a placeholder rather than an answer, or None. Live runs (P4-V02,
+    2026-09-28) showed models answering out-of-scope questions with `NULL AS competitor_share`,
+    `'N/A' AS caller_email` or `WHERE 1=0`: well-formed, gateway-clean and wrong. An output column
+    computed from no column, row or aggregate, or a filter that is always false, answers nothing."""
+    try:
+        tree = sqlglot.parse_one(sql, read=dialect)
+    except sqlglot.errors.ParseError:
+        return None  # the gateway validator reports unparseable SQL
+    if not isinstance(tree, exp.Select):
+        return None
+    for projection in tree.expressions:
+        node = projection.this if isinstance(projection, exp.Alias) else projection
+        if isinstance(node, exp.Star) or next(node.find_all(exp.Column, exp.Star, exp.AggFunc, exp.Window, exp.Select), None):
+            continue
+        return f"output column '{projection.alias_or_name or node.sql(dialect=dialect)}' is a constant, not data"
+    for clause in ("where", "having"):
+        cond = tree.args.get(clause)
+        if cond is None or next(cond.this.find_all(exp.Column, exp.Select), None) is not None:
+            continue
+        try:
+            value = simplify(cond.this.copy())
+        except Exception:  # noqa: BLE001 - an expression sqlglot cannot fold is not provably false
+            continue
+        if isinstance(value, exp.Boolean) and not value.this:
+            return f"the {clause.upper()} clause is always false ({cond.this.sql(dialect=dialect)})"
+    limit = tree.args.get("limit")
+    if limit is not None and isinstance(limit.expression, exp.Literal) and str(limit.expression.this) == "0":
+        return "LIMIT 0 returns no rows"
+    return None
 
 
 def slug(text: str, n: int = 40) -> str:
@@ -620,6 +677,10 @@ def _ask(ctx: RunContext, question: str, *, max_repairs: int = 2, parameters: di
     if path == "tool":
         out = _distribution_answer(ctx, question, plan, parameters) if plan is not None else _rules_answer(ctx, question, rules)
         return {**out, "route": chosen["value"], "decisions": decisions}
+    if WRITE_REQUEST.search(question):
+        _stage(ctx, "scope", "Ask only reads data: this asks for a change")
+        raise NotAnswerable("Ask only reads data; this question asks to change it. Nothing was changed or guessed.",
+                            details={"reason": "write", "by": "rules"})
     asked = clarify(ctx, question)
     decisions.append(asked)
     if asked["value"] == "clarify":
@@ -638,7 +699,10 @@ def _ask(ctx: RunContext, question: str, *, max_repairs: int = 2, parameters: di
     dialect = ask_dialect(ctx)
     _stage(ctx, "generate", "Writing the SQL")
     data, model = llm_json(ctx, "sql_generation", "sql_generation.v1", generation, prompt_vars={"dialect": dialect},
-                           validate=has_sql)
+                           validate=sql_or_refusal)
+    refused = cannot_answer(data)
+    if refused is not None:  # a model may withhold an answer (never widen one): ask back, or decline with its reason
+        return _model_refusal(ctx, refused, chosen, decisions, model)
     if has_sql(data):  # no data, or an answer without a SQL statement: say which cause stopped it
         raise _generation_unavailable(model if data is None else ModelOutcome(
             "invalid_output", "the model answered without a SQL statement", purpose="sql_generation"))
@@ -650,6 +714,11 @@ def _ask(ctx: RunContext, question: str, *, max_repairs: int = 2, parameters: di
     while True:
         if attempt:
             _check_budget(ctx)  # every attempt counts; over budget ends the loop (no repair)
+        problem = placeholder_problem(sql, dialect)
+        if problem:  # not repairable: a repair would only dress the placeholder differently
+            _stage(ctx, "check", f"The written SQL does not answer from data: {problem}")
+            raise NotAnswerable(f"The data in scope does not answer this question ({problem}). Nothing was guessed.",
+                                details={"reason": "placeholder", "by": "rules"})
         try:
             checked = check_literals(sql, dialect, known)  # 'yes' where the data says 'Yes': fixed here, or repaired
             if checked.rewrites:
@@ -694,6 +763,26 @@ def _ask(ctx: RunContext, question: str, *, max_repairs: int = 2, parameters: di
                 raise
             sql = restore_values(str(fix["sql"]), rq.values)
             attempt += 1
+
+
+def _model_refusal(ctx: Any, refused: dict[str, str], chosen: dict[str, Any], decisions: list[dict[str, Any]],
+                   model: Any) -> dict[str, Any]:
+    """The model said it cannot answer: ambiguous -> clarify, missing_input -> needs_input, otherwise a
+    `not_answerable` refusal. Every branch withholds the answer, so the model cannot grant anything here."""
+    kind, reason = refused["kind"], refused["reason"]
+    base = {"answered_by": None, "route": chosen["value"], "decisions": decisions, "sql": None, "model": model,
+            "attempts": [], "result": None}
+    if kind == "ambiguous":
+        _stage(ctx, "clarify", "The question needs more detail before it can be answered")
+        return {**base, "status": "clarify", "missing": [{"name": "what to measure"}],
+                "explanation": reason or "This question is too open to answer safely. Say what to measure (a count, a "
+                                         "rate, an average), over which records and period, and how to group it."}
+    if kind == "missing_input":
+        _stage(ctx, "clarify", "The question needs a specific value")
+        return {**base, "status": "needs_input", "missing": [{"name": reason or "a specific value"}],
+                "explanation": f"This question needs a specific value ({reason or 'say which one'}). Nothing was guessed."}
+    raise NotAnswerable(f"The data in scope cannot answer this: {reason or kind}. Nothing was guessed.",
+                        details={"reason": kind, "by": "model"})
 
 
 def _known_values(ctx: Any) -> dict[str, set[str]]:

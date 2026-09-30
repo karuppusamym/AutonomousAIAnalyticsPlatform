@@ -766,6 +766,8 @@ class ModelRouter:
                                            "max_tokens": c.max_tokens, "usage": {"include": True}}
                 if c.json_output:
                     payload["response_format"] = {"type": "json_object"}
+                if c.profile.reasoning_effort and self.config.providers[c.profile.provider].type == "openrouter":
+                    payload["reasoning"] = {"effort": c.profile.reasoning_effort}
                 reservation = self._reserve(c.ctx, c.purpose, c.profile_name, c.profile, model, input_tokens=c.input_estimate,
                                             output_tokens=c.max_tokens, request_hash=c.request_hash, request=c.request)
                 started = time.perf_counter()
