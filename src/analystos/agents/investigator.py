@@ -214,6 +214,19 @@ def diverse_top(accepted: list[dict], limit: int) -> list[dict]:
     return sorted(picked[:limit], key=lambda a: -a["priority_score"])
 
 
+def _round1_selection(accepted: list[dict], limit: int) -> list[dict]:
+    """Round 1 keeps the playbook's best and gives a model a few slots of its own. Ranked together, a model's
+    `high` proposals filled the whole cap (live held-out run 2026-09-29: five model proposals and three playbook
+    ones, and the planted effects only the playbook proposes were never tested). The model's slots are a
+    quarter of the cap (at least two); a playbook shorter than its share leaves the rest to the model."""
+    model = [a for a in accepted if a.get("origin") != "heuristic"]
+    playbook = [a for a in accepted if a.get("origin") == "heuristic"]
+    room = min(len(model), max(2, limit // 4)) if playbook else limit
+    room = max(room, limit - len(playbook))  # unused playbook share goes to the model
+    picked = diverse_top(playbook, limit - min(room, len(model))) + diverse_top(model, room)
+    return sorted(picked[:limit], key=lambda a: -a["priority_score"])
+
+
 # ---------------------------------------------------------------------------------- persistence
 def _next_code(session, run_id: str) -> int:
     return (session.scalar(select(func.count()).select_from(Hypothesis).where(Hypothesis.run_id == run_id)) or 0) + 1
@@ -362,19 +375,21 @@ def generate_hypotheses(ctx: RunContext) -> dict:
                             validate=usable_hypotheses(ctx, types))
                    if model_gate(ctx, "hypothesis_generation", payload, deterministic_ok=enough) else (None, "deterministic"))
     llm_props = [{**p, "origin": "agent"} for p in (data or {}).get("hypotheses", []) if isinstance(p, dict)] if isinstance(data, dict) else []
-    accepted, rejected_llm = _accept(ctx, llm_props, types, origin="agent", seen=seen)
-    rejected += rejected_llm
-    source = f"llm:{model}" if llm_props else f"rules ({model})"
-    if len(accepted) < 4 or not llm_props:
-        more, rej2 = _accept(ctx, [{**p, "origin": "heuristic"} for p in heuristic_proposals(ctx, types, packs)], types,
+    # A model adds to the profile playbook, it never replaces it: the playbook's proposals come first (ties in
+    # the ranking and in diverse_top go to them) and the model's add other methods and outcomes. Model-first
+    # (the max_quality preset) used to drop the playbook whenever the model gave 4 usable proposals, and the
+    # live P4-V01 run (2026-09-28) then missed 4 of 10 planted effects the playbook alone finds.
+    accepted, rej2 = _accept(ctx, [{**p, "origin": "heuristic"} for p in heuristic_proposals(ctx, types, packs)], types,
                              origin="heuristic", seen=seen)
-        accepted += more
-        rejected += rej2
+    more, rejected_llm = _accept(ctx, llm_props, types, origin="agent", seen=seen)
+    accepted += more
+    rejected += rej2 + rejected_llm
+    source = f"llm:{model} + rules" if more else f"rules ({model})"
     del rules, rej_rules
     for r in rejected:
         ctx.say(f"Dropped proposal '{(r.get('statement') or '')[:100]}': {r['reason']}", kind="decision")
     by = _prioritise(ctx, accepted)
-    accepted = diverse_top(accepted, max(platform().analysis.max_round1_hypotheses - len(carried), 3))
+    accepted = _round1_selection(accepted, max(platform().analysis.max_round1_hypotheses - len(carried), 3))
     for c in carried:
         c.update(priority="high", priority_score=1.0, priority_by="carried_forward")
     accepted = carried + accepted

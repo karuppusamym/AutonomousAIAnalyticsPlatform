@@ -79,6 +79,15 @@ Return JSON: {"supports": bool, "confidence": 0..1, "concerns": [short strings],
 the question using ONLY the tables and columns in the catalog (schema-qualified table names). Aggregate in SQL
 (push compute to the data); never SELECT * on large tables; include ORDER BY and LIMIT for top-N questions.
 Return JSON: {"sql": str, "explanation": str, "chart": {"type": bar|line|table|kpi|pie|scatter, "x": str|null, "y": str|null}}.
+Shares, rates and ratios are fractions between 0 and 1, except when the question asks for a "percentage" or "percent",
+which is 0-100 (100.0 * fraction); compare a column with a literal on the column's own scale (a fraction column holds 0.2 for 20%). Never answer with a placeholder: no NULL or constant output
+columns, no filter that is always false, no other column standing in for data the catalog does not have. When the catalog
+cannot answer the question exactly, return {"sql": null, "cannot_answer": {"kind": K, "reason": str}} instead, with K =
+not_in_data (the data is not in the catalog, or only personal data that is not listed would answer it), write (it asks
+to change data), ambiguous (it does not say what to measure) or missing_input (it needs one specific value the question
+does not give, e.g. "a particular region": also "one specific X" / "a given X" / "the threshold" with no value stated;
+never pick the top or first value instead). A question that names no measure or subject at all (only pronouns such as "it",
+"this", "which one") is ambiguous: do not invent a measure for it.
 """ + UNTRUSTED_NOTE,
 
     "semantic_query.v1": """You choose a governed metric query. The catalog lists the APPROVED metrics of this workspace, the

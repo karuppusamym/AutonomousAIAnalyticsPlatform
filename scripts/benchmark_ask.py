@@ -170,8 +170,8 @@ def main() -> int:
         path = (ROOT / "docs" / "60-delivery" / "evidence" / f"{datetime.now(UTC):%Y-%m-%d}-ask-benchmark-{r.tier}.md"
                 if args.report == "auto" else Path(args.report))
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(render(r, args))
-        path.with_suffix(".json").write_text(json.dumps(as_dict(r), indent=1, default=str))
+        path.write_text(render(r, args), encoding="utf-8")
+        path.with_suffix(".json").write_text(json.dumps(as_dict(r), indent=1, default=str), encoding="utf-8")
         print(f"report: {path}")
     for p in r.problems:
         print(f"INVARIANT FAILED: {p}", file=sys.stderr)

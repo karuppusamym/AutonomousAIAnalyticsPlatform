@@ -1,0 +1,760 @@
+{
+ "platform": {
+  "summary": {
+   "tier": "platform",
+   "replicates": 12,
+   "tested": 120,
+   "verified": 28,
+   "true_positive": 27,
+   "false_positive": 1,
+   "precision": 0.9643,
+   "recall": 1.0,
+   "fdr": 0.0333,
+   "null_fdr": 0.0,
+   "null_tests": 87,
+   "null_raw_rate": null,
+   "planted_found": 20,
+   "planted_total": 20,
+   "by_domain": {
+    "itsm": {
+     "replicates": 4,
+     "tested": 42,
+     "verified": 13,
+     "true_positive": 13,
+     "false_positive": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "fdr": 0.0,
+     "null_fdr": 0.0,
+     "null_tests": 25,
+     "null_raw_rate": null,
+     "planted_found": 8,
+     "planted_total": 8,
+     "seconds": 109.8
+    },
+    "sales": {
+     "replicates": 4,
+     "tested": 41,
+     "verified": 9,
+     "true_positive": 8,
+     "false_positive": 1,
+     "precision": 0.8889,
+     "recall": 1.0,
+     "fdr": 0.1,
+     "null_fdr": 0.0,
+     "null_tests": 31,
+     "null_raw_rate": null,
+     "planted_found": 6,
+     "planted_total": 6,
+     "seconds": 105.3
+    },
+    "finance": {
+     "replicates": 4,
+     "tested": 37,
+     "verified": 6,
+     "true_positive": 6,
+     "false_positive": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "fdr": 0.0,
+     "null_fdr": 0.0,
+     "null_tests": 31,
+     "null_raw_rate": null,
+     "planted_found": 6,
+     "planted_total": 6,
+     "seconds": 66.1
+    }
+   },
+   "missed": [],
+   "false_findings": [
+    "sales: rate_by_segment returned by customer_segment (top None, seed 1, effects)"
+   ],
+   "incomplete": [],
+   "by_method": {
+    "driver_model": {
+     "tested": 0,
+     "verified": 4,
+     "true_positive": 4,
+     "false_positive": 0,
+     "precision": 1.0,
+     "null_tests": 0,
+     "null_raw_rate": null,
+     "null_fdr": 0.0
+    },
+    "numeric_by_segment": {
+     "tested": 0,
+     "verified": 14,
+     "true_positive": 14,
+     "false_positive": 0,
+     "precision": 1.0,
+     "null_tests": 0,
+     "null_raw_rate": null,
+     "null_fdr": 0.0
+    },
+    "pareto": {
+     "tested": 0,
+     "verified": 2,
+     "true_positive": 2,
+     "false_positive": 0,
+     "precision": 1.0,
+     "null_tests": 0,
+     "null_raw_rate": null,
+     "null_fdr": 0.0
+    },
+    "rate_by_segment": {
+     "tested": 0,
+     "verified": 8,
+     "true_positive": 7,
+     "false_positive": 1,
+     "precision": 0.875,
+     "null_tests": 0,
+     "null_raw_rate": null,
+     "null_fdr": 0.0
+    }
+   }
+  },
+  "replicates": [
+   {
+    "domain": "itsm",
+    "seed": 1,
+    "effects": true,
+    "tier": "platform",
+    "tested": 12,
+    "null_tests": 7,
+    "null_raw_significant": 0,
+    "verified": 5,
+    "true_positive": 5,
+    "false_positive": 0,
+    "unscored": 0,
+    "planted": {
+     "itsm_reassignment_sla": true,
+     "itsm_after_hours_resolution": true,
+     "itsm_network_resolution": true,
+     "itsm_p1_payments_gateway": true
+    },
+    "findings": [
+     {
+      "method": "numeric_by_segment",
+      "outcome": "opened_at->resolved_at",
+      "segment": "after_hours(opened_at)",
+      "top": null,
+      "truth": "true",
+      "planted": "itsm_after_hours_resolution",
+      "statement": "Resolution hours is higher for opened after hours = true",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "rate_by_segment",
+      "outcome": "made_sla",
+      "segment": "reassignment_count",
+      "top": null,
+      "truth": "true",
+      "planted": "itsm_reassignment_sla",
+      "statement": "Missed SLA concentrates in reassignment count = 3+",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "driver_model",
+      "outcome": "made_sla",
+      "segment": null,
+      "top": null,
+      "truth": "true",
+      "planted": null,
+      "statement": "Missed SLA is driven mainly by reassignment count",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "numeric_by_segment",
+      "outcome": "opened_at->resolved_at",
+      "segment": "assignment_group_name",
+      "top": null,
+      "truth": "true",
+      "planted": "itsm_network_resolution",
+      "statement": "Resolution hours is higher for assignment group name = Network",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "pareto",
+      "outcome": null,
+      "segment": "cmdb_ci_name",
+      "top": null,
+      "truth": "true",
+      "planted": "itsm_p1_payments_gateway",
+      "statement": "Volume is concentrated in few cmdb ci name values",
+      "p_value": null,
+      "p_adjusted": null
+     }
+    ],
+    "seconds": 17.5,
+    "run_id": "run_b1a1cf194f4b",
+    "status": "COMPLETED",
+    "tested_by_method": {},
+    "fdp": 0.0
+   },
+   {
+    "domain": "itsm",
+    "seed": 2,
+    "effects": true,
+    "tier": "platform",
+    "tested": 14,
+    "null_tests": 5,
+    "null_raw_significant": 0,
+    "verified": 8,
+    "true_positive": 8,
+    "false_positive": 0,
+    "unscored": 0,
+    "planted": {
+     "itsm_reassignment_sla": true,
+     "itsm_after_hours_resolution": true,
+     "itsm_network_resolution": true,
+     "itsm_p1_payments_gateway": true
+    },
+    "findings": [
+     {
+      "method": "rate_by_segment",
+      "outcome": "made_sla",
+      "segment": "reassignment_count",
+      "top": null,
+      "truth": "true",
+      "planted": "itsm_reassignment_sla",
+      "statement": "Missed SLA concentrates in reassignment count = 3+",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "driver_model",
+      "outcome": "made_sla",
+      "segment": null,
+      "top": null,
+      "truth": "true",
+      "planted": null,
+      "statement": "Missed SLA is driven mainly by reassignment count",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "numeric_by_segment",
+      "outcome": "opened_at->resolved_at",
+      "segment": "after_hours(opened_at)",
+      "top": null,
+      "truth": "true",
+      "planted": "itsm_after_hours_resolution",
+      "statement": "Database Group Resolution Hours After Hours",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "numeric_by_segment",
+      "outcome": "opened_at->resolved_at",
+      "segment": "after_hours(opened_at)",
+      "top": null,
+      "truth": "true",
+      "planted": "itsm_after_hours_resolution",
+      "statement": "Resolution Hours for Network and Database Groups After Hours",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "numeric_by_segment",
+      "outcome": "opened_at->resolved_at",
+      "segment": "after_hours(opened_at)",
+      "top": null,
+      "truth": "true",
+      "planted": "itsm_after_hours_resolution",
+      "statement": "Resolution hours is higher for opened after hours = true",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "pareto",
+      "outcome": null,
+      "segment": "cmdb_ci_name",
+      "top": null,
+      "truth": "true",
+      "planted": "itsm_p1_payments_gateway",
+      "statement": "Volume is concentrated in few cmdb ci name values",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "numeric_by_segment",
+      "outcome": "opened_at->resolved_at",
+      "segment": "assignment_group_name",
+      "top": null,
+      "truth": "true",
+      "planted": "itsm_network_resolution",
+      "statement": "Resolution Time (Hours) is higher for Assignment Group = Network",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "rate_by_segment",
+      "outcome": "made_sla",
+      "segment": "reassignment_count",
+      "top": null,
+      "truth": "true",
+      "planted": "itsm_reassignment_sla",
+      "statement": "Missed SLA Rates by Reassignment Count in Network Group",
+      "p_value": null,
+      "p_adjusted": null
+     }
+    ],
+    "seconds": 59.7,
+    "run_id": "run_b3ca35e63f60",
+    "status": "COMPLETED",
+    "tested_by_method": {},
+    "fdp": 0.0
+   },
+   {
+    "domain": "sales",
+    "seed": 1,
+    "effects": true,
+    "tier": "platform",
+    "tested": 14,
+    "null_tests": 10,
+    "null_raw_significant": 0,
+    "verified": 5,
+    "true_positive": 4,
+    "false_positive": 1,
+    "unscored": 0,
+    "planted": {
+     "sales_returns_by_channel": true,
+     "sales_value_by_segment": true,
+     "sales_shipping_by_region": true
+    },
+    "findings": [
+     {
+      "method": "numeric_by_segment",
+      "outcome": "shipping_days",
+      "segment": "sales_region",
+      "top": null,
+      "truth": "true",
+      "planted": "sales_shipping_by_region",
+      "statement": "Shipping Days Vary by Sales Region",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "rate_by_segment",
+      "outcome": "returned",
+      "segment": "channel",
+      "top": null,
+      "truth": "true",
+      "planted": "sales_returns_by_channel",
+      "statement": "Return Rates Vary by Channel",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "numeric_by_segment",
+      "outcome": "net_amount",
+      "segment": "customer_segment",
+      "top": null,
+      "truth": "true",
+      "planted": "sales_value_by_segment",
+      "statement": "Net Amount Varies by Customer Segment",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "rate_by_segment",
+      "outcome": "returned",
+      "segment": "customer_segment",
+      "top": null,
+      "truth": "false",
+      "planted": null,
+      "statement": "Returned concentrates in customer segment = Enterprise",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "driver_model",
+      "outcome": "returned",
+      "segment": null,
+      "top": null,
+      "truth": "true",
+      "planted": null,
+      "statement": "Commercial Factors Predict Returns",
+      "p_value": null,
+      "p_adjusted": null
+     }
+    ],
+    "seconds": 41.9,
+    "run_id": "run_be4ca97279a2",
+    "status": "COMPLETED",
+    "tested_by_method": {},
+    "fdp": 0.2
+   },
+   {
+    "domain": "sales",
+    "seed": 2,
+    "effects": true,
+    "tier": "platform",
+    "tested": 11,
+    "null_tests": 7,
+    "null_raw_significant": 0,
+    "verified": 4,
+    "true_positive": 4,
+    "false_positive": 0,
+    "unscored": 0,
+    "planted": {
+     "sales_returns_by_channel": true,
+     "sales_value_by_segment": true,
+     "sales_shipping_by_region": true
+    },
+    "findings": [
+     {
+      "method": "rate_by_segment",
+      "outcome": "returned",
+      "segment": "channel",
+      "top": null,
+      "truth": "true",
+      "planted": "sales_returns_by_channel",
+      "statement": "Returned concentrates in channel = marketplace",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "numeric_by_segment",
+      "outcome": "shipping_days",
+      "segment": "sales_region",
+      "top": null,
+      "truth": "true",
+      "planted": "sales_shipping_by_region",
+      "statement": "Shipping days is higher for sales region = APAC",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "numeric_by_segment",
+      "outcome": "net_amount",
+      "segment": "customer_segment",
+      "top": null,
+      "truth": "true",
+      "planted": "sales_value_by_segment",
+      "statement": "Net amount is higher for customer segment = Enterprise",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "driver_model",
+      "outcome": "returned",
+      "segment": null,
+      "top": null,
+      "truth": "true",
+      "planted": null,
+      "statement": "Returned is driven mainly by channel",
+      "p_value": null,
+      "p_adjusted": null
+     }
+    ],
+    "seconds": 52.9,
+    "run_id": "run_033dbe5a3bf0",
+    "status": "COMPLETED",
+    "tested_by_method": {},
+    "fdp": 0.0
+   },
+   {
+    "domain": "finance",
+    "seed": 1,
+    "effects": true,
+    "tier": "platform",
+    "tested": 11,
+    "null_tests": 8,
+    "null_raw_significant": 0,
+    "verified": 3,
+    "true_positive": 3,
+    "false_positive": 0,
+    "unscored": 0,
+    "planted": {
+     "finance_amount_by_vendor": true,
+     "finance_late_by_unit": true,
+     "finance_days_by_unit": true
+    },
+    "findings": [
+     {
+      "method": "rate_by_segment",
+      "outcome": "paid_late",
+      "segment": "business_unit",
+      "top": null,
+      "truth": "true",
+      "planted": "finance_late_by_unit",
+      "statement": "Paid late concentrates in business unit = Retail",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "numeric_by_segment",
+      "outcome": "invoice_amount",
+      "segment": "vendor_category",
+      "top": null,
+      "truth": "true",
+      "planted": "finance_amount_by_vendor",
+      "statement": "Invoice amount is higher for vendor category = IT services",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "numeric_by_segment",
+      "outcome": "days_to_pay",
+      "segment": "business_unit",
+      "top": null,
+      "truth": "true",
+      "planted": "finance_days_by_unit",
+      "statement": "Days to pay is higher for business unit = Public Sector",
+      "p_value": null,
+      "p_adjusted": null
+     }
+    ],
+    "seconds": 27.0,
+    "run_id": "run_a271889e7d02",
+    "status": "COMPLETED",
+    "tested_by_method": {},
+    "fdp": 0.0
+   },
+   {
+    "domain": "finance",
+    "seed": 2,
+    "effects": true,
+    "tier": "platform",
+    "tested": 10,
+    "null_tests": 7,
+    "null_raw_significant": 0,
+    "verified": 3,
+    "true_positive": 3,
+    "false_positive": 0,
+    "unscored": 0,
+    "planted": {
+     "finance_amount_by_vendor": true,
+     "finance_late_by_unit": true,
+     "finance_days_by_unit": true
+    },
+    "findings": [
+     {
+      "method": "numeric_by_segment",
+      "outcome": "invoice_amount",
+      "segment": "vendor_category",
+      "top": null,
+      "truth": "true",
+      "planted": "finance_amount_by_vendor",
+      "statement": "Invoice Amount Varies by Vendor Category",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "rate_by_segment",
+      "outcome": "paid_late",
+      "segment": "business_unit",
+      "top": null,
+      "truth": "true",
+      "planted": "finance_late_by_unit",
+      "statement": "Late Payment Rates Vary by Business Unit",
+      "p_value": null,
+      "p_adjusted": null
+     },
+     {
+      "method": "numeric_by_segment",
+      "outcome": "days_to_pay",
+      "segment": "business_unit",
+      "top": null,
+      "truth": "true",
+      "planted": "finance_days_by_unit",
+      "statement": "Days to Pay Varies by Business Unit",
+      "p_value": null,
+      "p_adjusted": null
+     }
+    ],
+    "seconds": 28.8,
+    "run_id": "run_540205039d96",
+    "status": "COMPLETED",
+    "tested_by_method": {},
+    "fdp": 0.0
+   },
+   {
+    "domain": "itsm",
+    "seed": 101,
+    "effects": false,
+    "tier": "platform",
+    "tested": 8,
+    "null_tests": 6,
+    "null_raw_significant": 0,
+    "verified": 0,
+    "true_positive": 0,
+    "false_positive": 0,
+    "unscored": 0,
+    "planted": {},
+    "findings": [],
+    "seconds": 27.4,
+    "run_id": "run_bd1e690d15d6",
+    "status": "COMPLETED",
+    "tested_by_method": {},
+    "fdp": 0.0
+   },
+   {
+    "domain": "itsm",
+    "seed": 102,
+    "effects": false,
+    "tier": "platform",
+    "tested": 8,
+    "null_tests": 7,
+    "null_raw_significant": 0,
+    "verified": 0,
+    "true_positive": 0,
+    "false_positive": 0,
+    "unscored": 0,
+    "planted": {},
+    "findings": [],
+    "seconds": 5.2,
+    "run_id": "run_db8c419a2680",
+    "status": "COMPLETED",
+    "tested_by_method": {},
+    "fdp": 0.0
+   },
+   {
+    "domain": "sales",
+    "seed": 101,
+    "effects": false,
+    "tier": "platform",
+    "tested": 8,
+    "null_tests": 7,
+    "null_raw_significant": 0,
+    "verified": 0,
+    "true_positive": 0,
+    "false_positive": 0,
+    "unscored": 0,
+    "planted": {},
+    "findings": [],
+    "seconds": 5.2,
+    "run_id": "run_cbfceac00e95",
+    "status": "COMPLETED",
+    "tested_by_method": {},
+    "fdp": 0.0
+   },
+   {
+    "domain": "sales",
+    "seed": 102,
+    "effects": false,
+    "tier": "platform",
+    "tested": 8,
+    "null_tests": 7,
+    "null_raw_significant": 0,
+    "verified": 0,
+    "true_positive": 0,
+    "false_positive": 0,
+    "unscored": 0,
+    "planted": {},
+    "findings": [],
+    "seconds": 5.3,
+    "run_id": "run_e7d03c96c227",
+    "status": "COMPLETED",
+    "tested_by_method": {},
+    "fdp": 0.0
+   },
+   {
+    "domain": "finance",
+    "seed": 101,
+    "effects": false,
+    "tier": "platform",
+    "tested": 8,
+    "null_tests": 8,
+    "null_raw_significant": 0,
+    "verified": 0,
+    "true_positive": 0,
+    "false_positive": 0,
+    "unscored": 0,
+    "planted": {},
+    "findings": [],
+    "seconds": 5.1,
+    "run_id": "run_488fc3dd6307",
+    "status": "COMPLETED",
+    "tested_by_method": {},
+    "fdp": 0.0
+   },
+   {
+    "domain": "finance",
+    "seed": 102,
+    "effects": false,
+    "tier": "platform",
+    "tested": 8,
+    "null_tests": 8,
+    "null_raw_significant": 0,
+    "verified": 0,
+    "true_positive": 0,
+    "false_positive": 0,
+    "unscored": 0,
+    "planted": {},
+    "findings": [],
+    "seconds": 5.2,
+    "run_id": "run_f0be6a53fd65",
+    "status": "COMPLETED",
+    "tested_by_method": {},
+    "fdp": 0.0
+   }
+  ],
+  "model_usage": {
+   "calls": 35,
+   "errors": 0,
+   "cost_usd": 0.197409,
+   "input_tokens": 31553,
+   "output_tokens": 25477,
+   "skipped": 83,
+   "cache_hits": 0,
+   "approval_required": 10,
+   "by_purpose": {
+    "hypothesis_generation / google/gemini-3.5-flash": {
+     "calls": 5,
+     "errors": 0,
+     "cost_usd": 0.099882,
+     "input_tokens": 7464,
+     "output_tokens": 9854
+    },
+    "planning / openai/gpt-5.4-mini": {
+     "calls": 7,
+     "errors": 0,
+     "cost_usd": 0.014177,
+     "input_tokens": 2366,
+     "output_tokens": 2756
+    },
+    "follow_up_generation / google/gemini-3.5-flash": {
+     "calls": 5,
+     "errors": 0,
+     "cost_usd": 0.056262,
+     "input_tokens": 11672,
+     "output_tokens": 4306
+    },
+    "semantic_modeling / openai/gpt-5.4-mini": {
+     "calls": 4,
+     "errors": 0,
+     "cost_usd": 0.017955,
+     "input_tokens": 2316,
+     "output_tokens": 3604
+    },
+    "summarization / google/gemini-3.5-flash-lite": {
+     "calls": 9,
+     "errors": 0,
+     "cost_usd": 0.00298,
+     "input_tokens": 2251,
+     "output_tokens": 922
+    },
+    "insight_narrative / google/gemini-3.5-flash-lite": {
+     "calls": 3,
+     "errors": 0,
+     "cost_usd": 0.005345,
+     "input_tokens": 4092,
+     "output_tokens": 1647
+    },
+    "semantic_modeling / deepseek/deepseek-v4-flash-0731": {
+     "calls": 2,
+     "errors": 0,
+     "cost_usd": 0.000808,
+     "input_tokens": 1392,
+     "output_tokens": 2388
+    }
+   }
+  }
+ }
+}

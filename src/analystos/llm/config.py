@@ -105,6 +105,11 @@ class ProfileConfig(BaseModel):
     max_tokens: int = 2000
     timeout_seconds: float = 60
     exclude_families: list[str] = Field(default_factory=list)
+    # OpenRouter `reasoning.effort` for this profile's calls. Every purpose here returns strict JSON that code
+    # then validates, and a reasoning model spends the completion budget on hidden reasoning first: live runs
+    # (2026-09-29) got empty content from deepseek-v4-flash at max_tokens 2500 and truncated JSON from
+    # gemini-3.5-flash at 6000. None = the provider default.
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
 
 
 class EscalationConfig(BaseModel):

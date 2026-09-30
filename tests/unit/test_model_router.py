@@ -234,3 +234,19 @@ def test_credit_refusal_cools_the_provider_down_instead_of_trying_every_model():
     assert len(calls) == 1  # failed fast, no network call
     router_mod._PROVIDER_COOLDOWN.clear()
     assert r.available("planning")
+
+
+def test_json_profiles_ask_openrouter_for_minimal_reasoning():
+    """Live runs (2026-09-29): reasoning models spent max_tokens on hidden reasoning and returned empty or truncated
+    JSON for purposes whose answer code validates anyway, so those profiles request minimal reasoning."""
+    seen = []
+
+    def chat(p):
+        seen.append(p)
+        return chat_json({"ok": True}, model=p["model"])
+
+    r = make(FakeTransport(chat=chat))
+    r.complete_json("planning", "s", "u")
+    r.complete_json("sql_generation", "s", "u")
+    assert [p["reasoning"] for p in seen] == [{"effort": "minimal"}, {"effort": "minimal"}]
+    assert all(p["max_tokens"] <= 6000 for p in seen)

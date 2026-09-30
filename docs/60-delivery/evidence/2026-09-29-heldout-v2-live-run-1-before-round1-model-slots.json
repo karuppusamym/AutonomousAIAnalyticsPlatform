@@ -1,0 +1,3872 @@
+{
+ "platform": {
+  "tier": "platform",
+  "corpus_version": 2,
+  "corpus_sha256": "3cfc43594ed10372581eb56c8e26921a2b1931f9ecce148a037cccdb1cd37ee5",
+  "seconds": 1178.3,
+  "lock_ok": true,
+  "lock_mismatches": [],
+  "summary": {
+   "overall": {
+    "tasks": 75,
+    "deliver_tasks": 43,
+    "abstain_tasks": 32,
+    "statuses": {
+     "accepted": 37,
+     "correct_abstention": 32,
+     "confident_wrong": 0,
+     "incomplete": 4,
+     "unnecessary_abstention": 2,
+     "wrong_abstention": 0,
+     "error": 0
+    },
+    "accepted": 37,
+    "accepted_output_rate": 0.8605,
+    "confident_wrong": 0,
+    "abstention_recall": 1.0,
+    "abstention_precision": 0.9412,
+    "unnecessary_abstentions": 2,
+    "task_success_rate": 0.92,
+    "errors": 0,
+    "latency_seconds": {
+     "p50": 2.013,
+     "p95": 47.04,
+     "max": 88.471
+    },
+    "model": {
+     "calls": 155,
+     "tokens": 246636,
+     "usd": 0.912984
+    },
+    "cost_per_accepted": {
+     "model_usd": 0.0247,
+     "cpu_seconds": 4.4393,
+     "wall_seconds": 31.7929,
+     "infrastructure_usd": "unpriced"
+    }
+   },
+   "by_domain": {
+    "itsm": {
+     "tasks": 6,
+     "deliver_tasks": 4,
+     "abstain_tasks": 2,
+     "statuses": {
+      "accepted": 2,
+      "correct_abstention": 2,
+      "confident_wrong": 0,
+      "incomplete": 2,
+      "unnecessary_abstention": 0,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 2,
+     "accepted_output_rate": 0.5,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 1.0,
+     "unnecessary_abstentions": 0,
+     "task_success_rate": 0.6667,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 35.075,
+      "p95": 51.98,
+      "max": 54.725
+     },
+     "model": {
+      "calls": 30,
+      "tokens": 47494,
+      "usd": 0.173186
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.0866,
+      "cpu_seconds": 15.68,
+      "wall_seconds": 110.8875,
+      "infrastructure_usd": "unpriced"
+     }
+    },
+    "sales": {
+     "tasks": 6,
+     "deliver_tasks": 4,
+     "abstain_tasks": 2,
+     "statuses": {
+      "accepted": 4,
+      "correct_abstention": 2,
+      "confident_wrong": 0,
+      "incomplete": 0,
+      "unnecessary_abstention": 0,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 4,
+     "accepted_output_rate": 1.0,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 1.0,
+     "unnecessary_abstentions": 0,
+     "task_success_rate": 1.0,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 56.802,
+      "p95": 84.652,
+      "max": 88.471
+     },
+     "model": {
+      "calls": 29,
+      "tokens": 53617,
+      "usd": 0.174313
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.0436,
+      "cpu_seconds": 7.8513,
+      "wall_seconds": 86.828,
+      "infrastructure_usd": "unpriced"
+     }
+    },
+    "finance": {
+     "tasks": 6,
+     "deliver_tasks": 4,
+     "abstain_tasks": 2,
+     "statuses": {
+      "accepted": 4,
+      "correct_abstention": 2,
+      "confident_wrong": 0,
+      "incomplete": 0,
+      "unnecessary_abstention": 0,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 4,
+     "accepted_output_rate": 1.0,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 1.0,
+     "unnecessary_abstentions": 0,
+     "task_success_rate": 1.0,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 28.017,
+      "p95": 36.025,
+      "max": 37.548
+     },
+     "model": {
+      "calls": 31,
+      "tokens": 47849,
+      "usd": 0.179998
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.045,
+      "cpu_seconds": 5.6637,
+      "wall_seconds": 41.7837,
+      "infrastructure_usd": "unpriced"
+     }
+    },
+    "engineering": {
+     "tasks": 15,
+     "deliver_tasks": 9,
+     "abstain_tasks": 6,
+     "statuses": {
+      "accepted": 9,
+      "correct_abstention": 6,
+      "confident_wrong": 0,
+      "incomplete": 0,
+      "unnecessary_abstention": 0,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 9,
+     "accepted_output_rate": 1.0,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 1.0,
+     "unnecessary_abstentions": 0,
+     "task_success_rate": 1.0,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 1.144,
+      "p95": 1.722,
+      "max": 1.826
+     },
+     "model": {
+      "calls": 0,
+      "tokens": 0,
+      "usd": 0.0
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.0,
+      "cpu_seconds": 0.9012,
+      "wall_seconds": 1.9912,
+      "infrastructure_usd": "unpriced"
+     }
+    },
+    "ml": {
+     "tasks": 16,
+     "deliver_tasks": 7,
+     "abstain_tasks": 9,
+     "statuses": {
+      "accepted": 7,
+      "correct_abstention": 9,
+      "confident_wrong": 0,
+      "incomplete": 0,
+      "unnecessary_abstention": 0,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 7,
+     "accepted_output_rate": 1.0,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 1.0,
+     "unnecessary_abstentions": 0,
+     "task_success_rate": 1.0,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 1.611,
+      "p95": 2.405,
+      "max": 2.733
+     },
+     "model": {
+      "calls": 0,
+      "tokens": 0,
+      "usd": 0.0
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.0,
+      "cpu_seconds": 2.469,
+      "wall_seconds": 3.3531,
+      "infrastructure_usd": "unpriced"
+     }
+    },
+    "retail": {
+     "tasks": 3,
+     "deliver_tasks": 2,
+     "abstain_tasks": 1,
+     "statuses": {
+      "accepted": 1,
+      "correct_abstention": 1,
+      "confident_wrong": 0,
+      "incomplete": 1,
+      "unnecessary_abstention": 0,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 1,
+     "accepted_output_rate": 0.5,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 1.0,
+     "unnecessary_abstentions": 0,
+     "task_success_rate": 0.6667,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 31.429,
+      "p95": 33.354,
+      "max": 33.568
+     },
+     "model": {
+      "calls": 16,
+      "tokens": 23912,
+      "usd": 0.099782
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.0998,
+      "cpu_seconds": 11.329,
+      "wall_seconds": 87.477,
+      "infrastructure_usd": "unpriced"
+     }
+    },
+    "logistics": {
+     "tasks": 3,
+     "deliver_tasks": 2,
+     "abstain_tasks": 1,
+     "statuses": {
+      "accepted": 2,
+      "correct_abstention": 1,
+      "confident_wrong": 0,
+      "incomplete": 0,
+      "unnecessary_abstention": 0,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 2,
+     "accepted_output_rate": 1.0,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 1.0,
+     "unnecessary_abstentions": 0,
+     "task_success_rate": 1.0,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 30.761,
+      "p95": 35.905,
+      "max": 36.477
+     },
+     "model": {
+      "calls": 16,
+      "tokens": 24190,
+      "usd": 0.097719
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.0489,
+      "cpu_seconds": 7.6485,
+      "wall_seconds": 45.888,
+      "infrastructure_usd": "unpriced"
+     }
+    },
+    "saas_ops": {
+     "tasks": 3,
+     "deliver_tasks": 2,
+     "abstain_tasks": 1,
+     "statuses": {
+      "accepted": 2,
+      "correct_abstention": 1,
+      "confident_wrong": 0,
+      "incomplete": 0,
+      "unnecessary_abstention": 0,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 2,
+     "accepted_output_rate": 1.0,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 1.0,
+     "unnecessary_abstentions": 0,
+     "task_success_rate": 1.0,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 28.319,
+      "p95": 32.577,
+      "max": 33.05
+     },
+     "model": {
+      "calls": 16,
+      "tokens": 23568,
+      "usd": 0.093844
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.0469,
+      "cpu_seconds": 5.992,
+      "wall_seconds": 42.934,
+      "infrastructure_usd": "unpriced"
+     }
+    },
+    "transfer": {
+     "tasks": 4,
+     "deliver_tasks": 3,
+     "abstain_tasks": 1,
+     "statuses": {
+      "accepted": 0,
+      "correct_abstention": 1,
+      "confident_wrong": 0,
+      "incomplete": 1,
+      "unnecessary_abstention": 2,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 0,
+     "accepted_output_rate": 0.0,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 0.3333,
+     "unnecessary_abstentions": 2,
+     "task_success_rate": 0.25,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 31.257,
+      "p95": 37.355,
+      "max": 38.109
+     },
+     "model": {
+      "calls": 17,
+      "tokens": 26006,
+      "usd": 0.094142
+     },
+     "cost_per_accepted": {
+      "model_usd": null,
+      "cpu_seconds": null,
+      "wall_seconds": null,
+      "infrastructure_usd": "unpriced"
+     }
+    },
+    "governance": {
+     "tasks": 8,
+     "deliver_tasks": 2,
+     "abstain_tasks": 6,
+     "statuses": {
+      "accepted": 2,
+      "correct_abstention": 6,
+      "confident_wrong": 0,
+      "incomplete": 0,
+      "unnecessary_abstention": 0,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 2,
+     "accepted_output_rate": 1.0,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 1.0,
+     "unnecessary_abstentions": 0,
+     "task_success_rate": 1.0,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 0.259,
+      "p95": 0.733,
+      "max": 0.863
+     },
+     "model": {
+      "calls": 0,
+      "tokens": 0,
+      "usd": 0.0
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.0,
+      "cpu_seconds": 0.462,
+      "wall_seconds": 1.221,
+      "infrastructure_usd": "unpriced"
+     }
+    },
+    "recovery": {
+     "tasks": 5,
+     "deliver_tasks": 4,
+     "abstain_tasks": 1,
+     "statuses": {
+      "accepted": 4,
+      "correct_abstention": 1,
+      "confident_wrong": 0,
+      "incomplete": 0,
+      "unnecessary_abstention": 0,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 4,
+     "accepted_output_rate": 1.0,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 1.0,
+     "unnecessary_abstentions": 0,
+     "task_success_rate": 1.0,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 1.104,
+      "p95": 3.209,
+      "max": 3.5
+     },
+     "model": {
+      "calls": 0,
+      "tokens": 0,
+      "usd": 0.0
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.0,
+      "cpu_seconds": 0.8868,
+      "wall_seconds": 1.806,
+      "infrastructure_usd": "unpriced"
+     }
+    }
+   },
+   "by_family": {
+    "analysis": {
+     "tasks": 31,
+     "deliver_tasks": 21,
+     "abstain_tasks": 10,
+     "statuses": {
+      "accepted": 15,
+      "correct_abstention": 10,
+      "confident_wrong": 0,
+      "incomplete": 4,
+      "unnecessary_abstention": 2,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 15,
+     "accepted_output_rate": 0.7143,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 0.8333,
+     "unnecessary_abstentions": 2,
+     "task_success_rate": 0.8065,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 33.05,
+      "p95": 72.003,
+      "max": 88.471
+     },
+     "model": {
+      "calls": 155,
+      "tokens": 246636,
+      "usd": 0.912984
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.0609,
+      "cpu_seconds": 8.9593,
+      "wall_seconds": 75.0185,
+      "infrastructure_usd": "unpriced"
+     }
+    },
+    "engineering": {
+     "tasks": 15,
+     "deliver_tasks": 9,
+     "abstain_tasks": 6,
+     "statuses": {
+      "accepted": 9,
+      "correct_abstention": 6,
+      "confident_wrong": 0,
+      "incomplete": 0,
+      "unnecessary_abstention": 0,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 9,
+     "accepted_output_rate": 1.0,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 1.0,
+     "unnecessary_abstentions": 0,
+     "task_success_rate": 1.0,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 1.144,
+      "p95": 1.722,
+      "max": 1.826
+     },
+     "model": {
+      "calls": 0,
+      "tokens": 0,
+      "usd": 0.0
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.0,
+      "cpu_seconds": 0.9012,
+      "wall_seconds": 1.9912,
+      "infrastructure_usd": "unpriced"
+     }
+    },
+    "ml": {
+     "tasks": 16,
+     "deliver_tasks": 7,
+     "abstain_tasks": 9,
+     "statuses": {
+      "accepted": 7,
+      "correct_abstention": 9,
+      "confident_wrong": 0,
+      "incomplete": 0,
+      "unnecessary_abstention": 0,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 7,
+     "accepted_output_rate": 1.0,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 1.0,
+     "unnecessary_abstentions": 0,
+     "task_success_rate": 1.0,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 1.611,
+      "p95": 2.405,
+      "max": 2.733
+     },
+     "model": {
+      "calls": 0,
+      "tokens": 0,
+      "usd": 0.0
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.0,
+      "cpu_seconds": 2.469,
+      "wall_seconds": 3.3531,
+      "infrastructure_usd": "unpriced"
+     }
+    },
+    "governance": {
+     "tasks": 8,
+     "deliver_tasks": 2,
+     "abstain_tasks": 6,
+     "statuses": {
+      "accepted": 2,
+      "correct_abstention": 6,
+      "confident_wrong": 0,
+      "incomplete": 0,
+      "unnecessary_abstention": 0,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 2,
+     "accepted_output_rate": 1.0,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 1.0,
+     "unnecessary_abstentions": 0,
+     "task_success_rate": 1.0,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 0.259,
+      "p95": 0.733,
+      "max": 0.863
+     },
+     "model": {
+      "calls": 0,
+      "tokens": 0,
+      "usd": 0.0
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.0,
+      "cpu_seconds": 0.462,
+      "wall_seconds": 1.221,
+      "infrastructure_usd": "unpriced"
+     }
+    },
+    "recovery": {
+     "tasks": 5,
+     "deliver_tasks": 4,
+     "abstain_tasks": 1,
+     "statuses": {
+      "accepted": 4,
+      "correct_abstention": 1,
+      "confident_wrong": 0,
+      "incomplete": 0,
+      "unnecessary_abstention": 0,
+      "wrong_abstention": 0,
+      "error": 0
+     },
+     "accepted": 4,
+     "accepted_output_rate": 1.0,
+     "confident_wrong": 0,
+     "abstention_recall": 1.0,
+     "abstention_precision": 1.0,
+     "unnecessary_abstentions": 0,
+     "task_success_rate": 1.0,
+     "errors": 0,
+     "latency_seconds": {
+      "p50": 1.104,
+      "p95": 3.209,
+      "max": 3.5
+     },
+     "model": {
+      "calls": 0,
+      "tokens": 0,
+      "usd": 0.0
+     },
+     "cost_per_accepted": {
+      "model_usd": 0.0,
+      "cpu_seconds": 0.8868,
+      "wall_seconds": 1.806,
+      "infrastructure_usd": "unpriced"
+     }
+    }
+   }
+  },
+  "results": [
+   {
+    "id": "HO-ITSM-01",
+    "family": "analysis",
+    "domain": "itsm",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 11,
+     "verified": 4,
+     "true": 4,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "downtime_by_risk",
+      "rollback_by_model"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "driver_model",
+       "outcome": "rollback_needed",
+       "segment": null,
+       "top": null,
+       "truth": "true",
+       "planted": null,
+       "statement": "Rollback needed is driven mainly by change model"
+      },
+      {
+       "method": "rate_by_segment",
+       "outcome": "rollback_needed",
+       "segment": "change_model",
+       "top": null,
+       "truth": "true",
+       "planted": "rollback_by_model",
+       "statement": "Rollback needed concentrates in change model = emergency"
+      },
+      {
+       "method": "numeric_by_segment",
+       "outcome": "approvals_required",
+       "segment": "risk_tier",
+       "top": null,
+       "truth": "true",
+       "planted": null,
+       "statement": "Approvals required is higher for risk tier = critical"
+      },
+      {
+       "method": "numeric_by_segment",
+       "outcome": "downtime_minutes",
+       "segment": "risk_tier",
+       "top": null,
+       "truth": "true",
+       "planted": "downtime_by_risk",
+       "statement": "Downtime minutes is higher for risk tier = critical"
+      }
+     ]
+    },
+    "seconds": 54.725,
+    "cpu_seconds": 3.219,
+    "model_calls": 2,
+    "model_tokens": 3745,
+    "model_usd": 0.002622508,
+    "run_ref": "run_03d8b933916c"
+   },
+   {
+    "id": "HO-ITSM-02",
+    "family": "analysis",
+    "domain": "itsm",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 14,
+     "verified": 5,
+     "true": 4,
+     "false": 0,
+     "unscored": 1,
+     "planted_found": [
+      "downtime_by_risk",
+      "rollback_by_model"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "numeric_by_segment",
+       "outcome": "downtime_minutes",
+       "segment": "risk_tier",
+       "top": null,
+       "truth": "true",
+       "planted": "downtime_by_risk",
+       "statement": "Downtime minutes is higher for risk tier = critical"
+      },
+      {
+       "method": "driver_model",
+       "outcome": "rollback_needed",
+       "segment": null,
+       "top": null,
+       "truth": "true",
+       "planted": null,
+       "statement": "Change Model Predicts Rollback Needed"
+      },
+      {
+       "method": "numeric_by_segment",
+       "outcome": "approvals_required",
+       "segment": "risk_tier",
+       "top": null,
+       "truth": "true",
+       "planted": null,
+       "statement": "Approvals Required Varies by Risk Tier"
+      },
+      {
+       "method": "rate_by_segment",
+       "outcome": "rollback_needed",
+       "segment": "change_model",
+       "top": null,
+       "truth": "true",
+       "planted": "rollback_by_model",
+       "statement": "Rollback Rate Varies Across Change Models"
+      },
+      {
+       "method": "correlation",
+       "outcome": "downtime_minutes",
+       "segment": null,
+       "top": null,
+       "truth": "unscored",
+       "planted": null,
+       "statement": "Approvals and Downtime Correlation"
+      }
+     ]
+    },
+    "seconds": 43.747,
+    "cpu_seconds": 9.906,
+    "model_calls": 7,
+    "model_tokens": 13005,
+    "model_usd": 0.0441058,
+    "run_ref": "run_de0177b2407c"
+   },
+   {
+    "id": "HO-ITSM-03",
+    "family": "analysis",
+    "domain": "itsm",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "incomplete",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "missed planted effect(s): fulfilment_by_site",
+    "detail": {
+     "tested": 11,
+     "verified": 2,
+     "true": 2,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "effort_by_team",
+      "escalation_by_item"
+     ],
+     "planted_missed": [
+      "fulfilment_by_site"
+     ],
+     "findings": [
+      {
+       "method": "rate_by_segment",
+       "outcome": "escalated",
+       "segment": "catalog_item",
+       "top": null,
+       "truth": "true",
+       "planted": "escalation_by_item",
+       "statement": "Escalated concentrates in catalog item = Laptop refresh"
+      },
+      {
+       "method": "numeric_by_segment",
+       "outcome": "effort_hours",
+       "segment": "fulfilment_team",
+       "top": null,
+       "truth": "true",
+       "planted": "effort_by_team",
+       "statement": "Effort Hours Vary by Fulfilment Team"
+      }
+     ]
+    },
+    "seconds": 35.829,
+    "cpu_seconds": 4.688,
+    "model_calls": 5,
+    "model_tokens": 8693,
+    "model_usd": 0.0354041,
+    "run_ref": "run_55d892f60d87"
+   },
+   {
+    "id": "HO-ITSM-04",
+    "family": "analysis",
+    "domain": "itsm",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "incomplete",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "missed planted effect(s): fulfilment_by_site",
+    "detail": {
+     "tested": 9,
+     "verified": 2,
+     "true": 2,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "effort_by_team",
+      "escalation_by_item"
+     ],
+     "planted_missed": [
+      "fulfilment_by_site"
+     ],
+     "findings": [
+      {
+       "method": "numeric_by_segment",
+       "outcome": "effort_hours",
+       "segment": "fulfilment_team",
+       "top": null,
+       "truth": "true",
+       "planted": "effort_by_team",
+       "statement": "Effort Hours Differ Across Fulfilment Teams"
+      },
+      {
+       "method": "rate_by_segment",
+       "outcome": "escalated",
+       "segment": "catalog_item",
+       "top": null,
+       "truth": "true",
+       "planted": "escalation_by_item",
+       "statement": "Escalation Rate Varies by Catalog Item"
+      }
+     ]
+    },
+    "seconds": 34.32,
+    "cpu_seconds": 5.391,
+    "model_calls": 6,
+    "model_tokens": 9591,
+    "model_usd": 0.0390885,
+    "run_ref": "run_e7e2fb7f11ce"
+   },
+   {
+    "id": "HO-ITSM-05",
+    "family": "analysis",
+    "domain": "itsm",
+    "expect": "abstain",
+    "abstain_kind": "no_finding",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "no false finding (1 true non-planted finding(s) reported)",
+    "detail": {
+     "tested": 10,
+     "verified": 1,
+     "true": 1,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "numeric_by_segment",
+       "outcome": "approvals_required",
+       "segment": "risk_tier",
+       "top": null,
+       "truth": "true",
+       "planted": null,
+       "statement": "Approvals required is higher for risk tier = critical"
+      }
+     ]
+    },
+    "seconds": 29.339,
+    "cpu_seconds": 4.609,
+    "model_calls": 6,
+    "model_tokens": 7585,
+    "model_usd": 0.03068845,
+    "run_ref": "run_daa9a356a030"
+   },
+   {
+    "id": "HO-ITSM-06",
+    "family": "analysis",
+    "domain": "itsm",
+    "expect": "abstain",
+    "abstain_kind": "no_finding",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "no false finding",
+    "detail": {
+     "tested": 8,
+     "verified": 0,
+     "true": 0,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [],
+     "planted_missed": [],
+     "findings": []
+    },
+    "seconds": 23.815,
+    "cpu_seconds": 3.547,
+    "model_calls": 4,
+    "model_tokens": 4875,
+    "model_usd": 0.02127645,
+    "run_ref": "run_deafa28faf95"
+   },
+   {
+    "id": "HO-SALES-01",
+    "family": "analysis",
+    "domain": "sales",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 10,
+     "verified": 2,
+     "true": 2,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "churn_by_cycle",
+      "mrr_by_tier"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "numeric_by_segment",
+       "outcome": "mrr_usd",
+       "segment": "plan_tier",
+       "top": null,
+       "truth": "true",
+       "planted": "mrr_by_tier",
+       "statement": "Enterprise Plan Tier Associated with Higher MRR"
+      },
+      {
+       "method": "rate_by_segment",
+       "outcome": "churned_90d",
+       "segment": "billing_cycle",
+       "top": null,
+       "truth": "true",
+       "planted": "churn_by_cycle",
+       "statement": "Churned within 90 Days concentrates in Billing Cycle = monthly"
+      }
+     ]
+    },
+    "seconds": 33.821,
+    "cpu_seconds": 6.062,
+    "model_calls": 6,
+    "model_tokens": 9410,
+    "model_usd": 0.03690685,
+    "run_ref": "run_9593d570d078"
+   },
+   {
+    "id": "HO-SALES-02",
+    "family": "analysis",
+    "domain": "sales",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 14,
+     "verified": 3,
+     "true": 3,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "churn_by_cycle",
+      "mrr_by_tier"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "rate_by_segment",
+       "outcome": "churned_90d",
+       "segment": "billing_cycle",
+       "top": null,
+       "truth": "true",
+       "planted": "churn_by_cycle",
+       "statement": "Churned 90d concentrates in billing cycle = monthly"
+      },
+      {
+       "method": "numeric_by_segment",
+       "outcome": "mrr_usd",
+       "segment": "plan_tier",
+       "top": null,
+       "truth": "true",
+       "planted": "mrr_by_tier",
+       "statement": "MRR Differences Across Plan Tiers"
+      },
+      {
+       "method": "rate_by_segment",
+       "outcome": "churned_90d",
+       "segment": "billing_cycle",
+       "top": null,
+       "truth": "true",
+       "planted": "churn_by_cycle",
+       "statement": "Churned 90d concentrates in billing cycle = monthly"
+      }
+     ]
+    },
+    "seconds": 38.221,
+    "cpu_seconds": 6.484,
+    "model_calls": 7,
+    "model_tokens": 11363,
+    "model_usd": 0.042222449999999995,
+    "run_ref": "run_9faaf115ba47"
+   },
+   {
+    "id": "HO-SALES-03",
+    "family": "analysis",
+    "domain": "sales",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 14,
+     "verified": 2,
+     "true": 2,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "size_by_industry",
+      "win_by_source"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "rate_by_segment",
+       "outcome": "won",
+       "segment": "lead_source",
+       "top": null,
+       "truth": "true",
+       "planted": "win_by_source",
+       "statement": "Win Rate concentrates in lead source = partner"
+      },
+      {
+       "method": "numeric_by_segment",
+       "outcome": "deal_size_eur",
+       "segment": "industry",
+       "top": null,
+       "truth": "true",
+       "planted": "size_by_industry",
+       "statement": "Deal size eur is higher for industry = Manufacturing"
+      }
+     ]
+    },
+    "seconds": 70.812,
+    "cpu_seconds": 3.25,
+    "model_calls": 3,
+    "model_tokens": 6044,
+    "model_usd": 0.022936496,
+    "run_ref": "run_277300986a1d"
+   },
+   {
+    "id": "HO-SALES-04",
+    "family": "analysis",
+    "domain": "sales",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 14,
+     "verified": 6,
+     "true": 6,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "size_by_industry",
+      "win_by_source"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "rate_by_segment",
+       "outcome": "won",
+       "segment": "lead_source",
+       "top": null,
+       "truth": "true",
+       "planted": "win_by_source",
+       "statement": "Won Rate by Lead Source for High-Value Deals in Manufacturing"
+      },
+      {
+       "method": "rate_by_segment",
+       "outcome": "won",
+       "segment": "lead_source",
+       "top": null,
+       "truth": "true",
+       "planted": "win_by_source",
+       "statement": "Won concentrates in lead source = partner"
+      },
+      {
+       "method": "rate_by_segment",
+       "outcome": "won",
+       "segment": "lead_source",
+       "top": null,
+       "truth": "true",
+       "planted": "win_by_source",
+       "statement": "Won Rate Varies by Lead Source in Financial Services"
+      },
+      {
+       "method": "numeric_by_segment",
+       "outcome": "deal_size_eur",
+       "segment": "industry",
+       "top": null,
+       "truth": "true",
+       "planted": "size_by_industry",
+       "statement": "Deal Size Varies by Industry"
+      },
+      {
+       "method": "numeric_by_segment",
+       "outcome": "deal_size_eur",
+       "segment": "industry",
+       "top": null,
+       "truth": "true",
+       "planted": "size_by_industry",
+       "statement": "Deal Size Varies by Industry for Partner Leads"
+      },
+      {
+       "method": "rate_by_segment",
+       "outcome": "won",
+       "segment": "lead_source",
+       "top": null,
+       "truth": "true",
+       "planted": "win_by_source",
+       "statement": "Won concentrates in lead source = partner"
+      }
+     ]
+    },
+    "seconds": 42.793,
+    "cpu_seconds": 8.359,
+    "model_calls": 7,
+    "model_tokens": 13495,
+    "model_usd": 0.0442792,
+    "run_ref": "run_b9de419d2125"
+   },
+   {
+    "id": "HO-SALES-05",
+    "family": "analysis",
+    "domain": "sales",
+    "expect": "abstain",
+    "abstain_kind": "no_finding",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "no false finding",
+    "detail": {
+     "tested": 11,
+     "verified": 0,
+     "true": 0,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [],
+     "planted_missed": [],
+     "findings": []
+    },
+    "seconds": 73.194,
+    "cpu_seconds": 4.297,
+    "model_calls": 3,
+    "model_tokens": 6850,
+    "model_usd": 0.024611163999999998,
+    "run_ref": "run_9f90e6b3f0d0"
+   },
+   {
+    "id": "HO-SALES-06",
+    "family": "analysis",
+    "domain": "sales",
+    "expect": "abstain",
+    "abstain_kind": "no_finding",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "no false finding",
+    "detail": {
+     "tested": 7,
+     "verified": 0,
+     "true": 0,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [],
+     "planted_missed": [],
+     "findings": []
+    },
+    "seconds": 88.471,
+    "cpu_seconds": 2.953,
+    "model_calls": 3,
+    "model_tokens": 6455,
+    "model_usd": 0.00335703,
+    "run_ref": "run_da3614c393e2"
+   },
+   {
+    "id": "HO-FIN-01",
+    "family": "analysis",
+    "domain": "finance",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 14,
+     "verified": 2,
+     "true": 2,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "amount_by_type",
+      "breach_by_department"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "numeric_by_segment",
+       "outcome": "claim_amount",
+       "segment": "expense_type",
+       "top": null,
+       "truth": "true",
+       "planted": "amount_by_type",
+       "statement": "Claim Amount Varies by Expense Type"
+      },
+      {
+       "method": "rate_by_segment",
+       "outcome": "policy_breach",
+       "segment": "department",
+       "top": null,
+       "truth": "true",
+       "planted": "breach_by_department",
+       "statement": "Policy Breach Rates Vary by Department"
+      }
+     ]
+    },
+    "seconds": 37.548,
+    "cpu_seconds": 6.172,
+    "model_calls": 7,
+    "model_tokens": 11575,
+    "model_usd": 0.043451750000000004,
+    "run_ref": "run_aba39673e930"
+   },
+   {
+    "id": "HO-FIN-02",
+    "family": "analysis",
+    "domain": "finance",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 11,
+     "verified": 2,
+     "true": 2,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "amount_by_type",
+      "breach_by_department"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "rate_by_segment",
+       "outcome": "policy_breach",
+       "segment": "department",
+       "top": null,
+       "truth": "true",
+       "planted": "breach_by_department",
+       "statement": "Policy breach concentrates in department = Sales"
+      },
+      {
+       "method": "numeric_by_segment",
+       "outcome": "claim_amount",
+       "segment": "expense_type",
+       "top": null,
+       "truth": "true",
+       "planted": "amount_by_type",
+       "statement": "Claim Amounts Vary Across Expense Types"
+      }
+     ]
+    },
+    "seconds": 26.187,
+    "cpu_seconds": 3.906,
+    "model_calls": 6,
+    "model_tokens": 8235,
+    "model_usd": 0.0320407,
+    "run_ref": "run_910828693fed"
+   },
+   {
+    "id": "HO-FIN-03",
+    "family": "analysis",
+    "domain": "finance",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 11,
+     "verified": 2,
+     "true": 2,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "overdue_by_terms",
+      "writeoff_by_tier"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "rate_by_segment",
+       "outcome": "written_off",
+       "segment": "customer_tier",
+       "top": null,
+       "truth": "true",
+       "planted": "writeoff_by_tier",
+       "statement": "Write-Off Rates Differ Across Customer Tiers"
+      },
+      {
+       "method": "numeric_by_segment",
+       "outcome": "days_overdue",
+       "segment": "payment_terms",
+       "top": null,
+       "truth": "true",
+       "planted": "overdue_by_terms",
+       "statement": "Days Overdue Varies by Payment Terms"
+      }
+     ]
+    },
+    "seconds": 29.847,
+    "cpu_seconds": 4.031,
+    "model_calls": 6,
+    "model_tokens": 9236,
+    "model_usd": 0.0352504,
+    "run_ref": "run_8ab280761e54"
+   },
+   {
+    "id": "HO-FIN-04",
+    "family": "analysis",
+    "domain": "finance",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 14,
+     "verified": 3,
+     "true": 3,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "overdue_by_terms",
+      "writeoff_by_tier"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "rate_by_segment",
+       "outcome": "written_off",
+       "segment": "customer_tier",
+       "top": null,
+       "truth": "true",
+       "planted": "writeoff_by_tier",
+       "statement": "Written off concentrates in customer tier = Small"
+      },
+      {
+       "method": "rate_by_segment",
+       "outcome": "written_off",
+       "segment": "customer_tier",
+       "top": null,
+       "truth": "true",
+       "planted": "writeoff_by_tier",
+       "statement": "Written off concentrates in customer tier = Small"
+      },
+      {
+       "method": "numeric_by_segment",
+       "outcome": "days_overdue",
+       "segment": "payment_terms",
+       "top": null,
+       "truth": "true",
+       "planted": "overdue_by_terms",
+       "statement": "Days overdue is higher for payment terms = NET90"
+      }
+     ]
+    },
+    "seconds": 19.214,
+    "cpu_seconds": 0.781,
+    "model_calls": 2,
+    "model_tokens": 3026,
+    "model_usd": 0.002269035,
+    "run_ref": "run_d81e2ac978e3"
+   },
+   {
+    "id": "HO-FIN-05",
+    "family": "analysis",
+    "domain": "finance",
+    "expect": "abstain",
+    "abstain_kind": "no_finding",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "no false finding",
+    "detail": {
+     "tested": 8,
+     "verified": 0,
+     "true": 0,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [],
+     "planted_missed": [],
+     "findings": []
+    },
+    "seconds": 22.884,
+    "cpu_seconds": 3.234,
+    "model_calls": 4,
+    "model_tokens": 5481,
+    "model_usd": 0.02300765,
+    "run_ref": "run_d934c0193b62"
+   },
+   {
+    "id": "HO-FIN-06",
+    "family": "analysis",
+    "domain": "finance",
+    "expect": "abstain",
+    "abstain_kind": "no_finding",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "no false finding",
+    "detail": {
+     "tested": 14,
+     "verified": 0,
+     "true": 0,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [],
+     "planted_missed": [],
+     "findings": []
+    },
+    "seconds": 31.455,
+    "cpu_seconds": 4.531,
+    "model_calls": 6,
+    "model_tokens": 10296,
+    "model_usd": 0.043977999999999996,
+    "run_ref": "run_dbffd52954c8"
+   },
+   {
+    "id": "HO-DE-01",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "output equals the reference",
+    "detail": {
+     "preflight": [
+      {
+       "join": "with_carrier",
+       "declared": "many_to_one",
+       "observed": "many_to_one",
+       "ok": true,
+       "left_rows": 261,
+       "left_key_rows": 261,
+       "left_keys": 5,
+       "right_rows": 4,
+       "right_key_rows": 4,
+       "right_keys": 4,
+       "matched_left_rows": 208,
+       "matched_keys": 4,
+       "joined_rows": 208,
+       "unmatched_left_rows": 53,
+       "left_overlap_pct": 80.0,
+       "row_multiplication": 1.0
+      }
+     ],
+     "gates": [
+      {
+       "gate": "key_unique(carrier_name,transport_mode)",
+       "type": "unique",
+       "severity": "fail",
+       "columns": [
+        "carrier_name",
+        "transport_mode"
+       ],
+       "checked_rows": 4,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(carrier_name)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "carrier_name"
+       ],
+       "checked_rows": 4,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(transport_mode)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "transport_mode"
+       ],
+       "checked_rows": 4,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      }
+     ],
+     "engine": "sql",
+     "materialized": "src_src_d711217bb156.heldout_clean_carrier_weight",
+     "written_rows": 4,
+     "snapshots": {},
+     "rows": 4,
+     "reference_rows": 4,
+     "dropped_rows": 0,
+     "reference_dropped_rows": 0,
+     "columns": [
+      "carrier_name",
+      "transport_mode",
+      "shipments",
+      "total_weight_kg"
+     ]
+    },
+    "seconds": 1.677,
+    "cpu_seconds": 0.719,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "rrun_c6e6b87b9b22"
+   },
+   {
+    "id": "HO-DE-02",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "output equals the reference",
+    "detail": {
+     "preflight": [
+      {
+       "join": "with_carrier",
+       "declared": "many_to_one",
+       "observed": "many_to_one",
+       "ok": true,
+       "left_rows": 251,
+       "left_key_rows": 251,
+       "left_keys": 5,
+       "right_rows": 4,
+       "right_key_rows": 4,
+       "right_keys": 4,
+       "matched_left_rows": 198,
+       "matched_keys": 4,
+       "joined_rows": 198,
+       "unmatched_left_rows": 53,
+       "left_overlap_pct": 80.0,
+       "row_multiplication": 1.0
+      }
+     ],
+     "gates": [
+      {
+       "gate": "key_unique(carrier_name,transport_mode)",
+       "type": "unique",
+       "severity": "fail",
+       "columns": [
+        "carrier_name",
+        "transport_mode"
+       ],
+       "checked_rows": 4,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(carrier_name)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "carrier_name"
+       ],
+       "checked_rows": 4,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(transport_mode)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "transport_mode"
+       ],
+       "checked_rows": 4,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      }
+     ],
+     "engine": "sql",
+     "materialized": "src_src_6171f1af38c5.heldout_clean_carrier_weight",
+     "written_rows": 4,
+     "snapshots": {},
+     "rows": 4,
+     "reference_rows": 4,
+     "dropped_rows": 0,
+     "reference_dropped_rows": 0,
+     "columns": [
+      "carrier_name",
+      "transport_mode",
+      "shipments",
+      "total_weight_kg"
+     ]
+    },
+    "seconds": 1.826,
+    "cpu_seconds": 0.688,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "rrun_79b8cb4a8fd1"
+   },
+   {
+    "id": "HO-DE-03",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "output equals the reference",
+    "detail": {
+     "preflight": [],
+     "gates": [
+      {
+       "gate": "key_unique(shipment_no)",
+       "type": "unique",
+       "severity": "fail",
+       "columns": [
+        "shipment_no"
+       ],
+       "checked_rows": 264,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(shipment_no)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "shipment_no"
+       ],
+       "checked_rows": 264,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "not_null(carrier_code)",
+       "type": "not_null",
+       "severity": "drop",
+       "columns": [
+        "carrier_code"
+       ],
+       "checked_rows": 270,
+       "failed_rows": 6,
+       "status": "dropped",
+       "sample": [
+        {
+         "shipment_no": 10394,
+         "carrier_code": null,
+         "ship_date": "2025-05-10",
+         "weight_kg": 26.5
+        },
+        {
+         "shipment_no": 10395,
+         "carrier_code": null,
+         "ship_date": "2025-05-10",
+         "weight_kg": 179.12
+        },
+        {
+         "shipment_no": 10396,
+         "carrier_code": null,
+         "ship_date": "2025-05-10",
+         "weight_kg": 17.74
+        },
+        {
+         "shipment_no": 10397,
+         "carrier_code": null,
+         "ship_date": "2025-05-10",
+         "weight_kg": 60.51
+        },
+        {
+         "shipment_no": 10398,
+         "carrier_code": null,
+         "ship_date": "2025-05-10",
+         "weight_kg": 51.09
+        }
+       ]
+      }
+     ],
+     "engine": "sql",
+     "materialized": "src_src_1554348de8cb.heldout_null_key_drop_delivered_shipments",
+     "written_rows": 264,
+     "snapshots": {},
+     "rows": 264,
+     "reference_rows": 264,
+     "dropped_rows": 6,
+     "reference_dropped_rows": 6,
+     "columns": [
+      "shipment_no",
+      "carrier_code",
+      "ship_date",
+      "weight_kg"
+     ]
+    },
+    "seconds": 1.084,
+    "cpu_seconds": 0.391,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "rrun_ebc0508e4b1a"
+   },
+   {
+    "id": "HO-DE-04",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "abstain",
+    "abstain_kind": "blocked",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "blocked",
+    "reason": "fail gate range(weight_kg)",
+    "detail": {
+     "preflight": [],
+     "gates": [
+      {
+       "gate": "key_unique(shipment_no)",
+       "type": "unique",
+       "severity": "fail",
+       "columns": [
+        "shipment_no"
+       ],
+       "checked_rows": 261,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(shipment_no)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "shipment_no"
+       ],
+       "checked_rows": 261,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "range(weight_kg)",
+       "type": "range",
+       "severity": "fail",
+       "columns": [
+        "weight_kg"
+       ],
+       "checked_rows": 261,
+       "failed_rows": 5,
+       "status": "failed",
+       "sample": [
+        {
+         "shipment_no": 10000,
+         "carrier_code": 3,
+         "ship_date": "2025-05-10",
+         "weight_kg": -179.06
+        },
+        {
+         "shipment_no": 10001,
+         "carrier_code": 2,
+         "ship_date": "2025-05-10",
+         "weight_kg": -51.59
+        },
+        {
+         "shipment_no": 10002,
+         "carrier_code": 4,
+         "ship_date": "2025-05-10",
+         "weight_kg": -69.7
+        },
+        {
+         "shipment_no": 10003,
+         "carrier_code": 1,
+         "ship_date": "2025-05-10",
+         "weight_kg": -34.0
+        },
+        {
+         "shipment_no": 10004,
+         "carrier_code": 1,
+         "ship_date": "2025-05-10",
+         "weight_kg": -66.87
+        }
+       ]
+      }
+     ],
+     "engine": "sql",
+     "materialized": null,
+     "written_rows": null,
+     "snapshots": {}
+    },
+    "seconds": 1.078,
+    "cpu_seconds": 0.453,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "rrun_a1feb7698408"
+   },
+   {
+    "id": "HO-DE-05",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "abstain",
+    "abstain_kind": "refused",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "refused",
+    "reason": "validation: node delivered (filter): column shipment_status does not exist here (have: carrier_code, loaded_at, ship_date, shipment_no, shipment_state, weight_kg)",
+    "detail": {},
+    "seconds": 0.723,
+    "cpu_seconds": 0.344,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": null
+   },
+   {
+    "id": "HO-DE-06",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "output equals the reference",
+    "detail": {
+     "preflight": [
+      {
+       "join": "priced",
+       "declared": "many_to_one",
+       "observed": "many_to_one",
+       "ok": true,
+       "left_rows": 4690,
+       "left_key_rows": 4690,
+       "left_keys": 3,
+       "right_rows": 3,
+       "right_key_rows": 3,
+       "right_keys": 3,
+       "matched_left_rows": 4690,
+       "matched_keys": 3,
+       "joined_rows": 4690,
+       "unmatched_left_rows": 0,
+       "left_overlap_pct": 100.0,
+       "row_multiplication": 1.0
+      }
+     ],
+     "gates": [
+      {
+       "gate": "key_unique(segment,reading_month)",
+       "type": "unique",
+       "severity": "fail",
+       "columns": [
+        "segment",
+        "reading_month"
+       ],
+       "checked_rows": 4,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(segment)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "segment"
+       ],
+       "checked_rows": 4,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(reading_month)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "reading_month"
+       ],
+       "checked_rows": 4,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "not_null(segment)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "segment"
+       ],
+       "checked_rows": 4,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      }
+     ],
+     "engine": "sql",
+     "materialized": "src_src_43d282cdf38b.heldout_meter_cost_segment_energy_monthly",
+     "written_rows": 4,
+     "snapshots": {},
+     "rows": 4,
+     "reference_rows": 4,
+     "dropped_rows": 0,
+     "reference_dropped_rows": 0,
+     "columns": [
+      "segment",
+      "reading_month",
+      "readings",
+      "kwh_total",
+      "cost_total_eur"
+     ]
+    },
+    "seconds": 1.358,
+    "cpu_seconds": 0.734,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "rrun_c172ee4775da"
+   },
+   {
+    "id": "HO-DE-07",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "abstain",
+    "abstain_kind": "refused",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "refused",
+    "reason": "InvalidInput: join priced is declared many_to_one but the data is many_to_many (left keys 3/4659 rows, right keys 3/4 rows, row multiplication 1.3677); the recipe was not run",
+    "detail": {},
+    "seconds": 1.066,
+    "cpu_seconds": 0.609,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "rrun_30c16f91fbe3"
+   },
+   {
+    "id": "HO-DE-08",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "output equals the reference",
+    "detail": {
+     "preflight": [
+      {
+       "join": "priced",
+       "declared": "many_to_one",
+       "observed": "many_to_one",
+       "ok": true,
+       "left_rows": 4664,
+       "left_key_rows": 4664,
+       "left_keys": 3,
+       "right_rows": 3,
+       "right_key_rows": 3,
+       "right_keys": 3,
+       "matched_left_rows": 4664,
+       "matched_keys": 3,
+       "joined_rows": 4664,
+       "unmatched_left_rows": 0,
+       "left_overlap_pct": 100.0,
+       "row_multiplication": 1.0
+      }
+     ],
+     "gates": [
+      {
+       "gate": "key_unique(segment,reading_month)",
+       "type": "unique",
+       "severity": "fail",
+       "columns": [
+        "segment",
+        "reading_month"
+       ],
+       "checked_rows": 4,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(segment)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "segment"
+       ],
+       "checked_rows": 4,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(reading_month)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "reading_month"
+       ],
+       "checked_rows": 4,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "not_null(segment)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "segment"
+       ],
+       "checked_rows": 4,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      }
+     ],
+     "engine": "sql",
+     "materialized": "src_src_0dfc7053cfbd.heldout_meter_cost_segment_energy_monthly",
+     "written_rows": 4,
+     "snapshots": {},
+     "rows": 4,
+     "reference_rows": 4,
+     "dropped_rows": 0,
+     "reference_dropped_rows": 0,
+     "columns": [
+      "segment",
+      "reading_month",
+      "readings",
+      "kwh_total",
+      "cost_total_eur"
+     ]
+    },
+    "seconds": 1.186,
+    "cpu_seconds": 0.594,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "rrun_6c4b4fcb37a1"
+   },
+   {
+    "id": "HO-ML-01",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "improved over the baseline on identical splits",
+    "detail": {
+     "status": "succeeded",
+     "verdict": "improved",
+     "parity": null
+    },
+    "seconds": 2.031,
+    "cpu_seconds": 1.641,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_9ea244a976f6"
+   },
+   {
+    "id": "HO-ML-02",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "improved over the baseline on identical splits",
+    "detail": {
+     "status": "succeeded",
+     "verdict": "improved",
+     "parity": null
+    },
+    "seconds": 1.622,
+    "cpu_seconds": 1.266,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_9c6cd9d8ba26"
+   },
+   {
+    "id": "HO-ML-03",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "improved over the baseline on identical splits",
+    "detail": {
+     "status": "succeeded",
+     "verdict": "improved",
+     "parity": null
+    },
+    "seconds": 2.103,
+    "cpu_seconds": 1.766,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_1d16455d71b6"
+   },
+   {
+    "id": "HO-ML-04",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "abstain",
+    "abstain_kind": "no_finding",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "verdict no_improvement",
+    "detail": {
+     "status": "succeeded",
+     "verdict": "no_improvement",
+     "parity": null
+    },
+    "seconds": 2.733,
+    "cpu_seconds": 2.188,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_54faf2b92f1c"
+   },
+   {
+    "id": "HO-ML-05",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "abstain",
+    "abstain_kind": "refused",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "refused",
+    "reason": "InvalidInput: the experiment was refused before training: target_derived_features: these features alone reproduce the target (derived from it?): work_order_raised (single threshold 1.0)",
+    "detail": {},
+    "seconds": 0.692,
+    "cpu_seconds": 0.281,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_3155fad51825"
+   },
+   {
+    "id": "HO-ML-06",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "abstain",
+    "abstain_kind": "refused",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "refused",
+    "reason": "InvalidInput: the experiment was refused before training: post_cutoff_timestamps: feature values observed after the prediction cutoff: failure_date (132 rows); post_outcome_timestamps: feature values observed at or after the outcome: failure_date (132 rows)",
+    "detail": {},
+    "seconds": 0.824,
+    "cpu_seconds": 0.391,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_64080ed273c7"
+   },
+   {
+    "id": "HO-ML-07",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "abstain",
+    "abstain_kind": "refused",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "refused",
+    "reason": "InvalidInput: the experiment was refused before training: group_aware_split: entity ['asset_tag'] repeats across rows; a random split would put one entity in both training and holdout (declare group_keys)",
+    "detail": {},
+    "seconds": 0.688,
+    "cpu_seconds": 0.281,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_49dcd7df4051"
+   },
+   {
+    "id": "HO-ML-08",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "abstain",
+    "abstain_kind": "refused",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "refused",
+    "reason": "InvalidInput: the experiment was refused before training: minimum_rows: insufficient data: 18 usable rows, need >= 40 (insufficient evidence is a valid outcome)",
+    "detail": {},
+    "seconds": 0.547,
+    "cpu_seconds": 0.203,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_c3ffa0a3b44c"
+   },
+   {
+    "id": "HO-RET-01",
+    "family": "analysis",
+    "domain": "retail",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "incomplete",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "missed planted effect(s): returns_by_format",
+    "detail": {
+     "tested": 10,
+     "verified": 1,
+     "true": 1,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "value_by_loyalty"
+     ],
+     "planted_missed": [
+      "returns_by_format"
+     ],
+     "findings": [
+      {
+       "method": "numeric_by_segment",
+       "outcome": "basket_value_gbp",
+       "segment": "loyalty_tier",
+       "top": null,
+       "truth": "true",
+       "planted": "value_by_loyalty",
+       "statement": "Basket Value GBP is higher for Loyalty Tier = gold"
+      }
+     ]
+    },
+    "seconds": 31.429,
+    "cpu_seconds": 3.719,
+    "model_calls": 6,
+    "model_tokens": 8925,
+    "model_usd": 0.0375625,
+    "run_ref": "run_bf3b4c90d9c1"
+   },
+   {
+    "id": "HO-RET-02",
+    "family": "analysis",
+    "domain": "retail",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 11,
+     "verified": 2,
+     "true": 2,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "returns_by_format",
+      "value_by_loyalty"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "numeric_by_segment",
+       "outcome": "basket_value_gbp",
+       "segment": "loyalty_tier",
+       "top": null,
+       "truth": "true",
+       "planted": "value_by_loyalty",
+       "statement": "Basket Value by Loyalty Tier"
+      },
+      {
+       "method": "rate_by_segment",
+       "outcome": "returned_30d",
+       "segment": "store_format",
+       "top": null,
+       "truth": "true",
+       "planted": "returns_by_format",
+       "statement": "Return Rate by Store Format"
+      }
+     ]
+    },
+    "seconds": 33.568,
+    "cpu_seconds": 4.438,
+    "model_calls": 6,
+    "model_tokens": 9340,
+    "model_usd": 0.036723599999999995,
+    "run_ref": "run_63e300d8cabc"
+   },
+   {
+    "id": "HO-RET-03",
+    "family": "analysis",
+    "domain": "retail",
+    "expect": "abstain",
+    "abstain_kind": "no_finding",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "no false finding",
+    "detail": {
+     "tested": 8,
+     "verified": 0,
+     "true": 0,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [],
+     "planted_missed": [],
+     "findings": []
+    },
+    "seconds": 22.48,
+    "cpu_seconds": 3.172,
+    "model_calls": 4,
+    "model_tokens": 5647,
+    "model_usd": 0.0254958,
+    "run_ref": "run_e59cd5ba0986"
+   },
+   {
+    "id": "HO-LOG-01",
+    "family": "analysis",
+    "domain": "logistics",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 11,
+     "verified": 3,
+     "true": 3,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "late_by_level",
+      "transit_by_hub"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "driver_model",
+       "outcome": "late_delivery",
+       "segment": null,
+       "top": null,
+       "truth": "true",
+       "planted": null,
+       "statement": "Service Level Predicts Late Deliveries"
+      },
+      {
+       "method": "numeric_by_segment",
+       "outcome": "transit_hours",
+       "segment": "origin_hub",
+       "top": null,
+       "truth": "true",
+       "planted": "transit_by_hub",
+       "statement": "Average Transit Hours Vary by Origin Hub"
+      },
+      {
+       "method": "rate_by_segment",
+       "outcome": "late_delivery",
+       "segment": "service_level",
+       "top": null,
+       "truth": "true",
+       "planted": "late_by_level",
+       "statement": "Late Delivery Rate concentrates in Service Level = economy"
+      }
+     ]
+    },
+    "seconds": 36.477,
+    "cpu_seconds": 5.922,
+    "model_calls": 6,
+    "model_tokens": 10158,
+    "model_usd": 0.04026705,
+    "run_ref": "run_a3f9f694b914"
+   },
+   {
+    "id": "HO-LOG-02",
+    "family": "analysis",
+    "domain": "logistics",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 11,
+     "verified": 2,
+     "true": 2,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "late_by_level",
+      "transit_by_hub"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "numeric_by_segment",
+       "outcome": "transit_hours",
+       "segment": "origin_hub",
+       "top": null,
+       "truth": "true",
+       "planted": "transit_by_hub",
+       "statement": "Transit Hours Differ Across Origin Hub"
+      },
+      {
+       "method": "rate_by_segment",
+       "outcome": "late_delivery",
+       "segment": "service_level",
+       "top": null,
+       "truth": "true",
+       "planted": "late_by_level",
+       "statement": "Late delivery concentrates in service level = economy"
+      }
+     ]
+    },
+    "seconds": 30.761,
+    "cpu_seconds": 5.422,
+    "model_calls": 6,
+    "model_tokens": 8742,
+    "model_usd": 0.0332949,
+    "run_ref": "run_d4327a0f4e2d"
+   },
+   {
+    "id": "HO-LOG-03",
+    "family": "analysis",
+    "domain": "logistics",
+    "expect": "abstain",
+    "abstain_kind": "no_finding",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "no false finding",
+    "detail": {
+     "tested": 8,
+     "verified": 0,
+     "true": 0,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [],
+     "planted_missed": [],
+     "findings": []
+    },
+    "seconds": 24.538,
+    "cpu_seconds": 3.953,
+    "model_calls": 4,
+    "model_tokens": 5290,
+    "model_usd": 0.024157500000000002,
+    "run_ref": "run_44afe7080bce"
+   },
+   {
+    "id": "HO-SOPS-01",
+    "family": "analysis",
+    "domain": "saas_ops",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 10,
+     "verified": 2,
+     "true": 2,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "breach_by_ring",
+      "latency_by_backend"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "numeric_by_segment",
+       "outcome": "p95_latency_ms",
+       "segment": "storage_backend",
+       "top": null,
+       "truth": "true",
+       "planted": "latency_by_backend",
+       "statement": "P95 Latency Variations Across Storage Backends"
+      },
+      {
+       "method": "rate_by_segment",
+       "outcome": "sla_breached",
+       "segment": "deploy_ring",
+       "top": null,
+       "truth": "true",
+       "planted": "breach_by_ring",
+       "statement": "SLA Breach Rates Across Deploy Rings"
+      }
+     ]
+    },
+    "seconds": 33.05,
+    "cpu_seconds": 4.625,
+    "model_calls": 6,
+    "model_tokens": 9568,
+    "model_usd": 0.037789249999999996,
+    "run_ref": "run_d8bad87e74e5"
+   },
+   {
+    "id": "HO-SOPS-02",
+    "family": "analysis",
+    "domain": "saas_ops",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "every planted effect verified, no false finding",
+    "detail": {
+     "tested": 10,
+     "verified": 2,
+     "true": 2,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "breach_by_ring",
+      "latency_by_backend"
+     ],
+     "planted_missed": [],
+     "findings": [
+      {
+       "method": "rate_by_segment",
+       "outcome": "sla_breached",
+       "segment": "deploy_ring",
+       "top": null,
+       "truth": "true",
+       "planted": "breach_by_ring",
+       "statement": "Sla breached concentrates in deploy ring = canary"
+      },
+      {
+       "method": "numeric_by_segment",
+       "outcome": "p95_latency_ms",
+       "segment": "storage_backend",
+       "top": null,
+       "truth": "true",
+       "planted": "latency_by_backend",
+       "statement": "Storage Backend Impact on P95 Latency"
+      }
+     ]
+    },
+    "seconds": 28.319,
+    "cpu_seconds": 4.109,
+    "model_calls": 6,
+    "model_tokens": 8669,
+    "model_usd": 0.0332258,
+    "run_ref": "run_a018a28f8b42"
+   },
+   {
+    "id": "HO-SOPS-03",
+    "family": "analysis",
+    "domain": "saas_ops",
+    "expect": "abstain",
+    "abstain_kind": "no_finding",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "no false finding",
+    "detail": {
+     "tested": 8,
+     "verified": 0,
+     "true": 0,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [],
+     "planted_missed": [],
+     "findings": []
+    },
+    "seconds": 24.499,
+    "cpu_seconds": 3.25,
+    "model_calls": 4,
+    "model_tokens": 5331,
+    "model_usd": 0.0228288,
+    "run_ref": "run_3f48f93d9b21"
+   },
+   {
+    "id": "HO-XFER-01",
+    "family": "analysis",
+    "domain": "transfer",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "unnecessary_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "no verified finding",
+    "detail": {
+     "tested": 8,
+     "verified": 0,
+     "true": 0,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [],
+     "planted_missed": [
+      "overdue_by_terms",
+      "writeoff_by_tier"
+     ],
+     "findings": []
+    },
+    "seconds": 38.109,
+    "cpu_seconds": 0.828,
+    "model_calls": 3,
+    "model_tokens": 5845,
+    "model_usd": 0.004255714,
+    "run_ref": "run_2fa6e8efe9f8"
+   },
+   {
+    "id": "HO-XFER-02",
+    "family": "analysis",
+    "domain": "transfer",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "incomplete",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "missed planted effect(s): win_by_source",
+    "detail": {
+     "tested": 10,
+     "verified": 1,
+     "true": 1,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [
+      "size_by_industry"
+     ],
+     "planted_missed": [
+      "win_by_source"
+     ],
+     "findings": [
+      {
+       "method": "numeric_by_segment",
+       "outcome": "dl_sz_eur",
+       "segment": "ind_cd",
+       "top": null,
+       "truth": "true",
+       "planted": "size_by_industry",
+       "statement": "Dl sz eur is higher for ind cd = Manufacturing"
+      }
+     ]
+    },
+    "seconds": 33.085,
+    "cpu_seconds": 3.578,
+    "model_calls": 6,
+    "model_tokens": 8746,
+    "model_usd": 0.0366726,
+    "run_ref": "run_848daad968ee"
+   },
+   {
+    "id": "HO-XFER-03",
+    "family": "analysis",
+    "domain": "transfer",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "unnecessary_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "no verified finding",
+    "detail": {
+     "tested": 8,
+     "verified": 0,
+     "true": 0,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [],
+     "planted_missed": [
+      "rollback_by_model",
+      "downtime_by_risk"
+     ],
+     "findings": []
+    },
+    "seconds": 29.429,
+    "cpu_seconds": 3.312,
+    "model_calls": 4,
+    "model_tokens": 5720,
+    "model_usd": 0.02765845,
+    "run_ref": "run_4aad73886ef9"
+   },
+   {
+    "id": "HO-XFER-04",
+    "family": "analysis",
+    "domain": "transfer",
+    "expect": "abstain",
+    "abstain_kind": "no_finding",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "no false finding",
+    "detail": {
+     "tested": 8,
+     "verified": 0,
+     "true": 0,
+     "false": 0,
+     "unscored": 0,
+     "planted_found": [],
+     "planted_missed": [],
+     "findings": []
+    },
+    "seconds": 23.312,
+    "cpu_seconds": 2.641,
+    "model_calls": 4,
+    "model_tokens": 5695,
+    "model_usd": 0.02555515,
+    "run_ref": "run_4c0389a7d400"
+   },
+   {
+    "id": "HO-DE-09",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "output equals the reference",
+    "detail": {
+     "preflight": [
+      {
+       "join": "with_store",
+       "declared": "many_to_one",
+       "observed": "many_to_one",
+       "ok": true,
+       "left_rows": 774,
+       "left_key_rows": 774,
+       "left_keys": 5,
+       "right_rows": 5,
+       "right_key_rows": 5,
+       "right_keys": 5,
+       "matched_left_rows": 774,
+       "matched_keys": 5,
+       "joined_rows": 774,
+       "unmatched_left_rows": 0,
+       "left_overlap_pct": 100.0,
+       "row_multiplication": 1.0
+      }
+     ],
+     "gates": [
+      {
+       "gate": "key_unique(store_format,sold_week)",
+       "type": "unique",
+       "severity": "fail",
+       "columns": [
+        "store_format",
+        "sold_week"
+       ],
+       "checked_rows": 18,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(store_format)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "store_format"
+       ],
+       "checked_rows": 18,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(sold_week)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "sold_week"
+       ],
+       "checked_rows": 18,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      }
+     ],
+     "engine": "sql",
+     "materialized": "src_src_37e7b8598a78.heldout_tills_clean_store_week_revenue",
+     "written_rows": 18,
+     "snapshots": {},
+     "rows": 18,
+     "reference_rows": 18,
+     "dropped_rows": 0,
+     "reference_dropped_rows": 0,
+     "columns": [
+      "store_format",
+      "sold_week",
+      "lines",
+      "units",
+      "revenue_eur"
+     ]
+    },
+    "seconds": 1.144,
+    "cpu_seconds": 0.5,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "rrun_f02d4a7407c1"
+   },
+   {
+    "id": "HO-DE-10",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "output equals the reference",
+    "detail": {
+     "preflight": [],
+     "gates": [
+      {
+       "gate": "key_unique(receipt_no,line_no)",
+       "type": "unique",
+       "severity": "fail",
+       "columns": [
+        "receipt_no",
+        "line_no"
+       ],
+       "checked_rows": 741,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(receipt_no)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "receipt_no"
+       ],
+       "checked_rows": 741,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(line_no)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "line_no"
+       ],
+       "checked_rows": 741,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "not_null(qty)",
+       "type": "not_null",
+       "severity": "drop",
+       "columns": [
+        "qty"
+       ],
+       "checked_rows": 750,
+       "failed_rows": 9,
+       "status": "dropped",
+       "sample": [
+        {
+         "receipt_no": 70000,
+         "line_no": 4,
+         "store_code": "ST-04",
+         "qty": null,
+         "unit_price_eur": 26.12,
+         "tender_type": "cash"
+        },
+        {
+         "receipt_no": 70003,
+         "line_no": 2,
+         "store_code": "ST-05",
+         "qty": null,
+         "unit_price_eur": 7.33,
+         "tender_type": "mobile"
+        },
+        {
+         "receipt_no": 70005,
+         "line_no": 5,
+         "store_code": "ST-03",
+         "qty": null,
+         "unit_price_eur": 39.08,
+         "tender_type": "card"
+        },
+        {
+         "receipt_no": 70008,
+         "line_no": 5,
+         "store_code": "ST-03",
+         "qty": null,
+         "unit_price_eur": 15.39,
+         "tender_type": "cash"
+        },
+        {
+         "receipt_no": 70011,
+         "line_no": 2,
+         "store_code": "ST-02",
+         "qty": null,
+         "unit_price_eur": 11.71,
+         "tender_type": "cash"
+        }
+       ]
+      }
+     ],
+     "engine": "sql",
+     "materialized": "src_src_bb0256dd3107.heldout_tills_null_qty_drop_receipt_lines",
+     "written_rows": 741,
+     "snapshots": {},
+     "rows": 741,
+     "reference_rows": 741,
+     "dropped_rows": 9,
+     "reference_dropped_rows": 9,
+     "columns": [
+      "receipt_no",
+      "line_no",
+      "store_code",
+      "qty",
+      "unit_price_eur",
+      "tender_type"
+     ]
+    },
+    "seconds": 1.159,
+    "cpu_seconds": 0.453,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "rrun_1d22050e6878"
+   },
+   {
+    "id": "HO-DE-11",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "abstain",
+    "abstain_kind": "blocked",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "blocked",
+    "reason": "fail gate accepted_values(tender_type)",
+    "detail": {
+     "preflight": [],
+     "gates": [
+      {
+       "gate": "key_unique(receipt_no,line_no)",
+       "type": "unique",
+       "severity": "fail",
+       "columns": [
+        "receipt_no",
+        "line_no"
+       ],
+       "checked_rows": 769,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(receipt_no)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "receipt_no"
+       ],
+       "checked_rows": 769,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(line_no)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "line_no"
+       ],
+       "checked_rows": 769,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "accepted_values(tender_type)",
+       "type": "accepted_values",
+       "severity": "fail",
+       "columns": [
+        "tender_type"
+       ],
+       "checked_rows": 769,
+       "failed_rows": 4,
+       "status": "failed",
+       "sample": [
+        {
+         "receipt_no": 70001,
+         "line_no": 1,
+         "store_code": "ST-05",
+         "qty": 3,
+         "unit_price_eur": 39.05,
+         "tender_type": "crypto"
+        },
+        {
+         "receipt_no": 70004,
+         "line_no": 4,
+         "store_code": "ST-03",
+         "qty": 2,
+         "unit_price_eur": 30.66,
+         "tender_type": "crypto"
+        },
+        {
+         "receipt_no": 70007,
+         "line_no": 3,
+         "store_code": "ST-01",
+         "qty": 1,
+         "unit_price_eur": 7.9,
+         "tender_type": "crypto"
+        },
+        {
+         "receipt_no": 70010,
+         "line_no": 1,
+         "store_code": "ST-03",
+         "qty": 5,
+         "unit_price_eur": 36.68,
+         "tender_type": "crypto"
+        }
+       ]
+      }
+     ],
+     "engine": "sql",
+     "materialized": null,
+     "written_rows": null,
+     "snapshots": {}
+    },
+    "seconds": 1.051,
+    "cpu_seconds": 0.438,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "rrun_ba4c42ea0209"
+   },
+   {
+    "id": "HO-DE-12",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "abstain",
+    "abstain_kind": "blocked",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "blocked",
+    "reason": "fail gate key_unique(receipt_no,line_no)",
+    "detail": {
+     "preflight": [],
+     "gates": [
+      {
+       "gate": "key_unique(receipt_no,line_no)",
+       "type": "unique",
+       "severity": "fail",
+       "columns": [
+        "receipt_no",
+        "line_no"
+       ],
+       "checked_rows": 867,
+       "failed_rows": 156,
+       "status": "failed",
+       "sample": [
+        {
+         "receipt_no": 70000,
+         "line_no": 1,
+         "store_code": "ST-02",
+         "qty": 5,
+         "unit_price_eur": 34.47,
+         "tender_type": "card"
+        },
+        {
+         "receipt_no": 70000,
+         "line_no": 1,
+         "store_code": "ST-02",
+         "qty": 5,
+         "unit_price_eur": 35.17,
+         "tender_type": "card"
+        },
+        {
+         "receipt_no": 70001,
+         "line_no": 2,
+         "store_code": "ST-03",
+         "qty": 2,
+         "unit_price_eur": 26.41,
+         "tender_type": "card"
+        },
+        {
+         "receipt_no": 70001,
+         "line_no": 2,
+         "store_code": "ST-03",
+         "qty": 2,
+         "unit_price_eur": 26.95,
+         "tender_type": "card"
+        },
+        {
+         "receipt_no": 70001,
+         "line_no": 4,
+         "store_code": "ST-03",
+         "qty": 4,
+         "unit_price_eur": 38.07,
+         "tender_type": "card"
+        }
+       ]
+      },
+      {
+       "gate": "key_not_null(receipt_no)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "receipt_no"
+       ],
+       "checked_rows": 867,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(line_no)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "line_no"
+       ],
+       "checked_rows": 867,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      }
+     ],
+     "engine": "sql",
+     "materialized": null,
+     "written_rows": null,
+     "snapshots": {}
+    },
+    "seconds": 1.049,
+    "cpu_seconds": 0.5,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "rrun_43e5ce09a2ef"
+   },
+   {
+    "id": "HO-DE-13",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "output equals the reference",
+    "detail": {
+     "preflight": [
+      {
+       "join": "with_store",
+       "declared": "many_to_one",
+       "observed": "many_to_one",
+       "ok": true,
+       "left_rows": 779,
+       "left_key_rows": 779,
+       "left_keys": 5,
+       "right_rows": 5,
+       "right_key_rows": 5,
+       "right_keys": 5,
+       "matched_left_rows": 779,
+       "matched_keys": 5,
+       "joined_rows": 779,
+       "unmatched_left_rows": 0,
+       "left_overlap_pct": 100.0,
+       "row_multiplication": 1.0
+      }
+     ],
+     "gates": [
+      {
+       "gate": "key_unique(store_format,sold_week)",
+       "type": "unique",
+       "severity": "fail",
+       "columns": [
+        "store_format",
+        "sold_week"
+       ],
+       "checked_rows": 18,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(store_format)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "store_format"
+       ],
+       "checked_rows": 18,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(sold_week)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "sold_week"
+       ],
+       "checked_rows": 18,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      }
+     ],
+     "engine": "sql",
+     "materialized": "src_src_c2cd887c788a.heldout_tills_renamed_store_week_revenue",
+     "written_rows": 18,
+     "snapshots": {},
+     "rows": 18,
+     "reference_rows": 18,
+     "dropped_rows": 0,
+     "reference_dropped_rows": 0,
+     "columns": [
+      "store_format",
+      "sold_week",
+      "lines",
+      "units",
+      "revenue_eur"
+     ]
+    },
+    "seconds": 1.403,
+    "cpu_seconds": 0.594,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "rrun_a083b9339ce3"
+   },
+   {
+    "id": "HO-DE-14",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "output equals the reference",
+    "detail": {
+     "preflight": [
+      {
+       "join": "with_edition",
+       "declared": "many_to_one",
+       "observed": "many_to_one",
+       "ok": true,
+       "left_rows": 3683,
+       "left_key_rows": 3683,
+       "left_keys": 90,
+       "right_rows": 90,
+       "right_key_rows": 90,
+       "right_keys": 90,
+       "matched_left_rows": 3683,
+       "matched_keys": 90,
+       "joined_rows": 3683,
+       "unmatched_left_rows": 0,
+       "left_overlap_pct": 100.0,
+       "row_multiplication": 1.0
+      }
+     ],
+     "gates": [
+      {
+       "gate": "key_unique(edition,usage_month)",
+       "type": "unique",
+       "severity": "fail",
+       "columns": [
+        "edition",
+        "usage_month"
+       ],
+       "checked_rows": 6,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(edition)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "edition"
+       ],
+       "checked_rows": 6,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      },
+      {
+       "gate": "key_not_null(usage_month)",
+       "type": "not_null",
+       "severity": "fail",
+       "columns": [
+        "usage_month"
+       ],
+       "checked_rows": 6,
+       "failed_rows": 0,
+       "status": "passed",
+       "sample": []
+      }
+     ],
+     "engine": "sql",
+     "materialized": "src_src_20bc2a8808dc.heldout_usage_monthly_edition_usage_monthly",
+     "written_rows": 6,
+     "snapshots": {},
+     "rows": 6,
+     "reference_rows": 6,
+     "dropped_rows": 0,
+     "reference_dropped_rows": 0,
+     "columns": [
+      "edition",
+      "usage_month",
+      "active_tenants",
+      "api_calls_total",
+      "error_calls_total"
+     ]
+    },
+    "seconds": 1.315,
+    "cpu_seconds": 0.719,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "rrun_9d1ed700a234"
+   },
+   {
+    "id": "HO-DE-15",
+    "family": "engineering",
+    "domain": "engineering",
+    "expect": "abstain",
+    "abstain_kind": "refused",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "refused",
+    "reason": "InvalidInput: join with_edition is declared many_to_one but the data is many_to_many (left keys 90/3629 rows, right keys 90/91 rows, row multiplication 1.011); the recipe was not run",
+    "detail": {},
+    "seconds": 0.802,
+    "cpu_seconds": 0.375,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "rrun_6812352238c9"
+   },
+   {
+    "id": "HO-ML-09",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "improved over the baseline on identical splits",
+    "detail": {
+     "status": "succeeded",
+     "verdict": "improved",
+     "parity": null
+    },
+    "seconds": 2.013,
+    "cpu_seconds": 1.547,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_17d0f72a550e"
+   },
+   {
+    "id": "HO-ML-10",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "improved over the baseline on identical splits",
+    "detail": {
+     "status": "succeeded",
+     "verdict": "improved",
+     "parity": null
+    },
+    "seconds": 1.892,
+    "cpu_seconds": 1.516,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_0329927c14c6"
+   },
+   {
+    "id": "HO-ML-11",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "abstain",
+    "abstain_kind": "refused",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "refused",
+    "reason": "InvalidInput: the experiment was refused before training: feature_availability: only known after the outcome: exit_survey_score",
+    "detail": {},
+    "seconds": 0.622,
+    "cpu_seconds": 0.266,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_bb82dbda653d"
+   },
+   {
+    "id": "HO-ML-12",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "abstain",
+    "abstain_kind": "no_finding",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "verdict no_improvement",
+    "detail": {
+     "status": "succeeded",
+     "verdict": "no_improvement",
+     "parity": null
+    },
+    "seconds": 2.295,
+    "cpu_seconds": 1.859,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_cce22d6a5c83"
+   },
+   {
+    "id": "HO-ML-13",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "improved over the baseline on identical splits",
+    "detail": {
+     "status": "succeeded",
+     "verdict": "improved",
+     "parity": null
+    },
+    "seconds": 1.599,
+    "cpu_seconds": 1.266,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_c67652739ca9"
+   },
+   {
+    "id": "HO-ML-14",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "abstain",
+    "abstain_kind": "no_finding",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "no_finding",
+    "reason": "verdict no_improvement",
+    "detail": {
+     "status": "succeeded",
+     "verdict": "no_improvement",
+     "parity": null
+    },
+    "seconds": 1.397,
+    "cpu_seconds": 1.031,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_0f3de3732f8e"
+   },
+   {
+    "id": "HO-ML-15",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "improved over the baseline on identical splits",
+    "detail": {
+     "status": "succeeded",
+     "verdict": "improved",
+     "parity": null
+    },
+    "seconds": 2.002,
+    "cpu_seconds": 1.625,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_db821e4982d6"
+   },
+   {
+    "id": "HO-ML-16",
+    "family": "ml",
+    "domain": "ml",
+    "expect": "abstain",
+    "abstain_kind": "refused",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "refused",
+    "reason": "InvalidInput: the experiment was refused before training: minimum_rows: insufficient data: 24 usable rows, need >= 46 (insufficient evidence is a valid outcome)",
+    "detail": {},
+    "seconds": 0.412,
+    "cpu_seconds": 0.156,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": "mlx_8794847fcd09"
+   },
+   {
+    "id": "HO-GOV-01",
+    "family": "governance",
+    "domain": "governance",
+    "expect": "abstain",
+    "abstain_kind": "denied",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "denied",
+    "reason": "SQLRejected: Table src_src_2c21b9ac462d.payroll_lines is not in the authorized scope. Use one of: src_src_c9591866ace8.loyalty_members.",
+    "detail": {
+     "sql": "SELECT cost_centre, SUM(gross_pay_eur) AS pay FROM src_src_2c21b9ac462d.payroll_lines GROUP BY cost_centre"
+    },
+    "seconds": 0.863,
+    "cpu_seconds": 0.344,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": null
+   },
+   {
+    "id": "HO-GOV-02",
+    "family": "governance",
+    "domain": "governance",
+    "expect": "abstain",
+    "abstain_kind": "denied",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "denied",
+    "reason": "SQLRejected: Column src_src_eba8d8aed29d.loyalty_members.email_address is restricted by policy and cannot be referenced. Remove it from the query.",
+    "detail": {
+     "sql": "SELECT member_ref, email_address FROM src_src_eba8d8aed29d.loyalty_members WHERE tier = 'gold'"
+    },
+    "seconds": 0.48,
+    "cpu_seconds": 0.172,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": null
+   },
+   {
+    "id": "HO-GOV-03",
+    "family": "governance",
+    "domain": "governance",
+    "expect": "abstain",
+    "abstain_kind": "denied",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "denied",
+    "reason": "validation: node valued (derive) column points_eur: expression does not parse: Invalid expression / Unexpected token. Line 1, Col: 29.; node per_tier (aggregate) measure points_eur: column points_eur does not exist here",
+    "detail": {},
+    "seconds": 0.478,
+    "cpu_seconds": 0.219,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": null
+   },
+   {
+    "id": "HO-GOV-04",
+    "family": "governance",
+    "domain": "governance",
+    "expect": "abstain",
+    "abstain_kind": "denied",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "denied",
+    "reason": "ApprovalRequired: approval expired",
+    "detail": {},
+    "seconds": 0.039,
+    "cpu_seconds": 0.016,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": null
+   },
+   {
+    "id": "HO-GOV-05",
+    "family": "governance",
+    "domain": "governance",
+    "expect": "abstain",
+    "abstain_kind": "denied",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "denied",
+    "reason": "ApprovalRequired: payload changed after approval; a new approval is required",
+    "detail": {},
+    "seconds": 0.024,
+    "cpu_seconds": 0.016,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": null
+   },
+   {
+    "id": "HO-GOV-06",
+    "family": "governance",
+    "domain": "governance",
+    "expect": "abstain",
+    "abstain_kind": "denied",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "denied",
+    "reason": "PolicyDenied: approver no longer holds approval rights in this workspace",
+    "detail": {},
+    "seconds": 0.027,
+    "cpu_seconds": 0.0,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": null
+   },
+   {
+    "id": "HO-GOV-07",
+    "family": "governance",
+    "domain": "governance",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "the answer equals the reference",
+    "detail": {
+     "rows": 3
+    },
+    "seconds": 0.493,
+    "cpu_seconds": 0.141,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": null
+   },
+   {
+    "id": "HO-GOV-08",
+    "family": "governance",
+    "domain": "governance",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "executed once; the second attempt was refused (ApprovalRequired: approval is executed)",
+    "detail": {},
+    "seconds": 0.038,
+    "cpu_seconds": 0.016,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": null
+   },
+   {
+    "id": "HO-REC-01",
+    "family": "recovery",
+    "domain": "recovery",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "failed without output (Forbidden: asset src_src_e04f29771c04.stores (node stores) is not in the authorized scope); rerun equals the reference twice",
+    "detail": {
+     "first_failure": "Forbidden: asset src_src_e04f29771c04.stores (node stores) is not in the authorized scope"
+    },
+    "seconds": 3.5,
+    "cpu_seconds": 1.703,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": null
+   },
+   {
+    "id": "HO-REC-02",
+    "family": "recovery",
+    "domain": "recovery",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "the refusal names store_format; the corrected recipe equals the reference",
+    "detail": {
+     "refusal": "validation: node weekly (aggregate): column store_formt does not exist here (have: ingested_at, line_no, opened_year, qty, receipt_no, revenue_eur, sku_code, sold_on, sold_week, store_code, store_format, tender_type, unit_price_eur); node out (output): declared column store_format does not exist in "
+    },
+    "seconds": 1.104,
+    "cpu_seconds": 0.469,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": null
+   },
+   {
+    "id": "HO-REC-03",
+    "family": "recovery",
+    "domain": "recovery",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "the failure named its cause and was recorded; after reconnecting the table was discovered",
+    "detail": {
+     "cause": "InvalidInput: connection failed: File source path does not exist: heldout-eb5bfb92 (source row before: {'status': 'error', 'last_error': 'File source path does not exist: heldout-eb5bfb92'}; after: ready)"
+    },
+    "seconds": 0.545,
+    "cpu_seconds": 0.312,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": null
+   },
+   {
+    "id": "HO-REC-04",
+    "family": "recovery",
+    "domain": "recovery",
+    "expect": "deliver",
+    "abstain_kind": null,
+    "status": "accepted",
+    "produced": "output",
+    "abstained_as": null,
+    "reason": "the stale save was refused; after reloading both edits survive",
+    "detail": {
+     "stale": "definition defn_48a04c197499 is at revision 2, not 1"
+    },
+    "seconds": 0.028,
+    "cpu_seconds": 0.016,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": null
+   },
+   {
+    "id": "HO-REC-05",
+    "family": "recovery",
+    "domain": "recovery",
+    "expect": "abstain",
+    "abstain_kind": "refused",
+    "status": "correct_abstention",
+    "produced": "abstained",
+    "abstained_as": "refused",
+    "reason": "Conflict: src_src_e95ac0b011f5.till_lines changed since the recipe pinned snapshot 8ecd0842a887 (now 30158aeb7dc6)",
+    "detail": {
+     "pinned": "8ecd0842a8874e5b2e6aa05f827aac306fc96fbbe455fa4e496ffc6774c3fd7f"
+    },
+    "seconds": 2.047,
+    "cpu_seconds": 1.047,
+    "model_calls": 0,
+    "model_tokens": 0,
+    "model_usd": 0.0,
+    "run_ref": null
+   }
+  ]
+ }
+}
