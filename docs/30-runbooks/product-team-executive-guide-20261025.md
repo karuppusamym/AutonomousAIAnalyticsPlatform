@@ -2,6 +2,8 @@
 
 Prepared 25 October 2026 · current implementation on `codex/investigator-demo`
 
+Review addendum: the [deeper context-path audit](../70-reviews/2026-10-25-context-and-hypothesis-deep-review.md) found that the guided run's reviewed brief is pinned and stored in its context artifact, but is not explicitly forwarded by the shared downstream prompt builder. Published analysis contexts do have that handoff. Do not interpret a pinned fact count as proof that the hypothesis model consumed every pinned fact. Fixing this handoff is the first recommended improvement.
+
 ## Executive explanation
 
 AI Analyst Investigator helps an analyst turn a business question into testable hypotheses, evidence-backed findings and owned follow-up actions. It combines business definitions, data discovery, statistical methods and optional language models inside one governed workflow.
