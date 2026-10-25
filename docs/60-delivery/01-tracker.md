@@ -16,6 +16,12 @@ crawl-time classification.
 
 ## P. Current execution queue
 
+### October 26 demo — investigation brief (2026-10-25)
+
+| ID | Scope | Status | Evidence / notes |
+|---|---|---|---|
+| DEMO-01 | Investigation brief with current verification counts, evidence links, next-step handoffs and responsive layout | Done | `InvestigationOverview.tsx`; seven new component tests, 73 existing UI checks and two desktop/mobile browser checks pass. Local live-data rehearsal completed; evidence `evidence/demo-brief-20261025.md`. Demo runbook `docs/30-runbooks/2026-10-26-investigator-demo.md`. |
+
 The only list of work in flight. A row moves to **Done** only with a test and, where it says
 "live", a dated evidence file in the [capability register](02-capability-register.md). Finished
 increments stay here as history.

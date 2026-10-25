@@ -6,7 +6,7 @@ import { api, subscribeRunEvents, type ConsoleCost, type EventStreamHandle, type
 import { ApprovalsPanel } from "../components/ApprovalsPanel";
 import { ChangesPanel } from "../components/ChangesPanel";
 import { InvestigationBoard } from "../components/InvestigationBoard";
-import { Markdown } from "../components/Markdown";
+import { findingStanding, InvestigationOverview } from "../components/InvestigationOverview";
 import { RunLineage } from "../components/RunLineage";
 import { VerificationBadge, WhyState } from "../components/WhyNumber";
 import { Card, EmptyState, ErrorBox, Field, KeyValue, Loading, Notice, PageHeader, StatusBadge, Tabs, Tag, TechnicalDetails, Value } from "../components/ui";
@@ -34,6 +34,15 @@ export function RunViewPage() {
   const [tab, setTab] = useState<"tasks" | "events" | "lineage" | "hypotheses">("hypotheses");
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const control = useAction();
+  const investigationRef = useRef<HTMLDivElement | null>(null);
+  const approvalsRef = useRef<HTMLDivElement | null>(null);
+  const showInvestigation = (target: "tasks" | "hypotheses") => {
+    setTab(target);
+    requestAnimationFrame(() => {
+      investigationRef.current?.scrollIntoView({ block: "start" });
+      investigationRef.current?.focus({ preventScroll: true });
+    });
+  };
   const reload = run.reload;
 
   // Coalesce bursts of events into one refetch of the run detail.
@@ -105,6 +114,11 @@ export function RunViewPage() {
       />
       <ErrorBox error={control.error} />
       {r.error && <Notice tone="danger"><strong>Investigation error:</strong> {r.error}</Notice>}
+      <InvestigationOverview run={r} onExplore={() => showInvestigation("hypotheses")} onPlan={() => showInvestigation("tasks")}
+        onApprovals={() => {
+          approvalsRef.current?.scrollIntoView({ block: "start" });
+          approvalsRef.current?.focus({ preventScroll: true });
+        }} />
       {pending.length > 0 && <Notice tone="warning">{pending.length} approval{pending.length > 1 ? "s" : ""} waiting — see the Approvals panel.</Notice>}
       {pinnedContext && <Card title={`Analysis context · ${pinnedContext.definition?.key ?? "saved"} v${pinnedContext.definition?.version ?? "?"}`}>
         <p><strong>Purpose:</strong> {pinnedContext.spec?.purpose}</p>
@@ -121,7 +135,7 @@ export function RunViewPage() {
           ["Cost", <Value key="c" value={r.cost_usd} format="usd" />],
           ["Tasks", `${r.tasks.filter((t) => t.status === "COMPLETED").length}/${r.tasks.length} done`],
           ["Hypotheses", String(r.hypotheses.length)],
-          ["Findings", `${r.insights.filter((i) => i.verified).length} verified / ${r.insights.length}`],
+          ["Findings", `${r.insights.filter((i) => findingStanding(i) === "verified").length} verified / ${r.insights.length}`],
         ]} />
         <TechnicalDetails>
           <p className="small">Investigation <code>{r.id}</code> · autonomy level L{r.autonomy_level} · plan version {r.plan_version}
@@ -134,16 +148,15 @@ export function RunViewPage() {
         <Notice tone="info">A report was generated for this investigation: <Link to={to.reports(wsId, r.summary.report_artifact_id)}>open it in Outputs</Link>.</Notice>
       )}
 
-      {(r.summary?.summary_markdown || pub) && (
+      {pub && (
         <Card title="Result summary" actions={r.summary?.summary_source ? <span className="muted small">source: {r.summary.summary_source}</span> : undefined}>
-          <Markdown text={r.summary?.summary_markdown} />
           {r.summary?.cancel_outcome && <p className="muted small">Cancel outcome: {r.summary.cancel_outcome}</p>}
           {pub && <PublicationBox pub={pub} onRolledBack={run.reload} />}
         </Card>
       )}
 
       <div className="run-grid">
-        <div className="run-main">
+        <div className="run-main" ref={investigationRef} tabIndex={-1} aria-label="Investigation details">
           <Tabs value={tab} onChange={setTab} tabs={[
             { id: "tasks", label: `Plan & tasks (${r.tasks.length})` },
             { id: "events", label: `Live events (${events.length})` },
@@ -161,9 +174,9 @@ export function RunViewPage() {
         <aside className="run-side">
           <NumbersPanel wsId={wsId} runId={runId} findings={r.insights.length} />
           <CostMeter wsId={wsId} run={r} />
-          <Card title={`Approvals${pending.length ? ` (${pending.length} pending)` : ""}`}>
+          <div ref={approvalsRef} tabIndex={-1} aria-label="Investigation approvals"><Card title={`Approvals${pending.length ? ` (${pending.length} pending)` : ""}`}>
             <ApprovalsPanel approvals={r.approvals} onDecided={() => void run.reload()} />
-          </Card>
+          </Card></div>
           <RedirectChat wsId={wsId} run={r} disabled={["FAILED", "CANCELLED", "REJECTED"].includes(r.status)} onDone={() => void run.reload()} />
           <Card title="Authorized scope">
             <KeyValue items={[

@@ -1,5 +1,20 @@
 # Capability register (evidence)
 
+## 2026-10-25 — DEMO-01 investigation brief
+
+`web/src/components/InvestigationOverview.tsx` presents current verification counts, a bounded
+finding shortlist, direct evidence links, execution progress, limitations and a state-aware next
+action. `RunView.tsx` provides focus handoffs to the existing hypothesis/task board and approvals.
+Void/legacy/pending/failed verdicts are not counted as currently verified; rejected and superseded
+findings are excluded. Historical narrative is expandable and labelled as recorded prose.
+
+Coverage: seven new component tests, 73 existing UI regression tests, two Playwright journeys
+including desktop and phone dark-theme accessibility scans. Production build passes; the
+existing large-chunk advisory remains. A real local API/browser rehearsal opened a completed
+synthetic ServiceNow investigation and followed a verified finding to its checks and evidence;
+no browser errors were recorded. See [dated evidence](evidence/demo-brief-20261025.md).
+This does not certify a new model run, production deployment, or third-party framework integration.
+
 Companion to the [tracker](01-tracker.md): the tracker holds status, this file holds dated
 evidence. Each row gives the code path, the automated coverage, the live evidence and the
 remaining limitation (spec v1 §70). Entries are appended, not rewritten; a later entry supersedes

@@ -1,0 +1,59 @@
+# Investigator demo — October 26, 2026
+
+Branch: `codex/investigator-demo`. This increment improves the existing investigation UI;
+it uses the existing API, query gateway, verification records and approval controls.
+
+## Start locally
+
+From the repository root:
+
+```powershell
+docker compose --profile demo up -d postgres api servicenow-mock
+cd web
+npm run dev -- --host 127.0.0.1
+```
+
+Open http://127.0.0.1:5173. For this local seeded installation, sign in as
+`admin@analystos.local` with `ChangeMe123!` (unless the bootstrap password was changed).
+The web development server serves this branch's current UI; the prebuilt Docker web image
+does not include these changes until rebuilt. The API containers use existing local images.
+
+## Five-minute walkthrough
+
+1. Open **ServiceNow Incident Intelligence (demo)** and its completed investigation.
+   Rehearsed local URL:
+   http://127.0.0.1:5173/w/ws_8efcdf614840/work/investigations/run_5e3893278298.
+   These IDs belong to this machine's existing database, not a fresh installation.
+2. Start with the investigation brief: current verification counts, three findings at a glance,
+   completed execution steps and the suggested next action. This is existing synthetic demo data.
+3. Explain the distinction between **verified** and **needs checking**. In the rehearsed run,
+   two findings are currently verified and four have void verification records. The latter must
+   not be presented as current verified conclusions, even though their old boolean says verified.
+4. Open **Limitations to keep in mind**. Use **Recorded run narrative** only as historical run prose;
+   current verification badges take precedence.
+5. Choose **Open evidence** on a verified finding. Show **How it was checked**, the query evidence,
+   citations and lineage. Return to the investigation.
+6. Choose **Explore findings** to reach the hypothesis board. Open the plan and tasks for execution
+   details. Describe approval controls; only demonstrate a pending approval if one is available and
+   the proposed action is intended. The brief's next-step button navigates; it never approves.
+
+Local preview: `var/demo/investigation-brief.png`. Live evidence screen:
+`var/demo/evidence-live.png`. These generated images are ignored by Git.
+
+## Scope and follow-up
+
+Built: summary-first brief, current verification counts, direct evidence links, state-aware next
+steps, execution progress, deduplicated limitations, responsive light/dark layout and keyboard
+focus handoffs. Existing evidence and approval screens remain the source of detail.
+
+Design references: [AI Analyst](https://github.com/ai-analyst-lab/ai-analyst) for findings with
+context and validation, and [AI DB Investigator](https://github.com/miller-28/skill-ai-db-investigator)
+for evidence browsing. No third-party code was copied or new runtime dependency installed.
+
+Follow-up after this demo increment: validate another complete fresh investigation, add reusable
+investigation templates, then review business-memory improvements. Evaluate Pipeline Studio,
+PySpur and DeepAnalyze separately against the existing platform contracts; their workflow engines
+and model infrastructure are not part of this increment.
+
+The current production build emits a large-bundle advisory. This increment is a local demo UI
+improvement, not a production readiness certification or a fresh end-to-end model evaluation.
