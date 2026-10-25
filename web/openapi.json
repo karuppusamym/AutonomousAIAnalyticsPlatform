@@ -2894,6 +2894,62 @@
         "title": "GroupsIn",
         "type": "object"
       },
+      "GuidedInvestigationIn": {
+        "additionalProperties": false,
+        "properties": {
+          "comparison": {
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Comparison",
+            "type": "string"
+          },
+          "decision": {
+            "maxLength": 500,
+            "minLength": 5,
+            "title": "Decision",
+            "type": "string"
+          },
+          "focus": {
+            "default": "All records in the selected source",
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Focus",
+            "type": "string"
+          },
+          "period": {
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Period",
+            "type": "string"
+          },
+          "source_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ids"
+          },
+          "template_id": {
+            "title": "Template Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template_id",
+          "period",
+          "comparison",
+          "decision"
+        ],
+        "title": "GuidedInvestigationIn",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3254,6 +3310,88 @@
           }
         },
         "title": "InputRef",
+        "type": "object"
+      },
+      "InvestigationActionIn": {
+        "additionalProperties": false,
+        "properties": {
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "impact_assessment": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Impact Assessment",
+            "type": "string"
+          },
+          "next_step": {
+            "maxLength": 2000,
+            "minLength": 5,
+            "title": "Next Step",
+            "type": "string"
+          },
+          "open_questions": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Open Questions",
+            "type": "string"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "resolution_note": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Resolution Note",
+            "type": "string"
+          },
+          "status": {
+            "default": "proposed",
+            "enum": [
+              "proposed",
+              "in_progress",
+              "done",
+              "dismissed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "success_measure": {
+            "maxLength": 1000,
+            "minLength": 3,
+            "title": "Success Measure",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 5,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "next_step",
+          "success_measure"
+        ],
+        "title": "InvestigationActionIn",
         "type": "object"
       },
       "InvokeIn": {
@@ -4367,6 +4505,79 @@
           "generated_at"
         ],
         "title": "PilotReadiness",
+        "type": "object"
+      },
+      "PilotReviewIn": {
+        "additionalProperties": false,
+        "properties": {
+          "accuracy": {
+            "enum": [
+              "correct",
+              "partly_correct",
+              "incorrect",
+              "not_reviewed"
+            ],
+            "title": "Accuracy",
+            "type": "string"
+          },
+          "assisted_minutes": {
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Assisted Minutes",
+            "type": "number"
+          },
+          "baseline_minutes": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 100000.0,
+            "title": "Baseline Minutes",
+            "type": "number"
+          },
+          "evidence_kind": {
+            "enum": [
+              "rehearsal",
+              "real_pilot"
+            ],
+            "title": "Evidence Kind",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "maxLength": 3000,
+            "title": "Notes",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "task": {
+            "maxLength": 500,
+            "minLength": 5,
+            "title": "Task",
+            "type": "string"
+          },
+          "usefulness": {
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Usefulness",
+            "type": "integer"
+          },
+          "would_use_again": {
+            "title": "Would Use Again",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "run_id",
+          "evidence_kind",
+          "task",
+          "baseline_minutes",
+          "assisted_minutes",
+          "accuracy",
+          "usefulness",
+          "would_use_again"
+        ],
+        "title": "PilotReviewIn",
         "type": "object"
       },
       "PinIn": {
@@ -22649,6 +22860,295 @@
         ]
       }
     },
+    "/api/workspaces/{workspace_id}/findings/{insight_id}/actions": {
+      "post": {
+        "operationId": "create_action_api_workspaces__workspace_id__findings__insight_id__actions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "insight_id",
+            "required": true,
+            "schema": {
+              "title": "Insight Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvestigationActionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Action",
+        "tags": [
+          "investigation value"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/findings/{insight_id}/actions/{action_id}": {
+      "put": {
+        "operationId": "update_action_api_workspaces__workspace_id__findings__insight_id__actions__action_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "insight_id",
+            "required": true,
+            "schema": {
+              "title": "Insight Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "title": "Action Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvestigationActionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Action",
+        "tags": [
+          "investigation value"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/guided-investigations": {
+      "post": {
+        "operationId": "start_api_workspaces__workspace_id__guided_investigations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuidedInvestigationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start",
+        "tags": [
+          "investigation value"
+        ]
+      }
+    },
     "/api/workspaces/{workspace_id}/hypothesis-registry": {
       "get": {
         "operationId": "list_registered_hypotheses_api_workspaces__workspace_id__hypothesis_registry_get",
@@ -23140,6 +23640,166 @@
         "summary": "Get Inventory",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/investigation-actions": {
+      "get": {
+        "operationId": "actions_api_workspaces__workspace_id__investigation_actions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Actions",
+        "tags": [
+          "investigation value"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/investigation-templates": {
+      "get": {
+        "operationId": "templates_api_workspaces__workspace_id__investigation_templates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Templates",
+        "tags": [
+          "investigation value"
         ]
       }
     },
@@ -28186,6 +28846,265 @@
         ]
       }
     },
+    "/api/workspaces/{workspace_id}/pilot-reviews": {
+      "get": {
+        "operationId": "reviews_api_workspaces__workspace_id__pilot_reviews_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reviews",
+        "tags": [
+          "investigation value"
+        ]
+      },
+      "post": {
+        "operationId": "create_review_api_workspaces__workspace_id__pilot_reviews_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PilotReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Review",
+        "tags": [
+          "investigation value"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/pilot-reviews/{review_id}": {
+      "put": {
+        "operationId": "update_review_api_workspaces__workspace_id__pilot_reviews__review_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PilotReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Review",
+        "tags": [
+          "investigation value"
+        ]
+      }
+    },
     "/api/workspaces/{workspace_id}/pins/{pin_id}": {
       "get": {
         "operationId": "get_pin_api_workspaces__workspace_id__pins__pin_id__get",
@@ -31020,6 +31939,78 @@
         "summary": "Create Report",
         "tags": [
           "continuous"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/reviewed-context": {
+      "get": {
+        "operationId": "context_api_workspaces__workspace_id__reviewed_context_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Context",
+        "tags": [
+          "investigation value"
         ]
       }
     },

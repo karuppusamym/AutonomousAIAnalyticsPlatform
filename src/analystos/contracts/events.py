@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 EVENT_TYPES = {
+    "investigation.action_created", "investigation.action_updated", "pilot.review_saved",
     "workspace.created", "workspace.updated", "source.connected", "metadata.collected", "context.loaded",
     "profile.completed", "quality.issue.detected", "relationship.discovered", "hypothesis.created",
     "hypothesis.updated", "query.executed", "query.rejected", "analysis.completed", "insight.created",

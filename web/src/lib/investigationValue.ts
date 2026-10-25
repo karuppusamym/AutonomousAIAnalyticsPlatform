@@ -1,0 +1,30 @@
+import { request, type Assertion, type VerificationState } from "../api";
+
+export interface InvestigationTemplate { id: string; version: number; title: string; description: string; question: string }
+export interface ReviewedContext { version: number; content_hash: string | null; facts: Assertion[]; open_questions: number }
+export interface GuidedInput { template_id: string; period: string; comparison: string; focus: string; decision: string; source_ids?: string[] }
+export interface ActionInput {
+  title: string; next_step: string; owner_id: string | null; due_date: string | null; impact_assessment: string;
+  success_measure: string; open_questions: string; status: "proposed" | "in_progress" | "done" | "dismissed"; resolution_note: string;
+}
+export interface InvestigationAction extends ActionInput { id: string; workspace_id: string; run_id: string; insight_id: string; revision: number; created_by: string; verification_state?: VerificationState }
+export interface PilotInput {
+  run_id: string; evidence_kind: "rehearsal" | "real_pilot"; task: string; baseline_minutes: number; assisted_minutes: number;
+  accuracy: "correct" | "partly_correct" | "incorrect" | "not_reviewed"; usefulness: number; would_use_again: boolean; notes: string;
+}
+export interface PilotReview extends PilotInput { id: string; reviewer_id: string; revision: number }
+export interface PilotSummary { assessments: number; reviewers: number; investigations: number; minutes_saved: number; time_saved_fraction: number | null; accuracy_reviewed: number; correct_fraction: number | null; average_usefulness: number | null; would_use_again_fraction: number | null }
+export interface PilotResults { reviews: PilotReview[]; summary: Record<"rehearsal" | "real_pilot", PilotSummary>; self_reported: boolean; at_limit: boolean }
+const base = (ws: string) => `/workspaces/${encodeURIComponent(ws)}`;
+const match = (revision: number) => ({ headers: { "If-Match": `"${revision}"` } });
+export const valueApi = {
+  templates: (ws: string) => request<InvestigationTemplate[]>("GET", base(ws) + "/investigation-templates"),
+  context: (ws: string) => request<ReviewedContext>("GET", base(ws) + "/reviewed-context"),
+  start: (ws: string, body: GuidedInput) => request<{ id: string }>("POST", base(ws) + "/guided-investigations", body),
+  actions: (ws: string, run?: string) => request<InvestigationAction[]>("GET", base(ws) + "/investigation-actions" + (run ? `?run_id=${encodeURIComponent(run)}` : "")),
+  saveAction: (ws: string, insight: string, body: ActionInput, existing?: InvestigationAction) => request<InvestigationAction>(existing ? "PUT" : "POST",
+    base(ws) + `/findings/${encodeURIComponent(insight)}/actions` + (existing ? `/${encodeURIComponent(existing.id)}` : ""), body, existing ? match(existing.revision) : {}),
+  reviews: (ws: string) => request<PilotResults>("GET", base(ws) + "/pilot-reviews"),
+  saveReview: (ws: string, body: PilotInput, existing?: PilotReview) => request<PilotReview>(existing ? "PUT" : "POST",
+    base(ws) + "/pilot-reviews" + (existing ? `/${encodeURIComponent(existing.id)}` : ""), body, existing ? match(existing.revision) : {}),
+};

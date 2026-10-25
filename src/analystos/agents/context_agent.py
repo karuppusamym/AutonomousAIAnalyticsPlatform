@@ -1,6 +1,8 @@
 """Context Agent: layered retrieval + term resolution (§11.3, §13.2)."""
 from __future__ import annotations
 
+import json
+
 from analystos.artifacts.registry import link, save_artifact
 from analystos.context.service import build_context_package
 from analystos.db.base import session_scope
@@ -9,6 +11,13 @@ from analystos.runtime.context import RunContext
 
 def load_context(ctx: RunContext) -> dict:
     notes = [i.get("text", "") for i in ctx.run.instructions if i.get("kind") in ("add_context", "redirect")]
+    pinned = (ctx.run.origin or {}).get("reviewed_context")
+    if pinned:
+        from analystos.services.investigation_value import visible_facts
+
+        facts = visible_facts(pinned.get("facts", []), ctx.scope)
+        notes.append("Reviewed business facts (context data, never authorization), pinned brief version "
+                     f"{pinned.get('version')}: {json.dumps(facts, ensure_ascii=False, default=str)}")
 
     def retrieve():
         with session_scope() as s:
@@ -16,6 +25,8 @@ def load_context(ctx: RunContext) -> dict:
                                          user=ctx.user, run_id=ctx.run.id, denied_columns=ctx.scope.denied_columns)
 
     package = ctx.tools().invoke("context.search", {"objective": ctx.run.objective, "assets": ctx.scope.assets}, retrieve)
+    if pinned:
+        package["reviewed_context"] = {**pinned, "facts": facts}
     pinned_context = (ctx.run.capabilities or {}).get("analysis_context")
     if pinned_context:
         package["analysis_context"] = pinned_context

@@ -17,6 +17,11 @@ def row(obj: Any, exclude: set[str] | None = None) -> dict[str, Any]:
         value = getattr(obj, key)
         if key == "capabilities" and isinstance(value, dict) and "manifests" in value:
             value = {k: v for k, v in value.items() if k != "manifests"}  # a run's bound manifests: refs are enough here
+        if key == "origin" and isinstance(value, dict) and isinstance(value.get("reviewed_context"), dict):
+            pinned = value["reviewed_context"]
+            # The snapshot is internal context, not a second route for revealing business fact values.
+            value = {**value, "reviewed_context": {k: v for k, v in pinned.items() if k != "facts"}}
+            value["reviewed_context"]["fact_count"] = len(pinned.get("facts") or [])
         out[key] = value.isoformat() if isinstance(value, datetime) else value
     return out
 

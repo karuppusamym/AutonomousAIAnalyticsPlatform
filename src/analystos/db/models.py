@@ -2165,4 +2165,45 @@ class EntityMatchPair(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class InvestigationAction(Base):
+    __tablename__ = "investigation_action"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("analysis_run.id", ondelete="CASCADE"), index=True)
+    insight_id: Mapped[str] = mapped_column(ForeignKey("insight.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    next_step: Mapped[str] = mapped_column(Text)
+    owner_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    due_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    impact_assessment: Mapped[str] = mapped_column(Text, default="")
+    success_measure: Mapped[str] = mapped_column(Text)
+    open_questions: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="proposed")
+    resolution_note: Mapped[str] = mapped_column(Text, default="")
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = _ts()
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class PilotReview(Base):
+    __tablename__ = "pilot_review"
+    __table_args__ = (UniqueConstraint("run_id", "reviewer_id", "evidence_kind", name="uq_pilot_review_run_user_kind"),)
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("analysis_run.id", ondelete="CASCADE"), index=True)
+    reviewer_id: Mapped[str] = mapped_column(String(40))
+    evidence_kind: Mapped[str] = mapped_column(String(20))
+    task: Mapped[str] = mapped_column(String(500))
+    baseline_minutes: Mapped[float] = mapped_column(Float)
+    assisted_minutes: Mapped[float] = mapped_column(Float)
+    accuracy: Mapped[str] = mapped_column(String(20))
+    usefulness: Mapped[int] = mapped_column(Integer)
+    would_use_again: Mapped[bool] = mapped_column(Boolean)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = _ts()
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 from analystos.db import column_presence  # noqa: E402,F401  (registers the absent-column filter, P7-20)

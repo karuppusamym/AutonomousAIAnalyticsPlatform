@@ -14,6 +14,7 @@ import { INSIGHT_VOID_ID, resetWave1, VERIFIED_STATE, voidInsight, wave1Route } 
 import { wave2Approvals } from "./mockApprovals";
 import { mlMonitors } from "./mockMl";
 import { resetWave2, wave2Route } from "./mockWave2";
+import { investigationValueRoute, resetInvestigationValue } from "./mockInvestigationValue";
 
 export const WS = "ws_demo";
 export const RUN = "run_demo";
@@ -321,6 +322,7 @@ const state = { planned: false, buildApproval: "pending", proposed: [] as Semant
   workModes: ["analysis", "engineering", "ml"] as string[], conversation: [] as Record<string, unknown>[] };
 
 export function resetMockState(): void {
+  resetInvestigationValue();
   state.conversation = [];
   state.workModes = ["analysis", "engineering", "ml"];
   state.planned = false;
@@ -683,6 +685,8 @@ export function mockBackend(method: string, path: string, requestBody?: string |
   const p = url.pathname.replace(/^\/api/, "");
   const m = method.toUpperCase();
   const W = `/workspaces/${WS}`;
+  const value = investigationValueRoute(m, p, requestBody, WS, RUN_ROW, headers);
+  if (value) return json(value.body, value.status);
   const wave2 = wave2Route(m, p, url, WS, requestBody, headers);
   if (wave2) return wave2.status === 204 ? { status: 204, body: "", contentType: "application/json" } : json(wave2.body, wave2.status);
 

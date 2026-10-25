@@ -701,3 +701,14 @@ The 2026-09-28 N-2 (`services/existing_dashboard.py`) and N-3 (`services/externa
 | P4-08 live | `agents/investigator.py` (`_round1_selection`: model proposals take a quarter of round 1) | `test_hypotheses_model_adds.py`, `evidence/2026-09-29-heldout-v2-live.md` | 39/43, confident-wrong 0, abstention 1.000, identical statuses to models off; $0.24. Practitioner baseline outstanding |
 
 Total OpenRouter spend for the three live benchmarks: about $3.7 (key usage $10.34 → $14.07). JEV never ran (N-13).
+
+## 2026-10-25 — Investigation value (VALUE-01 through VALUE-04)
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| Guided investigations | `services/investigation_value.py`, `StartWork.tsx`; four versioned templates | Live SLA run pins template and reviewed context; execution still requires plan approval |
+| Reusable reviewed context | Existing versioned brief, `ReviewedContext.tsx`, context agent snapshot consumption | Scope filtering, immutable snapshot and API redaction tested; ten facts pinned live |
+| Owned follow-up actions | Migration 0055, scoped API, `InvestigationActions.tsx`, lineage and events | Revision/ownership/current-verification checks; one proposed synthetic-demo action persisted live; no operational execution |
+| Pilot evaluation tooling | `PilotScorecard.tsx`, scoped assessments and `analyst-pilot-protocol.md` | Rehearsals separated, failed outcomes included, metrics self-reported; real analysts and results outstanding (VALUE-05) |
+
+Validation: 17 backend/API tests, 54 relevant UI tests and four browser journeys passed; production build and contract checks passed. See [dated evidence](evidence/investigation-value-20261025.md).

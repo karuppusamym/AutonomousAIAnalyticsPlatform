@@ -7,6 +7,8 @@ import { WelcomeCard } from "../components/Guide";
 import { useTour } from "../components/Tour";
 import { StartWorkButton } from "../components/StartWork";
 import { WorkModesSettings } from "../components/WorkModes";
+import { ReviewedContext } from "../components/ReviewedContext";
+import { PilotScorecard } from "../components/PilotScorecard";
 import { Card, ErrorBox, Field, Loading, Notice, PageHeader, Stat, Value } from "../components/ui";
 import { fmtDate } from "../lib/format";
 import { useAction, useAsync, type AsyncState } from "../lib/hooks";
@@ -76,6 +78,8 @@ export function WorkspaceHomePage() {
           <NeedsYou wsId={wsId} runs={runs.data} sources={sources.data} />
           <AtAGlance ws={w} runs={runs.data} />
           <DataShapeCard wsId={wsId} role={w.role} />
+          <ReviewedContext wsId={wsId} role={w.role} />
+          <PilotScorecard wsId={wsId} role={w.role} runs={runs.data} />
         </>
       )}
       {w.role === "owner" && !!runs.data?.length && <WorkModesSettings wsId={wsId} collapsed />}

@@ -6,6 +6,7 @@ import { api, subscribeRunEvents, type ConsoleCost, type EventStreamHandle, type
 import { ApprovalsPanel } from "../components/ApprovalsPanel";
 import { ChangesPanel } from "../components/ChangesPanel";
 import { InvestigationBoard } from "../components/InvestigationBoard";
+import { InvestigationActions } from "../components/InvestigationActions";
 import { findingStanding, InvestigationOverview } from "../components/InvestigationOverview";
 import { isSavedRunAnswer, SavedEvidenceAnswer } from "../components/SavedEvidenceAnswer";
 import { RunLineage } from "../components/RunLineage";
@@ -121,6 +122,10 @@ export function RunViewPage() {
           approvalsRef.current?.focus({ preventScroll: true });
         }} />
       <RedirectChat key={r.id} wsId={wsId} run={r} disabled={["FAILED", "CANCELLED", "REJECTED"].includes(r.status)} onDone={() => void run.reload()} />
+      {!!r.origin?.guided_template && <Card title="Guided investigation context"><p className="small">Started from {String((r.origin.guided_template as Record<string, unknown>).title)} · template v{String((r.origin.guided_template as Record<string, unknown>).version)}.</p>
+        {!!r.origin.reviewed_context && <p className="small">Reviewed brief v{String((r.origin.reviewed_context as Record<string, unknown>).version)} · {String((r.origin.reviewed_context as Record<string, unknown>).fact_count ?? 0)} reviewed facts pinned.</p>}
+        <p className="small muted">Reviewed business facts were pinned at start; later edits apply to future investigations.</p></Card>}
+      <InvestigationActions wsId={wsId} run={r} />
       {pending.length > 0 && <Notice tone="warning">{pending.length} approval{pending.length > 1 ? "s" : ""} waiting — see the Approvals panel.</Notice>}
       {pinnedContext && <Card title={`Analysis context · ${pinnedContext.definition?.key ?? "saved"} v${pinnedContext.definition?.version ?? "?"}`}>
         <p><strong>Purpose:</strong> {pinnedContext.spec?.purpose}</p>

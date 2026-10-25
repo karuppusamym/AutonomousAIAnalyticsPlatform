@@ -54,14 +54,15 @@ focus handoffs. A conversational follow-up panel returns bounded answers from sa
 references and persisted question/answer history. Existing evidence and approval screens remain the source of detail.
 
 After pulling the conversation increment, rebuild the API with `docker compose up -d --build --no-deps api`.
-The API was rebuilt locally during implementation. No new model server or database migration is required.
+The API was rebuilt locally during implementation. The later value increment requires migration
+`0055_investigation_value`, applied by the rebuilt API locally. No new model server is required.
 
 Design references: [AI Analyst](https://github.com/ai-analyst-lab/ai-analyst) for findings with
 context and validation, and [AI DB Investigator](https://github.com/miller-28/skill-ai-db-investigator)
 for evidence browsing. No third-party code was copied or new runtime dependency installed.
 
-Follow-up after this demo increment: validate another complete fresh investigation, add reusable
-investigation templates, then review business-memory improvements. Evaluate Pipeline Studio,
+The value increment below adds investigation templates and reviewed business context. A complete
+fresh investigation remains subject to plan approval. Evaluate Pipeline Studio,
 PySpur and DeepAnalyze separately against the existing platform contracts; their workflow engines
 and model infrastructure are not part of this increment.
 
@@ -80,3 +81,24 @@ http://127.0.0.1:5173/w/ws_796ff841746f/work/investigations/run_385d980e0a6d.
 Its plan requires approval before execution; no plan or publication was approved during readiness
 checks. The optional isolated Python sandbox remains unavailable in this local Docker configuration;
 use the verified SQL workflows for the demo. See `docs/60-delivery/evidence/demo-readiness-20261025.md`.
+
+## Four value additions
+
+1. Open the Operations workspace overview at http://127.0.0.1:5173/w/ws_796ff841746f.
+   Show **Business context we can reuse**. Review a definition or correction before saving;
+   these entries reuse the existing versioned brief.
+2. Choose Start work / Explain and select a guided template. Show the four choices, period,
+   comparison, focus and decision fields. The prepared SLA run is
+   http://127.0.0.1:5173/w/ws_796ff841746f/work/investigations/run_a8040c23d416.
+   Its card shows template v1, brief v2 and ten reviewed facts. It is waiting for plan approval;
+   do not present it as a newly completed analysis.
+3. Open the completed Operations run
+   http://127.0.0.1:5173/w/ws_796ff841746f/work/investigations/run_66f63d34fc79.
+   Show **Turn findings into follow-up** and the saved demo action, its owner and due date.
+   Impact is a team assessment, not proven savings. Follow the evidence link before making decisions.
+4. Return to the overview pilot scorecard. Explain that rehearsals and real assessments are separate.
+   Both live counts start at zero. Use a rehearsal only when real task timings and a review exist;
+   do not enter invented pilot results. Use the [pilot protocol](analyst-pilot-protocol.md) to conduct
+   the real analyst trial.
+
+Verification and remaining limits: [value increment evidence](../60-delivery/evidence/investigation-value-20261025.md).

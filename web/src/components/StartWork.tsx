@@ -8,6 +8,8 @@ import { autonomyInWords } from "../lib/status";
 import { to } from "../routes";
 import { ReadinessResult } from "./Brief";
 import { Drawer } from "./Drawer";
+import { ReviewedContext } from "./ReviewedContext";
+import { valueApi } from "../lib/investigationValue";
 import { ErrorBox, Field, KeyValue, Loading, Notice, TechnicalDetails, Value } from "./ui";
 
 /** The job kinds for a workspace, decided by the server for this caller (P4-04): executor, capabilities, role, data. */
@@ -22,7 +24,7 @@ function useReadiness(wsId: string, kind: string) {
   return useAsync<ReadinessAssessment>(() => api.assessReadiness(wsId, { job_kind: kind, assets: [], measures: [] }), [wsId, kind]);
 }
 
-interface Draft { kind?: JobKindId; objective?: string; sourceId?: string; contextId?: string }
+interface Draft { kind?: JobKindId; objective?: string; sourceId?: string; contextId?: string; templateId?: string; period?: string; comparison?: string; focus?: string; decision?: string }
 const draftKey = (ws: string) => `analystos.startWork.${ws}`;
 
 /** The unsent brief survives a reload or a failed start (workbench-ux §2); storage may be unavailable. */
@@ -211,6 +213,9 @@ function InvestigationForm({ kind, ws, sources, draft, update, onBack, onChooseK
   const id = useId();
   const act = useAction();
   const ready = sources.filter((s) => s.status === "ready");
+  const templates = useAsync(() => valueApi.templates(ws.id), [ws.id]);
+  const template = templates.data?.find((t) => t.id === draft.templateId);
+  const templateIncomplete = !!draft.templateId && (!template || !draft.period?.trim() || !draft.comparison?.trim() || (draft.decision?.trim().length ?? 0) < 5);
   const contexts = useAsync(() => analysisContexts(ws.id), [ws.id]);
   const publishedContexts = (contexts.data ?? []).filter((c, i, all) => c.status === "published" &&
     !all.slice(0, i).some((earlier) => earlier.key === c.key && earlier.status === "published"));
@@ -226,8 +231,10 @@ function InvestigationForm({ kind, ws, sources, draft, update, onBack, onChooseK
   }, [ready.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (tooShort || needsSource || refused) return;
-    const run = await act.run(() => api.startRun(ws.id, { objective: objective.trim(),
+    if (tooShort || needsSource || refused || templateIncomplete) return;
+    const run = await act.run(() => template ? valueApi.start(ws.id, { template_id: template.id, period: draft.period!.trim(),
+      comparison: draft.comparison!.trim(), focus: draft.focus?.trim() || "All records in the selected source", decision: draft.decision!.trim(),
+      source_ids: draft.sourceId ? [draft.sourceId] : undefined }) : api.startRun(ws.id, { objective: objective.trim(),
       source_ids: context ? contextSources : draft.sourceId ? [draft.sourceId] : undefined,
       analysis_context: context?.id }));
     if (run) onStarted(run.id);
@@ -237,18 +244,33 @@ function InvestigationForm({ kind, ws, sources, draft, update, onBack, onChooseK
   return (
     <form className="form" onSubmit={submit} aria-label={`Start ${kind.label.toLowerCase()}`}>
       <p className="small muted">{kind.description}</p>
-      <Field label="What should the investigation find out?" htmlFor={`${id}-obj`} hint="A question or goal, at least 10 characters.">
-        <textarea id={`${id}-obj`} rows={3} value={objective} onChange={(e) => update({ objective: e.target.value })} aria-invalid={tooShort} />
+      <Field label="Guided investigation" htmlFor={`${id}-template`} hint="A template structures the question; source permissions and approval checks still apply.">
+        <select id={`${id}-template`} value={draft.templateId ?? ""} onChange={(e) => {
+          const selected = templates.data?.find((t) => t.id === e.target.value);
+          update({ templateId: selected?.id, contextId: undefined, ...(selected ? { objective: selected.question } : {}) });
+        }}><option value="">Custom question</option>{templates.data?.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}</select>
       </Field>
-      <Field label="Business context" htmlFor={`${id}-context`} hint="Optional. A published context pins a business purpose and sources; the question remains editable for this run.">
-        <select id={`${id}-context`} value={context?.id ?? ""} onChange={(e) => {
+      <ErrorBox error={templates.error} onRetry={templates.reload} />
+      {template && <>
+        <p className="small muted">{template.description} · template v{template.version}</p>
+        <Field label="Period to investigate" htmlFor={`${id}-period`}><input id={`${id}-period`} required maxLength={200} value={draft.period ?? ""} onChange={(e) => update({ period: e.target.value })} placeholder="For example, Q3 2026" /></Field>
+        <Field label="Comparison baseline" htmlFor={`${id}-comparison`}><input id={`${id}-comparison`} required maxLength={200} value={draft.comparison ?? ""} onChange={(e) => update({ comparison: e.target.value })} placeholder="For example, Q2 2026 or peer teams" /></Field>
+        <Field label="Focus or exclusions" htmlFor={`${id}-focus`}><input id={`${id}-focus`} maxLength={500} value={draft.focus ?? ""} onChange={(e) => update({ focus: e.target.value })} placeholder="All records in the selected source" /></Field>
+        <Field label="Decision this should support" htmlFor={`${id}-decision`}><input id={`${id}-decision`} required maxLength={500} value={draft.decision ?? ""} onChange={(e) => update({ decision: e.target.value })} placeholder="Which team needs operational attention?" /></Field>
+        <ReviewedContext wsId={ws.id} compact />
+      </>}
+      <Field label="What should the investigation find out?" htmlFor={`${id}-obj`} hint="A question or goal, at least 10 characters.">
+        <textarea id={`${id}-obj`} rows={3} value={objective} readOnly={!!template} onChange={(e) => update({ objective: e.target.value })} aria-invalid={tooShort} />
+      </Field>
+      {!template && <Field label="Business context" htmlFor={`${id}-context`} hint="Optional. A published context pins a business purpose and sources; the question remains editable for this run.">
+        <select id={`${id}-context`} value={context?.id ?? ""} disabled={!!template} onChange={(e) => {
           const picked = publishedContexts.find((c) => c.id === e.target.value);
           update({ contextId: picked?.id, sourceId: undefined, ...(picked ? { objective: contextSpec(picked).question_template } : {}) });
         }}>
           <option value="">One-off investigation</option>
           {publishedContexts.map((c) => <option key={c.id} value={c.id}>{c.title ?? c.key} · v{c.version}</option>)}
         </select>
-      </Field>
+      </Field>}
       {context && <p className="small muted">Purpose: {contextSpec(context).purpose}</p>}
       {contexts.error && <p className="small warn-text">Analysis contexts could not be loaded: {contexts.error}</p>}
       {!context && ready.length > 1 && (
@@ -280,7 +302,7 @@ function InvestigationForm({ kind, ws, sources, draft, update, onBack, onChooseK
       <ErrorBox error={act.error} />
       <div className="form-actions">
         <button type="button" className="btn btn-ghost" onClick={onBack}>Back</button>
-        <button type="submit" className="btn btn-primary" disabled={act.busy || tooShort || needsSource || refused}>
+        <button type="submit" className="btn btn-primary" disabled={act.busy || tooShort || needsSource || refused || templateIncomplete}>
           {act.busy ? "Starting…" : "Start investigation"}</button>
       </div>
     </form>

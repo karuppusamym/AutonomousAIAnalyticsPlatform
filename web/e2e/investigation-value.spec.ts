@@ -1,0 +1,55 @@
+import { RUN, USER, WS } from "../src/test/mockBackend";
+import { axeViolations, expect, signIn, test } from "./fixtures";
+
+test("guided template collects a baseline and decision before starting", async ({ page, api }, info) => {
+  await signIn(page, `/w/${WS}`);
+  await page.getByRole("button", { name: "Start work", exact: true }).click();
+  await page.getByRole("button", { name: /^Explain/ }).click();
+  const form = page.getByRole("form", { name: "Start explain" });
+  await form.getByLabel("Guided investigation").selectOption("sla_change");
+  await expect(form.getByRole("button", { name: "Start investigation" })).toBeDisabled();
+  await form.getByLabel("Period to investigate").fill("Q3 2026");
+  await form.getByLabel("Comparison baseline").fill("Q2 2026");
+  await form.getByLabel("Decision this should support").fill("Choose a team to review");
+  await form.getByText("Show reviewed context", { exact: true }).click();
+  expect(await axeViolations(page)).toEqual([]);
+  await page.screenshot({ path: info.outputPath("guided-template.png") });
+  await form.getByRole("button", { name: "Start investigation" }).click();
+  await expect(page).toHaveURL(new RegExp(`/work/investigations/${RUN}$`));
+  expect(api.unmatched).toEqual([]);
+});
+
+test("follow-up actions and rehearsal measurements survive reload without claiming real pilot benefit", async ({ page, api }, info) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await signIn(page, `/w/${WS}/work/investigations/${RUN}`);
+  const actions = page.getByRole("region", { name: "Investigation actions" });
+  await actions.getByRole("button", { name: "Create follow-up action" }).click();
+  const form = actions.getByRole("form", { name: "Follow-up action" });
+  await form.getByLabel("Action title", { exact: true }).fill("Review Network routing");
+  await form.getByLabel("Responsible owner").selectOption(USER.id);
+  await form.getByLabel("Due date").fill("2026-11-02");
+  await form.getByRole("button", { name: "Save follow-up" }).click();
+  await expect(actions.getByText("Review Network routing", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(actions.getByText("Review Network routing", { exact: true })).toBeVisible();
+  await actions.screenshot({ path: info.outputPath("owned-follow-up.png") });
+  await page.goto(`/w/${WS}`);
+  const score = page.getByRole("region", { name: "Pilot scorecard", exact: true });
+  await score.getByRole("button", { name: "Record an assessment" }).click();
+  const pilot = score.getByRole("form", { name: "Pilot assessment" });
+  await pilot.getByLabel("Investigation assessed").selectOption(RUN);
+  await pilot.getByLabel("Task measured").fill("Synthetic UI rehearsal of SLA review");
+  await pilot.getByLabel("Manual baseline (minutes)").fill("60");
+  await pilot.getByLabel("Assisted time including review (minutes)").fill("20");
+  await pilot.getByRole("button", { name: "Save assessment" }).click();
+  await expect(score.getByRole("region", { name: "Rehearsal results" })).toContainText("40 min");
+  await expect(score.getByRole("region", { name: "Real pilot results" })).toContainText("No assessments recorded");
+  expect(await axeViolations(page)).toEqual([]);
+  await score.screenshot({ path: info.outputPath("pilot-scorecard.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+  expect(await axeViolations(page)).toEqual([]);
+  await score.screenshot({ path: info.outputPath("pilot-mobile-dark.png") });
+  expect(api.unmatched).toEqual([]);
+});
