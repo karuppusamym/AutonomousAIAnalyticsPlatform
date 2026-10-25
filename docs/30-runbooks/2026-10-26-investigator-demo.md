@@ -67,3 +67,16 @@ and model infrastructure are not part of this increment.
 
 The current production build emits a large-bundle advisory. This increment is a local demo UI
 improvement, not a production readiness certification or a fresh end-to-end model evaluation.
+
+## Readiness check after cleanup
+
+The four curated demo workspaces remain visible. The API image now pins SQLGlot 30.20.0 to preserve
+the tested gateway qualification API. Archived test notifications no longer crowd the bell.
+OpenRouter chat connectivity and a model-generated analytical query are live-verified; all four
+workspaces answered scoped data questions. The Ask screen rendered a 12-row Operations result.
+
+A fresh Operations investigation is ready to review at
+http://127.0.0.1:5173/w/ws_796ff841746f/work/investigations/run_385d980e0a6d.
+Its plan requires approval before execution; no plan or publication was approved during readiness
+checks. The optional isolated Python sandbox remains unavailable in this local Docker configuration;
+use the verified SQL workflows for the demo. See `docs/60-delivery/evidence/demo-readiness-20261025.md`.

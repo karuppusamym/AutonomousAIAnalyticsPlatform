@@ -1,5 +1,23 @@
 # Capability register (evidence)
 
+## 2026-10-25 — DEMO-03 cleanup and OpenRouter readiness
+
+Pinned SQLGlot to 30.20.0 after a rebuilt image installed 30.24.0 and broke the gateway's
+`infer_schema` qualification argument. Existing gateway validation, dialect, corpus, lineage,
+service and skill suites pass. A real OpenRouter analytical question subsequently ran through
+the rebuilt API and gateway, returning 12 rows; the Ask browser UI rendered that answer without
+errors. All four retained workspaces answered a scoped analytical question. Eight primary demo
+screens loaded without errors. Provider health probe passed; it covers chat, not the separate
+decision-provider endpoint.
+
+Notification visibility now excludes archived/disabled workspaces before limiting results;
+mark-as-read uses the same access filter. Tests cover admin/member visibility, private messages,
+archived clutter and inaccessible notification IDs. Workspace deletion regression tests pass.
+
+A fresh investigation created its execution plan and stopped at the required plan-approval gate;
+no approval was made on behalf of the user. Optional isolated Python execution remains unavailable
+and correctly refused. See [readiness evidence](evidence/demo-readiness-20261025.md).
+
 ## 2026-10-25 — DEMO-02 investigation conversation
 
 `services/run_questions.py` answers explicit question feedback from persisted findings, verification

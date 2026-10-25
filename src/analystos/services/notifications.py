@@ -6,7 +6,7 @@ from __future__ import annotations
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from analystos.db.models import Notification, User, WorkspaceMember
+from analystos.db.models import Notification, User, Workspace, WorkspaceMember
 from analystos.events.bus import emit
 
 
@@ -37,18 +37,25 @@ def deliver(session: Session, workspace_id: str, destination_ids: list[str] | No
         return []
 
 
-def list_for(session: Session, user: User, *, unread_only: bool = False, limit: int = 100) -> list[Notification]:
+def _visible_to(user: User):
     workspaces = select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id)
-    stmt = select(Notification).where(or_(Notification.user_id == user.id, Notification.user_id.is_(None)))
+    stmt = (select(Notification).join(Workspace, Workspace.id == Notification.workspace_id)
+            .where(Workspace.deleted_at.is_(None), Workspace.status == "active",
+                   or_(Notification.user_id == user.id, Notification.user_id.is_(None))))
     if not user.is_admin:
         stmt = stmt.where(Notification.workspace_id.in_(workspaces))
+    return stmt
+
+
+def list_for(session: Session, user: User, *, unread_only: bool = False, limit: int = 100) -> list[Notification]:
+    stmt = _visible_to(user)
     rows = list(session.scalars(stmt.order_by(Notification.id.desc()).limit(limit)))
     return [n for n in rows if not (unread_only and user.id in (n.read_by or []))]
 
 
 def mark_read(session: Session, user: User, ids: list[int]) -> int:
     count = 0
-    for n in session.scalars(select(Notification).where(Notification.id.in_(ids))):
+    for n in session.scalars(_visible_to(user).where(Notification.id.in_(ids))):
         if user.id not in (n.read_by or []):
             n.read_by = [*(n.read_by or []), user.id]
             count += 1

@@ -17,7 +17,7 @@ dependencies = [
   "alembic>=1.13",
   "pgvector>=0.3",
   "httpx>=0.27",
-  "sqlglot>=30.0",  # lineage(None, ...) over every column in one walk (evidence/lineage/sql.py)
+  "sqlglot==30.20.0",  # security-validated qualifier API; 30.24 removed infer_schema (gateway/validator.py)
   "duckdb>=1.1",
   "polars>=1.5",
   "pandas>=2.2",
