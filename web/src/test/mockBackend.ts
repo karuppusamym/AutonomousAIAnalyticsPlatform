@@ -318,9 +318,10 @@ export const BUILD_APPROVAL = "apr_build";
  * the vitest cases that change it), so no test sees another's state.
  */
 const state = { planned: false, buildApproval: "pending", proposed: [] as SemanticMetric[], decided: {} as Record<string, string>,
-  workModes: ["analysis", "engineering", "ml"] as string[] };
+  workModes: ["analysis", "engineering", "ml"] as string[], conversation: [] as Record<string, unknown>[] };
 
 export function resetMockState(): void {
+  state.conversation = [];
   state.workModes = ["analysis", "engineering", "ml"];
   state.planned = false;
   state.buildApproval = "pending";
@@ -723,7 +724,15 @@ export function mockBackend(method: string, path: string, requestBody?: string |
     return json({ insight: p.split("/")[2], signal: body.signal, labelled_decisions: 1 });
   }
   if (m === "POST" && p === `${W}/analysis/${RUN}/feedback`) {
-    const body = requestBody ? JSON.parse(requestBody) as { kind?: string | null } : {};
+    const body = requestBody ? JSON.parse(requestBody) as { kind?: string | null; text?: string } : {};
+    if (body.kind === "question") {
+      const answer = { mode: "saved_evidence", topic: "summary", recorded_at: T,
+        paragraphs: ["One finding is currently verified. Network resolves P1 incidents 2.1x slower than the median group."],
+        references: [{ id: INSIGHT, code: "F1", title: INSIGHT_ROW.title }] };
+      const feedback_id = `fb_question_${state.conversation.length}`;
+      state.conversation.push({ text: body.text, kind: "question", at: T, feedback_id, answer });
+      return json({ kind: "question", classified_by: "user", consequential_p: null, feedback_id, answer });
+    }
     return json({ kind: body.kind || "redirect", classified_by: body.kind ? "user" : "jev:typesafe/jev-1", consequential_p: 0.04,
       interpretation: body.kind === "reject_finding" ? undefined : { filters: [], focus: ["Network"], summary: "Focus on the Network group.", interpreted_by: "rule" },
       replan: { plan_version: 2, tasks_reset: [], tasks_removed: [], approvals_invalidated: [] }, feedback_id: "fb_2" });
@@ -759,7 +768,7 @@ export function mockBackend(method: string, path: string, requestBody?: string |
     ["GET", W, WORKSPACE],
     ["GET", `${W}/sources`, [SOURCE, FILE_SOURCE]],
     ["GET", `${W}/analysis`, [RUN_ROW]],
-    ["GET", `${W}/analysis/${RUN}`, RUN_DETAIL],
+    ["GET", `${W}/analysis/${RUN}`, { ...RUN_DETAIL, instructions: [...RUN_DETAIL.instructions, ...state.conversation] }],
     ["GET", `${W}/analysis/${RUN}/console`, CONSOLE],
     ["GET", `${W}/insights`, [INSIGHT_ROW, INSIGHT_DRAFT, voidInsight(INSIGHT_ROW)]],
     ["GET", `/insights/${INSIGHT}`, INSIGHT_DETAIL],

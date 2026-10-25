@@ -714,6 +714,14 @@ export interface RunEvent {
   created_at: string;
 }
 
+export interface SavedRunAnswer {
+  mode: "saved_evidence";
+  topic: string;
+  paragraphs: string[];
+  references: { id: string; code: string; title: string }[];
+  recorded_at?: string;
+}
+
 export interface FeedbackResponse {
   kind: string;
   classified_by: string;
@@ -722,6 +730,7 @@ export interface FeedbackResponse {
   interpretation?: { filters: Dict[]; focus: string[]; summary: string; interpreted_by: string };
   replan?: { plan_version: number; tasks_reset: unknown; tasks_removed: unknown; approvals_invalidated: unknown };
   feedback_id: string;
+  answer?: SavedRunAnswer;
 }
 
 export interface AgentMessage {

@@ -360,6 +360,7 @@ describe("investigation board", () => {
     const fetchMock = mockFetch();
     renderAt(`/w/${WS}/investigate/${RUN}`);
     fireEvent.change(await screen.findByLabelText("Message"), { target: { value: "Focus on the Network group" } });
+    fireEvent.change(screen.getByLabelText("What would you like to do?"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     expect(await screen.findByText(/Focus on the Network group\./)).toBeTruthy();
     const [, init] = calls(fetchMock, "POST", /\/feedback$/)[0];

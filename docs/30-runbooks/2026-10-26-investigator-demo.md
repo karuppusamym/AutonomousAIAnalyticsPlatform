@@ -31,20 +31,30 @@ does not include these changes until rebuilt. The API containers use existing lo
    not be presented as current verified conclusions, even though their old boolean says verified.
 4. Open **Limitations to keep in mind**. Use **Recorded run narrative** only as historical run prose;
    current verification badges take precedence.
-5. Choose **Open evidence** on a verified finding. Show **How it was checked**, the query evidence,
+5. In **Continue the investigation**, choose **Summarize the findings**, then **Send**. Show the saved-evidence
+   answer and its clickable finding references. Refresh to demonstrate that the conversation is retained.
+   Ask **What are the limitations?**, **Which findings need checking?**, or the suggested finding check question.
+   These questions explain stored evidence; they do not rerun analysis or call a model. New analysis requests
+   receive an explicit scope explanation. Select **Deeper analysis** when a fresh investigation is intended;
+   that existing path can replan work and invalidate pending approvals.
+6. Choose **Open evidence** on a verified finding. Show **How it was checked**, the query evidence,
    citations and lineage. Return to the investigation.
-6. Choose **Explore findings** to reach the hypothesis board. Open the plan and tasks for execution
+7. Choose **Explore findings** to reach the hypothesis board. Open the plan and tasks for execution
    details. Describe approval controls; only demonstrate a pending approval if one is available and
    the proposed action is intended. The brief's next-step button navigates; it never approves.
 
-Local preview: `var/demo/investigation-brief.png`. Live evidence screen:
+Local preview: `var/demo/investigation-brief.png`. Live conversation: `var/demo/conversation-live.png`. Live evidence screen:
 `var/demo/evidence-live.png`. These generated images are ignored by Git.
 
 ## Scope and follow-up
 
 Built: summary-first brief, current verification counts, direct evidence links, state-aware next
 steps, execution progress, deduplicated limitations, responsive light/dark layout and keyboard
-focus handoffs. Existing evidence and approval screens remain the source of detail.
+focus handoffs. A conversational follow-up panel returns bounded answers from saved evidence, with
+references and persisted question/answer history. Existing evidence and approval screens remain the source of detail.
+
+After pulling the conversation increment, rebuild the API with `docker compose up -d --build --no-deps api`.
+The API was rebuilt locally during implementation. No new model server or database migration is required.
 
 Design references: [AI Analyst](https://github.com/ai-analyst-lab/ai-analyst) for findings with
 context and validation, and [AI DB Investigator](https://github.com/miller-28/skill-ai-db-investigator)

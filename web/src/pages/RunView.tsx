@@ -7,10 +7,11 @@ import { ApprovalsPanel } from "../components/ApprovalsPanel";
 import { ChangesPanel } from "../components/ChangesPanel";
 import { InvestigationBoard } from "../components/InvestigationBoard";
 import { findingStanding, InvestigationOverview } from "../components/InvestigationOverview";
+import { isSavedRunAnswer, SavedEvidenceAnswer } from "../components/SavedEvidenceAnswer";
 import { RunLineage } from "../components/RunLineage";
 import { VerificationBadge, WhyState } from "../components/WhyNumber";
 import { Card, EmptyState, ErrorBox, Field, KeyValue, Loading, Notice, PageHeader, StatusBadge, Tabs, Tag, TechnicalDetails, Value } from "../components/ui";
-import { durationBetween, fmtDate, fmtPct, fmtTime, shortHash } from "../lib/format";
+import { durationBetween, fmtDate, fmtTime, shortHash } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import { TERMINAL_RUN } from "../lib/status";
 
@@ -119,6 +120,7 @@ export function RunViewPage() {
           approvalsRef.current?.scrollIntoView({ block: "start" });
           approvalsRef.current?.focus({ preventScroll: true });
         }} />
+      <RedirectChat key={r.id} wsId={wsId} run={r} disabled={["FAILED", "CANCELLED", "REJECTED"].includes(r.status)} onDone={() => void run.reload()} />
       {pending.length > 0 && <Notice tone="warning">{pending.length} approval{pending.length > 1 ? "s" : ""} waiting — see the Approvals panel.</Notice>}
       {pinnedContext && <Card title={`Analysis context · ${pinnedContext.definition?.key ?? "saved"} v${pinnedContext.definition?.version ?? "?"}`}>
         <p><strong>Purpose:</strong> {pinnedContext.spec?.purpose}</p>
@@ -177,7 +179,6 @@ export function RunViewPage() {
           <div ref={approvalsRef} tabIndex={-1} aria-label="Investigation approvals"><Card title={`Approvals${pending.length ? ` (${pending.length} pending)` : ""}`}>
             <ApprovalsPanel approvals={r.approvals} onDecided={() => void run.reload()} />
           </Card></div>
-          <RedirectChat wsId={wsId} run={r} disabled={["FAILED", "CANCELLED", "REJECTED"].includes(r.status)} onDone={() => void run.reload()} />
           <Card title="Authorized scope">
             <KeyValue items={[
               ["Assets", ((r.scope.assets as string[] | undefined) ?? []).join(", ") || "—"],
@@ -361,36 +362,58 @@ function EventFeed({ events }: { events: RunEvent[] }) {
  */
 function RedirectChat({ wsId, run, disabled, onDone }: { wsId: string; run: RunDetail; disabled: boolean; onDone: () => void }) {
   const [text, setText] = useState("");
-  const [kind, setKind] = useState("");
+  const [kind, setKind] = useState("question");
   const [resp, setResp] = useState<FeedbackResponse | null>(null);
+  const [sentText, setSentText] = useState("");
+  const sending = useRef(false);
+  const messageRef = useRef<HTMLTextAreaElement | null>(null);
+  const logRef = useRef<HTMLOListElement | null>(null);
   const act = useAction();
   const history = run.instructions ?? [];
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [history.length, resp]);
+  const suggestedFinding = run.insights.find((i) => findingStanding(i) === "verified") ?? run.insights.find((i) => findingStanding(i) !== "excluded");
+  const suggestions = ["Summarize the findings", "What are the limitations?", "Which findings need checking?",
+    ...(suggestedFinding ? [`How was ${suggestedFinding.code} checked?`] : [])];
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
-    if (!text.trim()) return;
+    if (!text.trim() || disabled || sending.current) return;
+    sending.current = true;
+    const submitted = text.trim();
     const r = await act.run(() => api.feedback(wsId, run.id, { text: text.trim(), kind: kind || null, target_type: null, target_id: null }));
+    sending.current = false;
     if (r) {
       setResp(r);
+      setSentText(submitted);
       setText("");
       onDone();
     }
   };
   return (
-    <Card title="Redirect the investigation">
-      <ol className="chat-log" aria-label="Instructions sent to this investigation">
+    <Card title="Continue the investigation" label="Investigation conversation" className="investigation-conversation">
+      <p className="small muted">Ask about saved findings, checks and limitations. Choose Deeper analysis below when you want the agents to investigate further.</p>
+      <div className="conversation-suggestions" role="group" aria-label="Suggested follow-up questions">
+        {suggestions.map((q) => <button key={q} type="button" className="btn btn-sm" disabled={disabled || act.busy}
+          onClick={() => { setText(q); setKind("question"); messageRef.current?.focus(); }}>{q}</button>)}
+      </div>
+      <ol ref={logRef} className="chat-log" aria-label="Instructions sent to this investigation">
         {history.length === 0 && <li className="muted small">No instructions yet. Tell the agents what to focus on, exclude or explain.</li>}
         {history.map((ins, i) => (
           <li key={i} className="chat-msg chat-user">
             <span className="chat-who">You</span> <Tag>{String(ins.kind ?? "feedback").replace(/_/g, " ")}</Tag>
             <p>{String(ins.text ?? "")}</p>
+            {isSavedRunAnswer(ins.answer) && <div className="chat-agent"><span className="chat-who">Investigator</span><SavedEvidenceAnswer answer={ins.answer} wsId={wsId} /></div>}
           </li>
         ))}
-        {resp && (
+        {resp && !history.some((ins) => ins.feedback_id === resp.feedback_id) && (
           <li className="chat-msg chat-agent" aria-live="polite">
             <span className="chat-who">Supervisor</span>
+            <p><strong>You:</strong> {sentText}</p>
+            {resp.answer ? <SavedEvidenceAnswer answer={resp.answer} wsId={wsId} /> : <>
             <p className="small">
               Read as <strong title={`classified by ${resp.classified_by}`}>{resp.kind.replace(/_/g, " ")}</strong>
-              {resp.consequential_p !== null ? ` (chance it asks for a side effect: ${fmtPct(resp.consequential_p, 0)})` : ""}.
+              .
               {resp.interpretation && <> {resp.interpretation.summary}</>}
               {resp.replan && <> Replanned to plan v{resp.replan.plan_version}.</>}
             </p>
@@ -400,17 +423,18 @@ function RedirectChat({ wsId, run, disabled, onDone }: { wsId: string; run: RunD
               ))}</ul>
             )}
             {resp.note && <Notice tone="warning">{resp.note}</Notice>}
+            </>}
           </li>
         )}
       </ol>
       <form className="form" onSubmit={submit}>
         <Field label="Message" htmlFor="fb-text">
-          <textarea id="fb-text" rows={3} value={text} onChange={(e) => setText(e.target.value)} disabled={disabled}
+          <textarea id="fb-text" ref={messageRef} rows={3} value={text} onChange={(e) => setText(e.target.value)} disabled={disabled || act.busy}
             onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void submit(); }}
-            placeholder="Focus on priority 1 incidents in the Network group; exclude auto-closed tickets." />
+            placeholder="What did we find, and what should I check before trusting it?" />
         </Field>
-        <Field label="Kind" htmlFor="fb-kind" hint="On auto, a decision model reads the message; it can flag side effects, never carry them out.">
-          <select id="fb-kind" value={kind} onChange={(e) => setKind(e.target.value)} disabled={disabled}>
+        <Field label="What would you like to do?" htmlFor="fb-kind" hint="Questions explain saved evidence. Deeper analysis can restart steps and invalidate pending approvals.">
+          <select id="fb-kind" value={kind} onChange={(e) => setKind(e.target.value)} disabled={disabled || act.busy}>
             {FEEDBACK_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
           </select>
         </Field>

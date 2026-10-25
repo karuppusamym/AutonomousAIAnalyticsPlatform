@@ -21,6 +21,7 @@ crawl-time classification.
 | ID | Scope | Status | Evidence / notes |
 |---|---|---|---|
 | DEMO-01 | Investigation brief with current verification counts, evidence links, next-step handoffs and responsive layout | Done | `InvestigationOverview.tsx`; seven new component tests, 73 existing UI checks and two desktop/mobile browser checks pass. Local live-data rehearsal completed; evidence `evidence/demo-brief-20261025.md`. Demo runbook `docs/30-runbooks/2026-10-26-investigator-demo.md`. |
+| DEMO-02 | Conversational questions answered from saved findings, checks and limitations; cited answers and persisted history | Done | 13 backend unit cases, a Postgres API test, UI regression tests and two browser journeys pass. Rebuilt local API; real browser rehearsal includes summary, limitations, refreshed history and cited evidence navigation. Evidence `evidence/demo-conversation-20261025.md`. |
 
 The only list of work in flight. A row moves to **Done** only with a test and, where it says
 "live", a dated evidence file in the [capability register](02-capability-register.md). Finished

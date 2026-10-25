@@ -329,6 +329,11 @@ def _valid_feedback(resp: Any) -> str | None:
 @scoped_loader
 def submit_feedback(user: User, run_id: str, *, text: str, kind: str | None = None, target_type: str | None = None,
                     target_id: str | None = None, workspace_id: str | None = None) -> dict[str, Any]:
+    if kind == "question":
+        from analystos.services.run_questions import submit_saved_question
+
+        return submit_saved_question(user, run_id, text=text, workspace_id=workspace_id, target_id=target_id)
+
     from analystos.decisions import Question, decision_service
     from analystos.llm.jev import CONSEQUENTIAL_INSTRUCTIONS
 
@@ -351,6 +356,12 @@ def submit_feedback(user: User, run_id: str, *, text: str, kind: str | None = No
             classification.backend, f"{classification.backend}:{classification.model}")
     if kind not in FEEDBACK_KINDS:
         raise InvalidInput(f"kind must be one of {sorted(FEEDBACK_KINDS)}")
+    if kind == "question":
+        from analystos.services.run_questions import submit_saved_question
+
+        return submit_saved_question(user, run_id, text=text, workspace_id=workspace_id, target_id=target_id,
+                                     classified_by=classified_by, feedback_id=fb_id,
+                                     decision_ids=[classification.id] if classification is not None else [])
     # escalate_only: side-effect verbs (rule) or JEV may add the approval note; nothing removes it.
     risk = decisions.decide("risk_check", {"request": text},
                             Question.escalation(CONSEQUENTIAL_INSTRUCTIONS, key="consequential", levels=["read", "consequential"],

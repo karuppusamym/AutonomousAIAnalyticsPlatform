@@ -1,5 +1,24 @@
 # Capability register (evidence)
 
+## 2026-10-25 — DEMO-02 investigation conversation
+
+`services/run_questions.py` answers explicit question feedback from persisted findings, verification
+states, checks and caveats; no source query, model call, plan change or external action is needed.
+Question/answer history is saved in feedback data and run instructions. Automatic classification
+that selects question mode keeps its classification identity and decision references. The UI offers
+editable suggested prompts, shows timestamped saved-evidence answers with finding links, and keeps
+redirect/deeper-analysis options available separately. The conversation is now below the brief.
+
+Coverage: 13 pure backend cases, a Postgres API persistence/access-boundary test, 38 UI cases across
+conversation/overview/increment-4 suites, a final 34-case conversation/increment-4/analyst-answer
+regression pass, and two desktop/mobile browser journeys including refresh, links and accessibility.
+Production build and targeted Python lint pass. A local live browser rehearsal used the rebuilt API
+to summarize a completed synthetic ServiceNow run, reload saved history, ask for limitations and
+follow a finding to verification checks without page errors. See
+[dated evidence](evidence/demo-conversation-20261025.md).
+
+Limits: bounded saved-evidence explanation, not general LLM conversation or fresh statistical analysis.
+
 ## 2026-10-25 — DEMO-01 investigation brief
 
 `web/src/components/InvestigationOverview.tsx` presents current verification counts, a bounded

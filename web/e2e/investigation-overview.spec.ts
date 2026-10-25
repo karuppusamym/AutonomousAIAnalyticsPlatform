@@ -6,6 +6,12 @@ test("investigation brief shows evidence, limitations and an approval handoff", 
   await signIn(page, `/w/${WS}/work/investigations/${RUN}`);
   const overview = page.getByRole("region", { name: "Investigation overview" });
   await expect(overview.getByRole("heading", { name: "The answer, with the evidence" })).toBeVisible();
+  const conversation = page.getByRole("region", { name: "Investigation conversation" });
+  await conversation.getByRole("button", { name: "Summarize the findings" }).click();
+  await conversation.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(conversation.getByText(/One finding is currently verified/)).toBeVisible();
+  await page.reload();
+  await expect(conversation.getByText(/One finding is currently verified/)).toBeVisible();
   await expect(overview.getByRole("link", { name: "Open evidence for F1" })).toBeVisible();
   await overview.getByText(/Limitations to keep in mind/).click();
   await expect(overview.getByText("Q3 only")).toBeVisible();
@@ -24,7 +30,12 @@ test("investigation brief fits a phone and respects the dark theme", async ({ pa
   await signIn(page, `/w/${WS}/work/investigations/${RUN}`);
   const overview = page.getByRole("region", { name: "Investigation overview" });
   await expect(overview).toBeVisible();
+  const conversation = page.getByRole("region", { name: "Investigation conversation" });
+  await conversation.getByRole("button", { name: "Summarize the findings" }).click();
+  await conversation.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(conversation.getByText(/One finding is currently verified/)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
   expect(await axeViolations(page)).toEqual([]);
   await overview.screenshot({ path: testInfo.outputPath("investigation-mobile-dark.png") });
+  await conversation.screenshot({ path: testInfo.outputPath("conversation-mobile-dark.png") });
 });
