@@ -1,0 +1,58 @@
+[
+  {
+    "workspace": "Operations Intelligence Demo",
+    "workspace_id": "ws_796ff841746f",
+    "selected_active_tables": 4,
+    "columns": 51,
+    "columns_with_glossary": 9,
+    "local_entries": 5,
+    "local_mapped_entries": 0,
+    "visible_pack_entries": 25,
+    "mapped_pack_entries": 23,
+    "applicable_packs": [
+      "itsm"
+    ]
+  },
+  {
+    "workspace": "ServiceNow Incident Intelligence (demo)",
+    "workspace_id": "ws_8efcdf614840",
+    "selected_active_tables": 3,
+    "columns": 43,
+    "columns_with_glossary": 10,
+    "local_entries": 4,
+    "local_mapped_entries": 0,
+    "visible_pack_entries": 28,
+    "mapped_pack_entries": 24,
+    "applicable_packs": [
+      "itsm"
+    ]
+  },
+  {
+    "workspace": "ServiceNow process mining (demo)",
+    "workspace_id": "ws_615cbc70fee4",
+    "selected_active_tables": 6,
+    "columns": 96,
+    "columns_with_glossary": 13,
+    "local_entries": 2,
+    "local_mapped_entries": 0,
+    "visible_pack_entries": 29,
+    "mapped_pack_entries": 25,
+    "applicable_packs": [
+      "itsm"
+    ]
+  },
+  {
+    "workspace": "Retail Orders (demo)",
+    "workspace_id": "ws_9a4b56958e2e",
+    "selected_active_tables": 3,
+    "columns": 22,
+    "columns_with_glossary": 3,
+    "local_entries": 1,
+    "local_mapped_entries": 0,
+    "visible_pack_entries": 22,
+    "mapped_pack_entries": 20,
+    "applicable_packs": [
+      "sales"
+    ]
+  }
+]
