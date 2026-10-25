@@ -1,9 +1,11 @@
-import { useId, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api, request } from "../api";
-import { to } from "../routes";
+import { roleAtLeast, to } from "../routes";
 import { useAction, useAsync } from "../lib/hooks";
 import { groundingApi, type Binding, type BindingInput, type GroundingReport, type KnownMeaning, type MetricMeaning, type Studio } from "../lib/grounding";
+import { StartWorkButton } from "./StartWork";
+import { UsageGuide } from "./UsageGuide";
 import { Card, ErrorBox, Field, Loading, Notice, Tag } from "./ui";
 
 const empty = (): BindingInput => ({term: "", definition: "", kind: "definition", columns: [], domain: "", source_ids: [], owner_id: null, effective_from: null, expires_on: null, state: "draft", evidence: "", examples: "", metric: null, predicate: null});
@@ -13,6 +15,7 @@ export function ContextGrounding({wsId, canEdit}: {wsId: string; canEdit: boolea
   const data = useAsync(() => groundingApi.studio(wsId), [wsId]);
   const members = useAsync(() => api.getWorkspace(wsId), [wsId]);
   const act = useAction();
+  const canAnalyze = roleAtLeast(members.data?.role, "analyst");
   const [question, setQuestion] = useState("");
   const [model, setModel] = useState(true);
   const [report, setReport] = useState<GroundingReport>();
@@ -21,15 +24,18 @@ export function ContextGrounding({wsId, canEdit}: {wsId: string; canEdit: boolea
   const [notice, setNotice] = useState("");
   const [checks, setChecks] = useState<Awaited<ReturnType<typeof groundingApi.check>>>();
   const id = useId();
+  const resolveSequence = useRef(0);
+  const invalidate = () => { resolveSequence.current++; setReport(undefined); setChecks(undefined); };
   const begin = (known?: KnownMeaning, binding?: Binding) => {
     setEdit(binding); setDraft(binding?.definition ?? {...empty(), term: known?.term ?? "", definition: known?.definition ?? "", columns: known?.columns ?? []});
   };
-  const resolve = async (e: FormEvent) => {e.preventDefault(); const r = await act.run(() => groundingApi.resolve(wsId, question, model)); if (r) setReport(r);};
+  const resolve = async (e: FormEvent) => {e.preventDefault(); const sequence = ++resolveSequence.current; const r = await act.run(() => groundingApi.resolve(wsId, question.trim(), model)); if (r && sequence === resolveSequence.current) setReport(r);};
   const scan = async () => {
     const r = await act.run(() => request("POST", `/workspaces/${encodeURIComponent(wsId)}/knowledge/glossary/scan`, {use_model: model, include_ask: true, include_descriptions: true}));
     if (r) setNotice("Suggestions are ready in the review queue. Review them, then map the relevant definitions here.");
   };
   return <div className="stack grounding-studio">
+    <UsageGuide wsId={wsId} />
     <Card title="Context and mapping coverage" label="Context mapping coverage">
       <p>Understand the question from reviewed knowledge and domain context first. Ask a person only when a material meaning remains unresolved.</p>
       <ErrorBox error={data.error} onRetry={data.reload} />
@@ -44,11 +50,13 @@ export function ContextGrounding({wsId, canEdit}: {wsId: string; canEdit: boolea
       {notice && <Notice tone="success">{notice}</Notice>}
     </Card>
     <Card title="Try a question before investigating" label="Resolve business meaning">
-      <form className="form" onSubmit={resolve}><Field label="Business question" htmlFor={`${id}-question`}><textarea id={`${id}-question`} minLength={5} maxLength={4000} required value={question} onChange={e => setQuestion(e.target.value)} /></Field>
-        <label className="toggle"><input type="checkbox" checked={model} onChange={e => setModel(e.target.checked)} /><span>Use model assistance after reading reviewed knowledge</span></label>
-        <button className="btn btn-primary" disabled={act.busy}>Resolve meaning</button></form>
-      {report && <><p className="small">{report.used_count} supporting entries resolved from {report.available_count} available entries · model: {report.model_status}</p>
+      <form className="form" onSubmit={resolve}><Field label="Business question" htmlFor={`${id}-question`}><textarea id={`${id}-question`} minLength={5} maxLength={4000} required value={question} onChange={e => {invalidate(); setQuestion(e.target.value);}} /></Field>
+        <label className="toggle"><input type="checkbox" checked={model} onChange={e => {invalidate(); setModel(e.target.checked);}} /><span>Use model assistance after reading reviewed knowledge</span></label>
+        <button className="btn btn-primary" disabled={act.busy || !canAnalyze}>{act.busy ? "Checking context…" : "Resolve meaning"}</button>
+        {members.data && !canAnalyze && <p className="small">You can read definitions here. An analyst, editor or owner can check a question and start an investigation.</p>}</form>
+      {report && <><p role="status" className="small">{report.used_count} supporting entries resolved from {report.available_count} available entries · model: {report.model_status}</p>
         <Notice tone={report.needs_clarification ? "warning" : "success"}>{report.needs_clarification ? "Some meaning still needs review after context resolution." : "No unresolved business definitions were detected. Check the mappings before relying on the answer."}</Notice>
+        {canAnalyze && !report.needs_clarification && report.question.length >= 10 && <div className="stack"><p className="small">The meaning check is complete. Next, review the data and plan before analysis starts. Context is checked again inside the investigation.</p><StartWorkButton wsId={wsId} label="Investigate this question" initialObjective={report.question} /></div>}
         <ul className="list">{report.resolutions.map((r, i) => <li key={`${r.id}-${i}`}><strong>{r.term}</strong> <Tag>{r.state}</Tag><p className="small">{r.definition}</p><p className="small mono">{r.columns.join(", ") || "No physical mapping"}</p><span className="small muted">{r.by} · {r.id}{r.revision ? ` · v${r.revision}` : ""}</span></li>)}</ul>
         {report.clarification.length > 0 && <ul className="list">{report.clarification.map(q => <li key={q}>{q}</li>)}</ul>}
         {!!report.analysis_filters?.length&&<details open><summary>Population and reporting constraints</summary><ul className="list small">{report.analysis_filters.map((f,i)=><li key={i}>{f.column} {f.op} {JSON.stringify(f.value)}</li>)}</ul></details>}
@@ -57,7 +65,7 @@ export function ContextGrounding({wsId, canEdit}: {wsId: string; canEdit: boolea
     <ErrorBox error={act.error} />
     {draft && data.data && <MappingForm id={id} value={draft} setValue={setDraft} data={data.data} members={members.data?.members ?? []} busy={act.busy} cancel={() => setDraft(undefined)} save={async () => {
       const r = await act.run(() => groundingApi.save(wsId, draft, edit));
-      if (r) {setDraft(undefined);setNotice("Mapping saved with its owner, applicability and revision.");await data.reload();}
+      if (r) {invalidate();setDraft(undefined);setNotice("Mapping saved with its owner, applicability and revision.");await data.reload();}
     }} />}
     <Card title="Reviewed mappings and lifecycle" label="Reviewed mapping lifecycle">
       {data.data?.mappings.length === 0 && <p>No owner-managed mappings yet. Existing glossary knowledge remains available below.</p>}
@@ -71,7 +79,7 @@ export function ContextGrounding({wsId, canEdit}: {wsId: string; canEdit: boolea
       <p className="small muted">These entries are available to this scope. The question preview above and each run's context explanation show what was actually resolved.</p>
       <details><summary>Browse available definitions ({data.data?.available_knowledge.length ?? 0})</summary><ul className="list">{data.data?.available_knowledge.map(k => <li key={k.id}><strong>{k.term}</strong><p className="small">{k.definition}</p><p className="small mono">{k.columns.join(", ") || "No resolved column mapping"}</p>{canEdit && <button className="btn btn-sm" onClick={() => begin(k)}>Review mapping for {k.term}</button>}</li>)}</ul></details>
     </Card>
-    <GoldenQuestions wsId={wsId} canEdit={canEdit} catalog={data.data?.catalog ?? []} />
+    <details className="usage-guide"><summary>For owners: test saved questions and prepare a pilot</summary><GoldenQuestions wsId={wsId} canEdit={canEdit} canAnalyze={canAnalyze} catalog={data.data?.catalog ?? []} /></details>
   </div>;
 }
 
@@ -102,7 +110,8 @@ function MappingForm({id,value,setValue,data,members,busy,save,cancel}: {id:stri
     </fieldset>}
     {value.predicate && <fieldset><legend>Typed rule</legend><Field label="Rule column" htmlFor={`${id}-rule-column`}><select id={`${id}-rule-column`} required value={value.predicate.column} onChange={e=>set({predicate:{...value.predicate!,column:e.target.value}})}>{choices(value.predicate.column)}</select></Field>
       <Field label="Rule comparison" htmlFor={`${id}-op`}><select id={`${id}-op`} value={value.predicate.op} onChange={e=>set({predicate:{...value.predicate!,op:e.target.value as "="}})}>{["=","!=",">",">=","<","<="].map(op=><option key={op}>{op}</option>)}</select></Field>
-      <Field label="Rule value" htmlFor={`${id}-rule-value`}><input id={`${id}-rule-value`} required value={String(value.predicate.value)} onChange={e=>set({predicate:{...value.predicate!,value:e.target.value}})}/></Field>
+      <Field label="Rule value type" htmlFor={`${id}-rule-type`} hint="Match the data type of the selected column. Text false and boolean false have different meanings."><select id={`${id}-rule-type`} value={typeof value.predicate.value} onChange={e=>set({predicate:{...value.predicate!,value:e.target.value==="boolean"?true:e.target.value==="number"?0:""}})}><option value="string">Text or code</option><option value="number">Number</option><option value="boolean">True / false</option></select></Field>
+      <Field label="Rule value" htmlFor={`${id}-rule-value`}>{typeof value.predicate.value==="boolean"?<select id={`${id}-rule-value`} value={String(value.predicate.value)} onChange={e=>set({predicate:{...value.predicate!,value:e.target.value==="true"}})}><option value="true">True</option><option value="false">False</option></select>:<input id={`${id}-rule-value`} type={typeof value.predicate.value==="number"?"number":"text"} step="any" required value={String(value.predicate.value)} onChange={e=>set({predicate:{...value.predicate!,value:typeof value.predicate!.value==="number"?Number(e.target.value):e.target.value}})}/>}</Field>
       <p className="small muted">Population filters constrain hypothesis tests on the mapped table. Quality assertions can be checked on a bounded sample; policy guidance never executes an operational action.</p>
     </fieldset>}
     <div className="grid-2"><Field label="Domain applicability" htmlFor={`${id}-domain`}><select id={`${id}-domain`} value={value.domain} onChange={e=>set({domain:e.target.value})}><option value="">Scoped workspace knowledge</option>{data.domains.map(d=><option key={d}>{d}</option>)}</select></Field>
@@ -115,7 +124,7 @@ function MappingForm({id,value,setValue,data,members,busy,save,cancel}: {id:stri
   </form></Card>;
 }
 
-function GoldenQuestions({wsId,canEdit,catalog}: {wsId:string;canEdit:boolean;catalog:Studio["catalog"]}) {
+function GoldenQuestions({wsId,canEdit,canAnalyze,catalog}: {wsId:string;canEdit:boolean;canAnalyze:boolean;catalog:Studio["catalog"]}) {
   const data=useAsync(()=>groundingApi.golden(wsId),[wsId]);const act=useAction();const id=useId();
   const [question,setQuestion]=useState("");const [expected,setExpected]=useState<string[]>([]);const [clarify,setClarify]=useState(false);const [model,setModel]=useState(false);
   return <Card title="Golden questions and pilot preparation" label="Golden question evaluation"><p>Save owner-reviewed questions and expected mappings. Each evaluation checks up to 30 questions for grounding and clarification, separately from numerical-answer accuracy and real analyst results.</p>
@@ -127,7 +136,7 @@ function GoldenQuestions({wsId,canEdit,catalog}: {wsId:string;canEdit:boolean;ca
       <label className="toggle"><input type="checkbox" checked={clarify} onChange={e=>setClarify(e.target.checked)}/><span>Expect a clarification instead of a guessed definition</span></label>
       <button className="btn" disabled={act.busy}>Save golden question</button></form></details>}
     <label className="toggle"><input type="checkbox" checked={model} onChange={e=>setModel(e.target.checked)}/><span>Include model assistance in this evaluation (uses model budget)</span></label>
-    <button className="btn btn-primary" disabled={act.busy||!data.data?.questions.length} onClick={async()=>{await act.run(()=>groundingApi.evaluate(wsId,model));await data.reload();}}>Evaluate grounding</button>
+    <button className="btn btn-primary" disabled={act.busy||!canAnalyze||!data.data?.questions.length} onClick={async()=>{await act.run(()=>groundingApi.evaluate(wsId,model));await data.reload();}}>Evaluate grounding</button>
     {data.data?.evaluations.map(e=><details key={e.id}><summary>{e.result.passed} / {e.result.total} grounding checks passed · {e.result.use_model?"Model assisted":"Reviewed knowledge only"}</summary><ul className="list small">{e.result.cases.map(c=><li key={c.id}>{c.passed?"Passed":"Needs review"}: {c.question}</li>)}</ul></details>)}
     <p className="small"><Link to={to.workspace(wsId)}>Record real analyst timings and reviewed outcomes in the workspace pilot scorecard</Link></p>
   </Card>;

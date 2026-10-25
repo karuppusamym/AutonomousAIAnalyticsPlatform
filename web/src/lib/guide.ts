@@ -257,6 +257,9 @@ export function tour(id: TourId): Tour {
 
 /** The words the product uses, in plain language. */
 export const TERMS: { term: string; meaning: string }[] = [
+  { term: "Context & mappings", meaning: "Reviewed business meanings linked to data columns, with owners and validity dates. Try a question here before investigating." },
+  { term: "Hypothesis", meaning: "A possible explanation to test, not an established fact. Supported means the test found evidence; rejected means it did not support that explanation; inconclusive means it could not decide." },
+  { term: "Golden question", meaning: "An owner-reviewed example used to check that the app chooses the expected meanings and columns, or asks for clarification. This does not check numerical-answer accuracy." },
   { term: "Workspace", meaning: "A team's space: its data connections, members, policy and everything produced from them." },
   { term: "Source", meaning: "A connection to a database, warehouse, application or uploaded files." },
   { term: "Crawl", meaning: "Reading a source's structure and profiling its columns. Re-crawls detect changes (drift) and keep your edits." },

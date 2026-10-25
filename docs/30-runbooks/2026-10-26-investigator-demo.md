@@ -102,3 +102,7 @@ use the verified SQL workflows for the demo. See `docs/60-delivery/evidence/demo
    the real analyst trial.
 
 Verification and remaining limits: [value increment evidence](../60-delivery/evidence/investigation-value-20261025.md).
+
+## Simple context walkthrough
+
+Open Operations → Catalog & definitions → Context & mappings. Expand the short usage guide. Try “Compare SLA breach rates by assignment group using the existing made_sla field.” Show resolved definitions, then choose **Investigate this question** to show the filled-in question and preflight. Close the dialog unless a person is ready to start and review the plan. On a phone, demonstrate **Choose a data section**. The separate live browser check covers this journey without creating workspaces or approving work.

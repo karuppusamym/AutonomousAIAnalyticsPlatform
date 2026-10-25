@@ -74,7 +74,8 @@ export function CatalogPage() {
       <PageHeader title="Catalog & definitions"
         subtitle={<>What the data means: tables and columns, documents, metrics and the joins between them. Connect and crawl data
           under <Link to={to.sources(wsId)}>Sources</Link>.</>} />
-      <Tabs value={tab} onChange={switchTab} tabs={TABS} />
+      <div className="catalog-section-picker"><Field label="Choose a data section" htmlFor="catalog-section"><select id="catalog-section" value={tab} onChange={e=>switchTab(e.target.value as StudioTab)}>{TABS.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}</select></Field></div>
+      <div className="catalog-section-tabs"><Tabs value={tab} onChange={switchTab} tabs={TABS} /></div>
       <div className="tab-panel">
         <Suspense fallback={<Loading />}>
           {tab === "catalog" && <CatalogTab wsId={wsId} canEdit={canEdit} />}

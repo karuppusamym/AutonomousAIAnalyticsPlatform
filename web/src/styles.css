@@ -225,7 +225,7 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
 .brand-mark { color: var(--gold); font-size: 1.1rem; }
 .topbar :focus-visible { outline-color: var(--gold); }
 .topbar > .btn:not(.btn-ghost), .topbar-user > .btn:not(.btn-ghost) { background: transparent; color: var(--on-brand); border-color: rgba(255, 255, 255, 0.55); }
-.topbar > .btn:not(.btn-ghost):hover:not(:disabled), .topbar-user > .btn:not(.btn-ghost):hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+.topbar > .btn:not(.btn-ghost):hover:not(:disabled), .topbar-user > .btn:not(.btn-ghost):hover:not(:disabled) { background: var(--brand-deep); }
 .topbar .palette-trigger { color: var(--on-brand); }
 .topbar .palette-trigger .kbd { background: var(--brand-deep); color: var(--on-brand); border-color: rgba(255, 255, 255, 0.45); }
 .topbar .user-name { color: var(--on-brand); }
@@ -338,7 +338,7 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
 .btn-ghost:hover:not(:disabled) { background: var(--accent-soft); }
 .btn-ghost.btn-danger-text { color: var(--danger); }
 .topbar .btn-ghost { color: var(--on-brand); }
-.topbar .btn-ghost:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); color: var(--on-brand); }
+.topbar .btn-ghost:hover:not(:disabled) { background: var(--brand-deep); color: var(--on-brand); }
 .btn-ghost.btn-danger-text:hover:not(:disabled) { background: var(--danger-bg); }
 .btn-sm { padding: 0.3rem 0.65rem; font-size: 0.86rem; }
 .btn-xs { padding: 0.12rem 0.45rem; font-size: 0.78rem; }
@@ -1111,3 +1111,16 @@ button.job-kind-button:focus-visible { outline: 2px solid var(--accent); outline
 .grounding-studio .toggle input { flex: 0 0 auto; margin-top: 4px; }
 .grounding-studio .toggle span { min-width: 0; overflow-wrap: anywhere; }
 .value-proposal { margin-block: 12px; padding: 12px; border-left: 3px solid var(--accent); }
+
+/* Explain the everyday journey without keeping a manual above the work. */
+.usage-guide { padding: 1rem; border: 1px solid var(--border); border-radius: 0.65rem; margin-block: 0.75rem; }
+.usage-guide > summary { font-weight: 600; cursor: pointer; }
+.usage-steps { padding-left: 1.4rem; }
+.usage-steps li { margin-block: 0.75rem; line-height: 1.6; }
+.usage-terms dt { font-weight: 600; margin-top: 0.7rem; }
+.usage-terms dd { margin-left: 0; }
+.catalog-section-picker { display: none; }
+@media (max-width: 700px) {
+  .catalog-section-picker { display: block; }
+  .catalog-section-tabs { display: none; }
+}

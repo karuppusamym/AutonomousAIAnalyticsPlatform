@@ -45,13 +45,13 @@ function saveDraft(ws: string, d: Draft | null) {
 }
 
 /** The primary action: opens Start work. */
-export function StartWorkButton({ wsId, className = "btn btn-primary" }: { wsId: string; className?: string }) {
+export function StartWorkButton({ wsId, className = "btn btn-primary", label = "Start work", initialObjective }: { wsId: string; className?: string; label?: string; initialObjective?: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
   return (
     <>
-      <button type="button" ref={ref} className={className} aria-haspopup="dialog" data-tour="start-work" onClick={() => setOpen(true)}>Start work</button>
-      {open && <StartWorkDialog wsId={wsId} onClose={() => { setOpen(false); ref.current?.focus(); }} />}
+      <button type="button" ref={ref} className={className} aria-haspopup="dialog" data-tour="start-work" onClick={() => setOpen(true)}>{label}</button>
+      {open && <StartWorkDialog wsId={wsId} initialObjective={initialObjective} initialKind={initialObjective ? "explain" : undefined} onClose={() => { setOpen(false); ref.current?.focus(); }} />}
     </>
   );
 }
@@ -62,11 +62,11 @@ export function StartWorkButton({ wsId, className = "btn btn-primary" }: { wsId:
  * sends a predictably failing request. Predict and Forecast train a published ML plan (or open the spec form in Work),
  * Prepare data its panel, Monitor a new monitor; the others an investigation with a preflight.
  */
-export function StartWorkDialog({ wsId, onClose, initialKind }: { wsId: string; onClose: () => void; initialKind?: JobKindId }) {
+export function StartWorkDialog({ wsId, onClose, initialKind, initialObjective }: { wsId: string; onClose: () => void; initialKind?: JobKindId; initialObjective?: string }) {
   const ws = useAsync(() => api.getWorkspace(wsId), [wsId]);
   const sources = useAsync(() => api.listSources(wsId), [wsId]);
   const { kinds, digest, error } = useJobKinds(wsId);
-  const [draft, setDraft] = useState<Draft>(() => ({ ...loadDraft(wsId), ...(initialKind ? { kind: initialKind } : {}) }));
+  const [draft, setDraft] = useState<Draft>(() => ({ ...loadDraft(wsId), ...(initialKind ? { kind: initialKind } : {}), ...(initialObjective ? {objective: initialObjective, templateId: undefined, contextId: undefined, sourceId: undefined} : {}) }));
   const nav = useNavigate();
   const chosen = kinds?.find((k) => k.id === draft.kind && ((k.enabled && k.action === "investigate") || (k.action === "ml" && (k.enabled || k.specFirst))));
 

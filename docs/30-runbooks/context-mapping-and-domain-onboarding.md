@@ -42,3 +42,7 @@ The Context and Investigator manifests are now version 1.1.0 with declared model
 Add **Golden questions** with independently reviewed expected columns or an expected clarification. Evaluations check up to 30 cases and retain the question, expectations, actual mappings and outcomes. Normal mapping cases require an exact column set, so unrelated additional fields do not count as success.
 
 These are grounding checks, not numerical-answer accuracy or analyst productivity measurements. Continue with the [analyst pilot protocol](analyst-pilot-protocol.md), review computed answers against known results and enter actual timings/corrections in the existing workspace pilot scorecard. Rehearsals stay separate from real observations. No actual pilot outcome has been generated automatically.
+
+## Simplified question handoff
+
+Open the built-in usage guide for the everyday journey and result terminology. After a successful meaning check, **Investigate this question** opens the existing Start work preflight with the question filled in; it does not start analysis automatically. Changing the question, model choice or a saved mapping clears the old preview. Typed rule inputs distinguish text, numbers and booleans. On phones, **Choose a data section** reaches all catalog sections. Owner question evaluations remain available in an expandable section. See [everyday usage](everyday-usage.md).

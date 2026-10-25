@@ -4,6 +4,7 @@ import { api, type CatalogAsset, type Insight, type Run, type Source, type Works
 import { BriefSummary } from "../components/Brief";
 import { DataShapeCard } from "../components/DataShape";
 import { WelcomeCard } from "../components/Guide";
+import { UsageGuide } from "../components/UsageGuide";
 import { useTour } from "../components/Tour";
 import { StartWorkButton } from "../components/StartWork";
 import { WorkModesSettings } from "../components/WorkModes";
@@ -70,6 +71,7 @@ export function WorkspaceHomePage() {
         {checked && <span className="block small">Data last checked {fmtDate(checked)}.</span>}</>}
         actions={firstRun ? undefined : <StartWorkButton wsId={wsId} />} />
       <ErrorBox error={runs.error ?? sources.error} onRetry={() => { void runs.reload(); void sources.reload(); }} />
+      <UsageGuide wsId={wsId} />
       {runs.data === undefined && !runs.error && <Loading />}
       {runs.data && runs.data.length > 0 && <WelcomeCard wsId={wsId} />}
       {firstRun && <FirstRun ws={w} sources={sources} onChanged={ws.reload} />}
