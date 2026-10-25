@@ -49,7 +49,7 @@ LIVE = ("PENDING", "ACTIVE")
 QUERY_COMPILER = "sqlbuild.v1"
 # Policy fields that shape what a verdict saw (scope, masking, truncation) or how REV judged it (alpha).
 POLICY_FIELDS = ("restricted_columns", "pii_columns", "pii_access", "attribute_rules", "max_rows", "alpha")
-CONTEXT_SECTIONS = ("glossary", "business_rules", "metrics")
+CONTEXT_SECTIONS = ("glossary", "business_rules", "metrics", "reviewed_business_context", "resolved_meaning")
 SWEEP_EVERY = timedelta(hours=23)
 SWEEP_LOCK = 0x5EC0_0701
 UNKNOWABLE = "__unknowable__"  # the dependency has no fixed version now (pushdown data): never voids
@@ -182,7 +182,24 @@ def _entry_hash(e: Any) -> str:
 
 
 def _context_version(session: Session, ref: str) -> str | None:
-    from analystos.db.models import ContextEntry, KnowledgeDocument
+    from datetime import date
+
+    from analystos.db.models import ContextBinding, ContextEntry, KnowledgeDocument, WorkspaceBrief
+
+    if ref.startswith("brief:"):
+        _, workspace_id, key = ref.split(":", 2)
+        brief = session.scalar(select(WorkspaceBrief).where(WorkspaceBrief.workspace_id == workspace_id)
+                               .order_by(WorkspaceBrief.version.desc()).limit(1))
+        fact = next((f for f in (brief.assertions if brief else []) if f.get("key") == key), None)
+        return stable_hash(fact) if fact else None
+    if ref.startswith("bind_"):
+        binding = session.get(ContextBinding, ref)
+        if binding:
+            d = binding.definition
+            today = date.today().isoformat()
+            return stable_hash({"revision": binding.revision, "definition": d,
+                                "effective": (not d.get("expires_on") or d["expires_on"] >= today)
+                                             and (not d.get("effective_from") or d["effective_from"] <= today)})
 
     e = session.get(ContextEntry, ref)
     if e is not None:
@@ -288,6 +305,17 @@ def cited_context(session: Session, run_id: str, spec: Mapping[str, Any], calls:
     for term in ((package.content or {}).get("resolved_terms") or []) if package is not None else []:
         if term.get("id") and {str(c).rsplit(".", 1)[-1] for c in term.get("columns") or []} & columns:
             ids.add(str(term["id"]))
+    if package is not None:
+        for r in (package.content or {}).get("grounding", {}).get("resolutions", []):
+            if r.get("state") == "resolved" and (r.get("kind") == "population_rule" or
+                    {str(c).rsplit(".", 1)[-1] for c in r.get("columns", [])} & columns):
+                ids.add(str(r["id"]))
+                ids.update(str(i) for i in r.get("evidence_ids", []))
+        pinned = (package.content or {}).get("reviewed_context") or {}
+        for fact in pinned.get("facts", []):
+            if fact.get("key"):
+                # The context package's own workspace is the authoritative receipt namespace.
+                ids.add(f"brief:{package.workspace_id}:{fact['key']}")
     for call in calls:
         for r in call.context_receipts or []:
             if r.get("section") in CONTEXT_SECTIONS:
@@ -321,6 +349,21 @@ def insight_dependencies(session: Session, *, workspace_id: str, run_id: str, hy
     wanted += [("semantic", f"{workspace_id}/{name}") for name in metrics_for(session, workspace_id, spec)]
     calls = narrative_calls(session, run_id, narrative_source)
     wanted += [("context", cid) for cid in cited_context(session, run_id, spec, calls)]
+    expected_context = {}
+    if hypothesis_id:
+        from analystos.db.models import Hypothesis
+
+        hypothesis = session.get(Hypothesis, hypothesis_id)
+        provenance = (hypothesis.provenance or {}) if hypothesis else {}
+        for receipt in provenance.get("mapping_receipts", []):
+            if receipt.get("version_hash"):
+                expected_context[receipt["id"]] = receipt["version_hash"]
+        for receipt in provenance.get("question_receipts", []):
+            if receipt.get("version_hash"):
+                expected_context[receipt["id"]] = receipt["version_hash"]
+        for receipt in provenance.get("brief_receipts", []):
+            expected_context[receipt["id"]] = receipt["sha256"]
+        wanted += [("context", cid) for cid in expected_context]
     wanted += [("model_call", str(c.id)) for c in calls]
     deps = []
     from analystos.contracts.evidence import ManifestEntry
@@ -334,7 +377,7 @@ def insight_dependencies(session: Session, *, workspace_id: str, run_id: str, hy
         deps.append(Dependency("data", f"{e.source_id or ''}/{e.asset}",
                                e.version or f"unversioned:{e.mode}"))
     for kind, ref in dict.fromkeys(wanted):
-        v = current_version(session, kind, ref)
+        v = expected_context[ref] if kind == "context" and ref in expected_context else current_version(session, kind, ref)
         if v is not None and v != UNKNOWABLE:
             deps.append(Dependency(kind, ref, v))
     return sorted(set(deps))

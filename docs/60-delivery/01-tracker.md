@@ -28,6 +28,13 @@ crawl-time classification.
 | VALUE-03 | Evidence-linked follow-up actions with owners, due dates, impact assessments and success measures | Done | Persistence, permissions, revisions, lineage and stale-evidence completion tested; owned demo action saved and reloaded live. |
 | VALUE-04 | Pilot protocol and scorecard separating self-reported real pilot results from rehearsals | Done | Protocol and scorecard ready; persistence, failure inclusion, metric denominators and real/rehearsal separation tested. Actual pilot remains VALUE-05. |
 | VALUE-05 | Conduct a real analyst pilot and evaluate its outcomes | Not started | Requires the user's participating team/analysts and their actual task measurements. No real pilot benefit is claimed. |
+| GROUND-01 | Reviewed facts reach relevant prompts with versions, mandatory budget handling and receipts | Done | Implemented; release checks and live model/gateway evidence passed. See evidence/context-grounding-20261025.md. |
+| GROUND-02 | Resolve meaning from reviewed knowledge and model assistance before requesting clarification | Done | Grounded evidence-ID/column checks, remaining-meaning wait state and recheck implemented. |
+| GROUND-03 | Question coverage and prerequisite measure contracts drive hypothesis selection | Done | Coverage-aware Auto mode; reviewed numeric, flag-rate and elapsed-time contracts; incomplete new measures remain proposals. |
+| GROUND-04 | Mapping coverage, available/resolved/used context explanations and per-test provenance | Done | New Catalog → Context & mappings and run context explanation, responsive browser checks passed. |
+| GROUND-05 | Guided owner review of source/column mappings with lifecycle and sample checks | Done | Revisioned bindings, owner/evidence/examples, domain/source applicability, effective dates, expiry and conflicts implemented; gateway-backed bounded checks. |
+| GROUND-06 | Typed investigation filters, sampled quality assertions and non-executable policy guidance | Done | Separate kinds and approval requirements; typed filters pass the existing spec validator. |
+| GROUND-07 | Golden grounding questions and separate real-pilot preparation | Done | Owner-authored expectations, repeatable stored evaluations and existing pilot scorecard; actual trial remains VALUE-05. |
 
 The only list of work in flight. A row moves to **Done** only with a test and, where it says
 "live", a dated evidence file in the [capability register](02-capability-register.md). Finished

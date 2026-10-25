@@ -2,6 +2,8 @@
 
 25 October 2026 · branch `codex/investigator-demo`
 
+Follow-up implementation: the prompt handoff, guided mappings, lifecycle, resolution-before-clarification, question coverage, supported prerequisite metric contracts, typed investigation filters and golden grounding evaluations have now been built. This document retains the original findings as review history. Current operation and limits are described in the [onboarding runbook](../30-runbooks/context-mapping-and-domain-onboarding.md); delivery status is in the tracker.
+
 ## Decision
 
 Improve how reviewed meaning is resolved and carried into analysis before increasing model usage. The existing platform already has glossary suggestions, human review, context retrieval, semantic metrics and guarded hypothesis execution. Replacing these systems or enabling models for every step is not the first requirement.

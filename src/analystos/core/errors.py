@@ -64,6 +64,11 @@ class ReadinessBlocked(Conflict):
     code = "readiness_blocked"
 
 
+class MeaningRequired(ReadinessBlocked):
+    """Reviewed context and model assistance could not resolve material business meaning."""
+    code = "meaning_required"
+
+
 class Unauthenticated(AnalystOSError):
     code, http_status = "unauthenticated", 401
 

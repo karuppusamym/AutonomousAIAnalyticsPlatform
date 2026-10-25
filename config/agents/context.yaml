@@ -2,12 +2,12 @@
 apiVersion: analystos/v1
 kind: Agent
 id: agent.context
-version: 1.0.0
+version: 1.1.0
 summary: Context Agent
 entry: python:analystos.agents.context_agent:load_context
-determinism: deterministic
+determinism: model
 side_effect: write_internal
-cost_class: query
+cost_class: llm_small
 certification:
   status: certified
   evidence: tests/integration/test_e2e_local_run.py
@@ -26,8 +26,9 @@ spec:
   - graph.neighborhood
   - artifact.write
   prompt_version: v1
+  model_purposes: [glossary_suggestion]
   budget:
-    llm_calls: 0
+    llm_calls: 1
   policies:
     max_rows_extract: 500000
     pii_access: allowed

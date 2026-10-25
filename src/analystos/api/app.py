@@ -15,6 +15,7 @@ from analystos.api.routers import ask as ask_router
 from analystos.api.routers import bi_dashboards as bi_dashboards_router
 from analystos.api.routers import builds as builds_router
 from analystos.api.routers import context_export as context_export_router
+from analystos.api.routers import context_grounding as context_grounding_router
 from analystos.api.routers import data_shape as data_shape_router
 from analystos.api.routers import decisions as decisions_router
 from analystos.api.routers import definitions as definitions_router
@@ -111,6 +112,7 @@ app.include_router(ml_router.router)
 app.include_router(entity_matching_router.router)  # general entity matching (INT-004, N-7)
 app.include_router(pilot_router.router)  # named owners and pilot readiness (P4-09)
 app.include_router(investigation_value_router.router)
+app.include_router(context_grounding_router.router)
 app.include_router(process_router.router)  # process and task mining over event logs
 app.include_router(deliveries_router.router)  # approved external email/webhook delivery (N-3)
 app.include_router(data_shape_router.router)  # what the selected tables are good for (patterns, next steps)

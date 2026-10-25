@@ -221,6 +221,9 @@ def _decide(s, run: AnalysisRun, *, locked: bool, workspace_disabled: bool = Fal
             continue
         if task.status not in ("NEW", "WAITING_USER"):
             continue
+        if task.status == "WAITING_USER" and (task.output or {}).get("meaning_questions"):
+            waiting.append(key)
+            continue
         if not all(dep_satisfied(d, tasks, key) for d in task.depends_on):
             continue
         step = playbook.step(key)
@@ -316,7 +319,13 @@ def execute_task(run_id: str, key: str, services: Services | None = None) -> dic
         except RunCancelled as exc:
             output, status, error = {}, "CANCELLED", str(exc)
         except AnalystOSError as exc:
-            output, status, error = {}, "FAILED", f"{exc.code}: {exc.message}"
+            from analystos.core.errors import MeaningRequired
+
+            if isinstance(exc, MeaningRequired):
+                output, status, error = {"meaning_questions": exc.details.get("questions", []),
+                                         "grounding": exc.details.get("grounding", {})}, "WAITING_USER", exc.message
+            else:
+                output, status, error = {}, "FAILED", f"{exc.code}: {exc.message}"
             log.warning("task %s failed: %s", key, error)
         except Exception as exc:  # unexpected: keep the trace for the agent console
             output, status, error = {}, "FAILED", f"{type(exc).__name__}: {exc}"
@@ -349,7 +358,7 @@ def execute_task(run_id: str, key: str, services: Services | None = None) -> dic
                 task.status, task.error = "NEW", None
                 return {"status": "requeued"}
             task.status, task.output, task.error, task.finished_at = status, output, error, utcnow()
-            emit(run.workspace_id, "agent.completed" if status == "COMPLETED" else "agent.failed",
+            emit(run.workspace_id, "task.updated" if status == "WAITING_USER" else "agent.completed" if status == "COMPLETED" else "agent.failed",
                  {"task": key, "agent": task.agent_id, "status": status, "error": error}, run_id=run_id, session=s)
         return {"status": status, "error": error}
     finally:

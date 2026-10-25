@@ -22,6 +22,9 @@ def row(obj: Any, exclude: set[str] | None = None) -> dict[str, Any]:
             # The snapshot is internal context, not a second route for revealing business fact values.
             value = {**value, "reviewed_context": {k: v for k, v in pinned.items() if k != "facts"}}
             value["reviewed_context"]["fact_count"] = len(pinned.get("facts") or [])
+        if key == "output" and isinstance(value, dict) and isinstance(value.get("grounding"), dict):
+            grounding = value["grounding"]
+            value = {**value, "grounding": {k: grounding[k] for k in ("context_hash", "needs_clarification", "used_count", "available_count") if k in grounding}}
         out[key] = value.isoformat() if isinstance(value, datetime) else value
     return out
 

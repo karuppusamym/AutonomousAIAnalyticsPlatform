@@ -556,7 +556,7 @@ def compile_context(purpose: str, profile: PurposeProfile, *, objective: str, re
 
 
 # Body keys that do not change within a run or Ask thread (with the catalog and knowledge sections).
-STABLE_KEYS = ("objective", "analysis_context", "catalog")
+STABLE_KEYS = ("objective", "analysis_context", "reviewed_business_context", "catalog")
 
 
 def _select_tables(catalog: list[dict[str, Any]], query: set[str], focus: set[str], boost: set[tuple[str | None, str]],
@@ -663,7 +663,7 @@ def _drop_last_knowledge(body: dict[str, Any], profile: PurposeProfile, receipts
 # ------------------------------------------------------------------------------------ knowledge
 def load_knowledge(session: Any, workspace_id: str, sections: Iterable[str], *, run_id: str | None = None,
                    per_kind: int = 300, query: str | None = None, external: Iterable[dict[str, Any]] | None = None,
-                   candidates: int = 80) -> list[KnowledgeItem]:
+                   candidates: int = 80, assets: list[str] | None = None, denied_columns=()) -> list[KnowledgeItem]:
     """Candidate items for the requested sections: the workspace's context entries, the knowledge
     packs it sees (the platform pack holds installed domain-pack knowledge; P4-K01), verified
     findings and rejected hypotheses of *other* runs, and other providers' results (`external`:
@@ -683,6 +683,9 @@ def load_knowledge(session: Any, workspace_id: str, sections: Iterable[str], *, 
     for kind in kinds:
         limit = 20 if kind == "episode" else per_kind
         entries = workspace_rows(session, workspace_id, kinds=[kind])[:limit]
+        from analystos.services.context_grounding import filter_entries
+
+        entries = filter_entries(session, workspace_id, entries, assets, denied_columns)
         if not query:
             entries += pack_entries(session, workspace_id, kinds=[kind])[:per_kind]
         for e in entries:

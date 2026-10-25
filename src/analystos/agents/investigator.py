@@ -17,7 +17,7 @@ from analystos import methods
 from analystos.agents.common import asset_rows, catalog_for_prompt, defer_compile, llm_json, model_gate, task_output
 from analystos.artifacts.registry import link
 from analystos.capabilities import packs as pack_registry
-from analystos.contracts.analysis import AnalysisSpec, Derivation, Filter
+from analystos.contracts.analysis import AnalysisSpec, Derivation, Filter, Join
 from analystos.core.errors import InvalidInput
 from analystos.core.ids import new_id, stable_hash
 from analystos.db.base import session_scope
@@ -141,6 +141,62 @@ def with_constraints(spec: AnalysisSpec, constraints: dict[str, Any]) -> Analysi
         return spec
     existing = {(f.via, f.column, f.op, str(f.value)) for f in spec.filters}  # a joined filter is not the user's base one
     return spec.model_copy(update={"filters": spec.filters + [f for f in extra if (f.via, f.column, f.op, str(f.value)) not in existing]})
+
+
+def question_coverage(objective: str, proposals: list[dict], resolutions: list[dict] = ()) -> dict:
+    """Enough tests means coverage of the requested measure, not merely a long candidate list."""
+    addressed = set()
+    for p in proposals:
+        spec = p.get("spec") or {}
+        for d in (spec.get("outcome"), spec.get("segment"), spec.get("time")):
+            if isinstance(d, dict):
+                addressed.update(canonical_tokens(str(d.get("column", ""))))
+                addressed.update(canonical_tokens(str(d.get("end_column", ""))))
+    required = set()
+    for r in resolutions:
+        if r.get("state") == "resolved" and r.get("kind") != "population_rule":
+            for c in r.get("columns", []):
+                required.update(canonical_tokens(c.rsplit(".", 1)[-1]))
+    # Do not suppress the model for a question naming an outcome none of the proposals tests.
+    focus = set(canonical_tokens(objective))
+    distinctive = {"revenue", "profit", "cost", "breach", "sla", "resolution", "repeat", "backlog", "volume"}
+    required |= focus & distinctive
+    synonyms = {"sla": {"sla", "breach", "made"}, "breach": {"breach", "sla", "made"},
+                "resolution": {"resolved", "resolution", "duration"}, "volume": {"volume", "count"}}
+    if any((p.get("spec") or {}).get("method") == "trend" for p in proposals):
+        addressed.add("volume")
+    missing = sorted(t for t in required if not (synonyms.get(t, {t}) & addressed))
+    return {"covered": not missing and bool(proposals), "missing": missing, "addressed": sorted(addressed)}
+
+
+def metric_candidates(grounding: dict, types: dict, scope) -> list[dict]:
+    """Reviewed measure meanings become specs only through the existing closed method vocabulary."""
+    out = []
+    for r in grounding.get("resolutions", []):
+        metric = r.get("metric")
+        if r.get("state") != "resolved" or not metric:
+            continue
+        asset, col = metric["outcome_column"].rsplit(".", 1)
+        if asset not in scope.assets:
+            continue
+        typ = types.get(asset, {}).get(col)
+        duration = metric.get("calculation") == "duration_hours"
+        if typ not in {"numeric", "boolean"} and metric.get("true_value") is None and not duration:
+            continue
+        rate = not duration and (typ == "boolean" or metric.get("true_value") is not None or metric.get("calculation") == "flag_rate")
+        outcome = {"type": "equals" if metric.get("true_value") is not None else "is_true" if rate else "column", "column": col}
+        if duration:
+            outcome.update(type="duration_hours", end_column=metric["end_column"].rsplit(".", 1)[-1])
+        if metric.get("true_value") is not None:
+            outcome["value"] = metric["true_value"]
+        for segment, st in types.get(asset, {}).items():
+            if st != "categorical":
+                continue
+            out.append({"question": f"Does {r['term']} differ by {segment}?", "statement": f"{r['term']} differs by {segment}.",
+                        "rationale": f"Reviewed measure {r['id']} revision {r.get('revision')}", "priority": "high",
+                        "spec": {"asset": asset, "method": "rate_by_segment" if rate else "numeric_by_segment",
+                                 "outcome": outcome, "segment": {"type": "column", "column": segment}}, "pack": "reviewed_metric"})
+    return out[:12]
 
 
 # ---------------------------------------------------------------------------------- heuristics
@@ -387,8 +443,42 @@ def _accept(ctx: RunContext, proposals: list[dict[str, Any]], types, *, origin: 
             continue
         try:
             spec = AnalysisSpec.model_validate(raw)
+            population_changed = False
+            question_filter_error = None
+            for requested in getattr(ctx, "_resolved_grounding", {}).get("analysis_filters", []):
+                asset, column = requested["column"].rsplit(".", 1)
+                via = None
+                if asset != spec.asset:
+                    lookup = next((x for x in lookups if x.from_asset == spec.asset and x.to_asset == asset), None)
+                    if lookup is None:
+                        question_filter_error = "requested population cannot be reached through a validated lookup"
+                        break
+                    via = lookup.from_column
+                    if not spec.join(via):
+                        spec = spec.model_copy(update={"joins": [*spec.joins, Join(asset=asset, from_column=via, to_column=lookup.to_column)]})
+                op = {"not_in": "not in"}.get(requested["op"], requested["op"])
+                if not any(f.column == column and f.via == via and f.op == op and f.value == requested["value"] for f in spec.filters):
+                    population_changed = True
+                    spec = spec.model_copy(update={"filters": [*spec.filters, Filter(column=column, via=via, op=op,
+                                                                                  value=requested["value"], origin="plan")]})
+            for r in getattr(ctx, "_resolved_grounding", {}).get("resolutions", []):
+                predicate = r.get("predicate")
+                if r.get("state") == "resolved" and r.get("kind") == "population_rule" and predicate:
+                    asset, column = predicate["column"].rsplit(".", 1)
+                    if asset == spec.asset:
+                        op = {"not_in": "not in"}.get(predicate["op"], predicate["op"])
+                        if not any(f.column == column and f.op == op and f.value == predicate["value"] for f in spec.filters):
+                            population_changed = True
+                            spec = spec.model_copy(update={"filters": [*spec.filters, Filter(column=column, op=op,
+                                                                                          value=predicate["value"], origin="policy")]})
         except ValidationError as exc:
             rejected.append({"statement": p.get("statement"), "reason": f"invalid spec: {exc.errors()[0].get('msg')}"})
+            continue
+        if question_filter_error:
+            rejected.append({"statement": p.get("statement"), "reason": question_filter_error})
+            continue
+        if origin == "carried" and population_changed:
+            rejected.append({"statement": p.get("statement"), "reason": "reviewed population changed: generate a new test instead of replaying this claim"})
             continue
         errors = validate_spec(spec, ctx.scope, types, lookups)
         if errors:
@@ -476,10 +566,32 @@ def _persist(ctx: RunContext, accepted: list[dict], *, iteration: int, round_key
         n = _next_code(s, run.id)
         for a in accepted:
             spec = a["spec"]
+            from analystos.db.models import ContextBinding
+            from analystos.evidence.verification import current_version
+            from analystos.services.context_grounding import pinned_prompt_context
+
+            mappings = [r for r in getattr(ctx, "_resolved_grounding", {}).get("resolutions", [])
+                        if r.get("state") == "resolved" and resolution_used(r, spec)]
+            for meaning in mappings:
+                if meaning["id"].startswith("bind_"):
+                    bound = s.get(ContextBinding, meaning["id"])
+                    if bound is None or bound.revision != meaning.get("revision"):
+                        from analystos.core.errors import MeaningRequired
+
+                        raise MeaningRequired("A reviewed mapping changed while planning; recheck context",
+                                              details={"questions": ["Recheck the updated business mapping"],
+                                                       "grounding": getattr(ctx, "_resolved_grounding", {})})
             h = Hypothesis(id=new_id("hyp"), workspace_id=run.workspace_id, run_id=run.id, code=f"H-{n}",
                            question=a.get("question", ""), statement=a["statement"], spec=spec, priority=a["priority"],
                            priority_score=a["priority_score"], status="approved", methods=[spec["method"]],
                            iteration=iteration, origin=a.get("origin", "agent"), parent_id=a.get("parent_id"))
+            h.provenance = {"rationale": a.get("rationale", ""), "priority_by": a.get("priority_by"),
+                            "mapping_receipts": [{"id": r["id"], "term": r["term"], "revision": r.get("revision"), "columns": r.get("columns", [])}
+                                                 | {"version_hash": current_version(s, "context", r["id"])} for r in mappings]}
+            _, brief_receipts = pinned_prompt_context(ctx.run, ctx.scope)
+            h.provenance["brief_receipts"] = brief_receipts
+            h.provenance["question_receipts"] = [{"id": ref, "version_hash": current_version(s, "context", ref)}
+                                                 for ref in getattr(ctx, "_resolved_grounding", {}).get("period_evidence_ids", [])]
             s.add(h)
             s.flush()
             key = f"test:{h.code}"
@@ -496,9 +608,24 @@ def _persist(ctx: RunContext, accepted: list[dict], *, iteration: int, round_key
     return keys
 
 
+def resolution_used(resolution, raw_spec):
+    spec = AnalysisSpec.model_validate(raw_spec)
+    referenced = {f"{spec.table_of(d)}.{column}" for d in spec.derivations() for column in d.columns()}
+    referenced |= {f"{spec.table_of(f)}.{f.column}" for f in spec.filters}
+    return bool(referenced & set(resolution.get("columns", [])))
+
+
 def generate_hypotheses(ctx: RunContext) -> dict:
     from analystos.registries.replay import replay_settings
+    from analystos.services.context_grounding import current_report
 
+    grounding = current_report(ctx, task_output(ctx.run.id, "context").get("grounding") or {})
+    if grounding.get("needs_clarification"):
+        from analystos.core.errors import MeaningRequired
+
+        raise MeaningRequired("Review the remaining business meaning before testing hypotheses",
+                              details={"questions": grounding.get("clarification", []), "grounding": grounding})
+    ctx._resolved_grounding = grounding
     replay = replay_settings(ctx.run)
     if replay is not None:
         return replay_hypotheses(ctx, replay)
@@ -507,6 +634,7 @@ def generate_hypotheses(ctx: RunContext) -> dict:
     required = {"objective": ctx.run.objective, "questions": ctx.run.plan.get("questions"), "focus": ctx.run.plan.get("focus"),
                 "user_instructions": [i.get("text") for i in ctx.run.instructions],
                 "constraints": ctx.run.constraints,
+                "resolved_meaning": grounding,
                 # the context agent's resolved terms reach the prompt as the compiler's glossary section (with receipts)
                 "known_quality_issues": [q.get("message") for q in quality if q.get("severity") in ("warning", "critical")][:10]}
     related = [r for rel in related_tables(ctx, types).values() for r in rel]
@@ -518,12 +646,16 @@ def generate_hypotheses(ctx: RunContext) -> dict:
     # "resolved" means the evidence changed — not that a different question was asked this time.
     carried, rejected = _accept(ctx, carried_forward(ctx), types, origin="carried", seen=seen)
     required["already_testing"] = [c["statement"] for c in carried]
-    payload = defer_compile(ctx, "hypothesis_generation", required)  # compiled only if the model is asked
     # Deterministic-first (admin: llm.purpose_modes.hypothesis_generation): the profile-driven playbook
     # runs first; in `auto` mode the model is only asked when the playbook is not enough.
-    rules, rej_rules = _accept(ctx, [{**p, "origin": "heuristic"} for p in heuristic_proposals(ctx, types, packs)], types,
+    proposed_rules = metric_candidates(grounding, types, ctx.scope) + heuristic_proposals(ctx, types, packs)
+    rules, rej_rules = _accept(ctx, [{**p, "origin": "heuristic"} for p in proposed_rules], types,
                                origin="heuristic", seen=set(seen))
-    enough = len(carried) + len(rules) >= platform().analysis.heuristic_hypotheses_sufficient
+    coverage = question_coverage(ctx.run.objective, carried + rules, grounding.get("resolutions", []))
+    required["question_coverage"] = coverage
+    required["existing_candidates"] = [r.get("statement") for r in rules]
+    payload = defer_compile(ctx, "hypothesis_generation", required)
+    enough = len(carried) + len(rules) >= platform().analysis.heuristic_hypotheses_sufficient and coverage["covered"]
     data, model = (llm_json(ctx, "hypothesis_generation", "hypothesis_generation.v1", payload, max_tokens=6000,
                             validate=usable_hypotheses(ctx, types))
                    if model_gate(ctx, "hypothesis_generation", payload, deterministic_ok=enough) else (None, "deterministic"))
@@ -532,7 +664,7 @@ def generate_hypotheses(ctx: RunContext) -> dict:
     # the ranking and in diverse_top go to them) and the model's add other methods and outcomes. Model-first
     # (the max_quality preset) used to drop the playbook whenever the model gave 4 usable proposals, and the
     # live P4-V01 run (2026-09-28) then missed 4 of 10 planted effects the playbook alone finds.
-    accepted, rej2 = _accept(ctx, [{**p, "origin": "heuristic"} for p in heuristic_proposals(ctx, types, packs)], types,
+    accepted, rej2 = _accept(ctx, [{**p, "origin": "heuristic"} for p in proposed_rules], types,
                              origin="heuristic", seen=seen)
     more, rejected_llm = _accept(ctx, llm_props, types, origin="agent", seen=seen)
     accepted += more
@@ -558,7 +690,7 @@ def generate_hypotheses(ctx: RunContext) -> dict:
             kind="decision", data={"questions": (data or {}).get("questions") if isinstance(data, dict) else None,
                                    "domain_packs": pack_refs})
     return {"hypotheses": len(accepted), "tasks": keys, "rejected": rejected, "source": source, "priority_by": by,
-            "domain_packs": pack_refs}
+            "domain_packs": pack_refs, "question_coverage": coverage, "grounding": grounding}
 
 
 def replay_hypotheses(ctx: RunContext, settings: dict[str, Any]) -> dict:
@@ -709,6 +841,9 @@ def _new_supported(run_id: str, round_no: int) -> int:
 
 
 def follow_ups(ctx: RunContext) -> dict:
+    from analystos.services.context_grounding import current_report
+
+    ctx._resolved_grounding = current_report(ctx, task_output(ctx.run.id, "context").get("grounding") or {})
     round_no = int(ctx.task.input.get("round", 1))
     results = _results_summary(ctx.run.id)
     supported = [r for r in results if r["status"] == "supported"]

@@ -1105,3 +1105,9 @@ button.job-kind-button:focus-visible { outline: 2px solid var(--accent); outline
 .star-fact { font-weight: 620; border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 0.15rem 0.5rem; }
 .star-arrow { color: var(--text-3); }
 .metric-candidates { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.2rem; }
+.grounding-column-picker { max-height: 260px; overflow: auto; display: grid; gap: 8px; border: 1px solid var(--border); padding: 12px; }
+.grounding-column-picker label { overflow-wrap: anywhere; }
+.grounding-studio .toggle { display: flex; white-space: normal; align-items: flex-start; }
+.grounding-studio .toggle input { flex: 0 0 auto; margin-top: 4px; }
+.grounding-studio .toggle span { min-width: 0; overflow-wrap: anywhere; }
+.value-proposal { margin-block: 12px; padding: 12px; border-left: 3px solid var(--accent); }

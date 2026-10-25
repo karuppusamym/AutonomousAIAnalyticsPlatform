@@ -158,6 +158,8 @@ function HypothesisRow({ node, question, ...rest }: { node: HypNode; question?: 
           <div className="hyp-row-body">
             {question && <p className="small"><span className="tree-kind">Question</span> {question}</p>}
             {h.conclusion && <p className="small">{h.conclusion}</p>}
+            {!!h.provenance?.rationale && <p className="small"><strong>Why this test:</strong> {h.provenance.rationale}</p>}
+            {!!h.provenance?.mapping_receipts?.length && <details><summary className="small">Definitions used for this test</summary><ul className="list small">{h.provenance.mapping_receipts.map((r,i)=><li key={i}>{r.term||r.id}{r.revision?` · v${r.revision}`:""}: {r.columns.join(", ")}</li>)}</ul></details>}
             {(strengthLine || holdoutLine) && (
               <ul className="small standing" aria-label={`How firm ${h.code} is`}>
                 {strengthLine && <li><span className="muted">Strength:</span> {strengthLine}</li>}

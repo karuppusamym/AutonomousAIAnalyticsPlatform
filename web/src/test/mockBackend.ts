@@ -15,6 +15,7 @@ import { wave2Approvals } from "./mockApprovals";
 import { mlMonitors } from "./mockMl";
 import { resetWave2, wave2Route } from "./mockWave2";
 import { investigationValueRoute, resetInvestigationValue } from "./mockInvestigationValue";
+import { groundingRoute, resetGrounding } from "./mockGrounding";
 
 export const WS = "ws_demo";
 export const RUN = "run_demo";
@@ -323,6 +324,7 @@ const state = { planned: false, buildApproval: "pending", proposed: [] as Semant
 
 export function resetMockState(): void {
   resetInvestigationValue();
+  resetGrounding();
   state.conversation = [];
   state.workModes = ["analysis", "engineering", "ml"];
   state.planned = false;
@@ -687,6 +689,8 @@ export function mockBackend(method: string, path: string, requestBody?: string |
   const W = `/workspaces/${WS}`;
   const value = investigationValueRoute(m, p, requestBody, WS, RUN_ROW, headers);
   if (value) return json(value.body, value.status);
+  const grounding = groundingRoute(m, p, requestBody, WS, headers);
+  if (grounding) return json(grounding.body, grounding.status);
   const wave2 = wave2Route(m, p, url, WS, requestBody, headers);
   if (wave2) return wave2.status === 204 ? { status: 204, body: "", contentType: "application/json" } : json(wave2.body, wave2.status);
 

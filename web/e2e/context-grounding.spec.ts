@@ -1,0 +1,30 @@
+import { USER, WS } from "../src/test/mockBackend";
+import { axeViolations, expect, signIn, test } from "./fixtures";
+
+test("owner maps a term, resolves meaning and reloads lifecycle state",async({page,api},info)=>{
+  await signIn(page,`/w/${WS}/data/catalog?tab=grounding`);
+  await page.getByRole("button",{name:"Map a business term"}).click();
+  const form=page.getByRole("region",{name:"Guided domain onboarding"});
+  await form.getByLabel("Business term",{exact:true}).fill("Repeat");
+  await form.getByLabel("Business definition").fill("Repeat flag follows the reviewed policy");
+  await form.getByLabel(/s.incident.repeat_flag/).check();
+  await form.getByLabel("Review owner").selectOption(USER.id);
+  await form.getByLabel("Supporting evidence or policy reference").fill("Incident policy v1");
+  await form.getByLabel("Validation examples and expected interpretation").fill("Repeat=true and first occurrence=false");
+  await form.getByLabel("Review state").selectOption("approved");
+  await form.getByRole("button",{name:"Save mapping"}).click();
+  await expect(page.getByText("Mapping saved with its owner, applicability and revision.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button",{name:"Review or update Repeat"})).toBeVisible();
+  await page.getByLabel("Business question",{exact:true}).fill("Why did repeat incidents increase?");
+  await page.getByRole("button",{name:"Resolve meaning",exact:true}).click();
+  await expect(page.getByText(/No unresolved business definitions/)).toBeVisible();
+  expect(await axeViolations(page)).toEqual([]);
+  await page.screenshot({path:info.outputPath("context-grounding.png"),fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  await page.emulateMedia({colorScheme:"dark"});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth)).toBeLessThanOrEqual(1);
+  expect(await axeViolations(page)).toEqual([]);
+  await page.screenshot({path:info.outputPath("context-grounding-mobile.png"),fullPage:true});
+  expect(api.unmatched).toEqual([]);
+});

@@ -297,6 +297,7 @@ export interface HoldoutCheck {
 }
 
 export interface Hypothesis {
+  provenance?: { rationale?: string; priority_by?: string; mapping_receipts?: {id:string;term?:string; revision?:number; columns:string[]}[] };
   id: string;
   workspace_id: string;
   run_id: string;

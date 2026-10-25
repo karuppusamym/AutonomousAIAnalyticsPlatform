@@ -712,3 +712,9 @@ Total OpenRouter spend for the three live benchmarks: about $3.7 (key usage $10.
 | Pilot evaluation tooling | `PilotScorecard.tsx`, scoped assessments and `analyst-pilot-protocol.md` | Rehearsals separated, failed outcomes included, metrics self-reported; real analysts and results outstanding (VALUE-05) |
 
 Validation: 17 backend/API tests, 54 relevant UI tests and four browser journeys passed; production build and contract checks passed. See [dated evidence](evidence/investigation-value-20261025.md).
+
+## 2026-10-25 — Reviewed context and hypothesis grounding (GROUND-01 through GROUND-07)
+
+Reviewed business facts and mappings now reach relevant prompts with version receipts. Question resolution uses applicable knowledge before bounded model assistance; remaining ambiguity pauses execution for review. Hypothesis selection checks requested coverage and requires reviewed contracts for new measures. The Catalog provides guided mappings, lifecycle/conflict visibility, structural sample checks and stored golden grounding evaluations. Typed population/quality contracts remain separate from prose guidance.
+
+Validation: 197 unit tests, six API/end-to-end integration tests, 50 frontend tests and five browser journeys passed. Live OpenRouter resolved the existing SLA measure without clarification; the gateway checked 1,000 mapped rows. The live mapping remains a draft. Golden grounding checks do not establish numerical-answer accuracy; actual analyst pilot results remain outstanding (VALUE-05). See [release evidence](evidence/context-grounding-20261025.md) and [owner runbook](../30-runbooks/context-mapping-and-domain-onboarding.md).

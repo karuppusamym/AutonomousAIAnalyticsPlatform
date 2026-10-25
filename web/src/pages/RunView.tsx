@@ -7,6 +7,7 @@ import { ApprovalsPanel } from "../components/ApprovalsPanel";
 import { ChangesPanel } from "../components/ChangesPanel";
 import { InvestigationBoard } from "../components/InvestigationBoard";
 import { InvestigationActions } from "../components/InvestigationActions";
+import { RunGrounding } from "../components/ContextGrounding";
 import { findingStanding, InvestigationOverview } from "../components/InvestigationOverview";
 import { isSavedRunAnswer, SavedEvidenceAnswer } from "../components/SavedEvidenceAnswer";
 import { RunLineage } from "../components/RunLineage";
@@ -117,6 +118,7 @@ export function RunViewPage() {
       <ErrorBox error={control.error} />
       {r.error && <Notice tone="danger"><strong>Investigation error:</strong> {r.error}</Notice>}
       <InvestigationOverview run={r} onExplore={() => showInvestigation("hypotheses")} onPlan={() => showInvestigation("tasks")}
+        onContext={() => {const el=document.getElementById("run-grounding");el?.scrollIntoView({block:"start"});el?.focus({preventScroll:true});}}
         onApprovals={() => {
           approvalsRef.current?.scrollIntoView({ block: "start" });
           approvalsRef.current?.focus({ preventScroll: true });
@@ -126,6 +128,7 @@ export function RunViewPage() {
         {!!r.origin.reviewed_context && <p className="small">Reviewed brief v{String((r.origin.reviewed_context as Record<string, unknown>).version)} · {String((r.origin.reviewed_context as Record<string, unknown>).fact_count ?? 0)} reviewed facts pinned.</p>}
         <p className="small muted">Reviewed business facts were pinned at start; later edits apply to future investigations.</p></Card>}
       <InvestigationActions wsId={wsId} run={r} />
+      <div id="run-grounding" tabIndex={-1}><RunGrounding wsId={wsId} runId={runId} refreshKey={r.tasks.map(t=>`${t.key}:${t.status}`).join("|")} onRecheck={() => void run.reload()} /></div>
       {pending.length > 0 && <Notice tone="warning">{pending.length} approval{pending.length > 1 ? "s" : ""} waiting — see the Approvals panel.</Notice>}
       {pinnedContext && <Card title={`Analysis context · ${pinnedContext.definition?.key ?? "saved"} v${pinnedContext.definition?.version ?? "?"}`}>
         <p><strong>Purpose:</strong> {pinnedContext.spec?.purpose}</p>

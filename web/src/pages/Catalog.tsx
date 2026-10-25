@@ -12,6 +12,7 @@ import { useAction, useAsync } from "../lib/hooks";
 
 // The studio's other tabs load on demand (the force-graph renderer among them), keeping the main bundle small.
 const KnowledgeDocs = lazyWithReload(() => import("../components/KnowledgeDocs").then((m) => ({ default: m.KnowledgeDocs })));
+const ContextGrounding = lazyWithReload(() => import("../components/ContextGrounding").then((m) => ({ default: m.ContextGrounding })));
 const ReviewQueue = lazyWithReload(() => import("../components/ReviewQueue").then((m) => ({ default: m.ReviewQueue })));
 const DefinitionsPanel = lazyWithReload(() => import("../components/DefinitionsPanel").then((m) => ({ default: m.DefinitionsPanel })));
 const AnalysisContexts = lazyWithReload(() => import("../components/AnalysisContexts").then((m) => ({ default: m.AnalysisContexts })));
@@ -38,6 +39,7 @@ const EDITOR_ROLES = new Set(["editor", "owner"]);
 type StudioTab = DataTab;
 const TABS: { id: StudioTab; label: string }[] = [
   { id: "catalog", label: "Catalog" }, { id: "brief", label: "Brief & readiness" }, { id: "documents", label: "Documents" },
+  { id: "grounding", label: "Context & mappings" },
   { id: "contexts", label: "Analysis contexts" }, { id: "review", label: "Review queue" }, { id: "metrics", label: "Metrics" }, { id: "definitions", label: "Definitions" },
   { id: "transfer", label: "Import & export" },
 ];
@@ -76,6 +78,7 @@ export function CatalogPage() {
       <div className="tab-panel">
         <Suspense fallback={<Loading />}>
           {tab === "catalog" && <CatalogTab wsId={wsId} canEdit={canEdit} />}
+          {tab === "grounding" && <ContextGrounding wsId={wsId} canEdit={canEdit} />}
           {tab === "contexts" && <AnalysisContexts wsId={wsId} canEdit={canEdit} />}
           {tab === "brief" && (
             <div className="stack">

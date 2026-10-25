@@ -3110,6 +3110,160 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{workspace_id}/grounding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Studio */
+        get: operations["studio_api_workspaces__workspace_id__grounding_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/grounding/bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Binding */
+        post: operations["create_binding_api_workspaces__workspace_id__grounding_bindings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/grounding/bindings/{binding_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Binding */
+        put: operations["update_binding_api_workspaces__workspace_id__grounding_bindings__binding_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/grounding/bindings/{binding_id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Mapping */
+        post: operations["check_mapping_api_workspaces__workspace_id__grounding_bindings__binding_id__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/grounding/golden": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Golden */
+        get: operations["golden_api_workspaces__workspace_id__grounding_golden_get"];
+        put?: never;
+        /** Create Golden */
+        post: operations["create_golden_api_workspaces__workspace_id__grounding_golden_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/grounding/golden/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Evaluate */
+        post: operations["evaluate_api_workspaces__workspace_id__grounding_golden_evaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/grounding/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve Meaning */
+        post: operations["resolve_meaning_api_workspaces__workspace_id__grounding_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/grounding/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Run Context */
+        get: operations["run_context_api_workspaces__workspace_id__grounding_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/grounding/runs/{run_id}/recheck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recheck */
+        post: operations["recheck_api_workspaces__workspace_id__grounding_runs__run_id__recheck_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{workspace_id}/guided-investigations": {
         parameters: {
             query?: never;
@@ -6439,6 +6593,52 @@ export interface components {
             /** Proposal Ids */
             proposal_ids: string[];
         };
+        /** BindingIn */
+        BindingIn: {
+            /** Columns */
+            columns?: string[];
+            /** Definition */
+            definition: string;
+            /**
+             * Domain
+             * @default
+             */
+            domain?: string;
+            /** Effective From */
+            effective_from?: string | null;
+            /**
+             * Evidence
+             * @default
+             */
+            evidence?: string;
+            /**
+             * Examples
+             * @default
+             */
+            examples?: string;
+            /** Expires On */
+            expires_on?: string | null;
+            /**
+             * Kind
+             * @default definition
+             * @enum {string}
+             */
+            kind?: "definition" | "metric" | "population_rule" | "quality_rule" | "policy";
+            metric?: components["schemas"]["MetricMeaning"] | null;
+            /** Owner Id */
+            owner_id?: string | null;
+            predicate?: components["schemas"]["PopulationRule"] | null;
+            /** Source Ids */
+            source_ids?: string[];
+            /**
+             * State
+             * @default draft
+             * @enum {string}
+             */
+            state?: "draft" | "approved" | "retired";
+            /** Term */
+            term: string;
+        };
         /** Body_crawl_dbt_manifest_api_workspaces__workspace_id__knowledge_crawl_dbt_manifest_post */
         Body_crawl_dbt_manifest_api_workspaces__workspace_id__knowledge_crawl_dbt_manifest_post: {
             /** File */
@@ -7065,6 +7265,31 @@ export interface components {
              */
             use_model?: boolean;
         };
+        /** GoldenEvaluateIn */
+        GoldenEvaluateIn: {
+            /**
+             * Use Model
+             * @default false
+             */
+            use_model?: boolean;
+        };
+        /** GoldenIn */
+        GoldenIn: {
+            /**
+             * Expect Clarification
+             * @default false
+             */
+            expect_clarification?: boolean;
+            /** Expected Columns */
+            expected_columns?: string[];
+            /**
+             * Notes
+             * @default
+             */
+            notes?: string;
+            /** Question */
+            question: string;
+        };
         /** GrantIn */
         GrantIn: {
             /** Quotas */
@@ -7457,6 +7682,36 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** MetricMeaning */
+        MetricMeaning: {
+            /**
+             * Calculation
+             * @default auto
+             * @enum {string}
+             */
+            calculation?: "auto" | "numeric_mean" | "flag_rate" | "duration_hours";
+            /** Denominator */
+            denominator: string;
+            /** End Column */
+            end_column?: string | null;
+            /**
+             * Exclusions
+             * @default
+             */
+            exclusions?: string;
+            /** Grain */
+            grain: string;
+            /** Numerator */
+            numerator: string;
+            /** Outcome Column */
+            outcome_column: string;
+            /** Time Column */
+            time_column?: string | null;
+            /** True Value */
+            true_value?: string | number | boolean | null;
+            /** Unit */
+            unit: string;
+        };
         /**
          * MetricProposalIn
          * @description API body for a user proposal.
@@ -7839,6 +8094,18 @@ export interface components {
              */
             type: "pipeline";
         };
+        /** PopulationRule */
+        PopulationRule: {
+            /** Column */
+            column: string;
+            /**
+             * Op
+             * @enum {string}
+             */
+            op: "=" | "!=" | ">" | ">=" | "<" | "<=" | "in" | "not_in";
+            /** Value */
+            value: string | number | boolean | (string | number)[];
+        };
         /**
          * Preprocessing
          * @description Fitted on training folds only and carried unchanged into validation, holdout and scoring.
@@ -8122,6 +8389,18 @@ export interface components {
             kind?: string;
             /** Run Id */
             run_id?: string | null;
+        };
+        /** ResolveIn */
+        ResolveIn: {
+            /** Question */
+            question: string;
+            /** Source Ids */
+            source_ids?: string[] | null;
+            /**
+             * Use Model
+             * @default true
+             */
+            use_model?: boolean;
         };
         /** ReviewDecision */
         ReviewDecision: {
@@ -15466,6 +15745,371 @@ export interface operations {
                 "application/json": components["schemas"]["InvestigationActionIn"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    studio_api_workspaces__workspace_id__grounding_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_binding_api_workspaces__workspace_id__grounding_bindings_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BindingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_binding_api_workspaces__workspace_id__grounding_bindings__binding_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "if-match"?: string | null;
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+                binding_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BindingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_mapping_api_workspaces__workspace_id__grounding_bindings__binding_id__check_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+                binding_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    golden_api_workspaces__workspace_id__grounding_golden_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_golden_api_workspaces__workspace_id__grounding_golden_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoldenIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evaluate_api_workspaces__workspace_id__grounding_golden_evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoldenEvaluateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_meaning_api_workspaces__workspace_id__grounding_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_context_api_workspaces__workspace_id__grounding_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recheck_api_workspaces__workspace_id__grounding_runs__run_id__recheck_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

@@ -603,6 +603,7 @@ class Hypothesis(Base):
     question: Mapped[str] = mapped_column(Text, default="")
     statement: Mapped[str] = mapped_column(Text)
     spec: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # executable analysis spec
+    provenance: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
     priority: Mapped[str] = mapped_column(String(10), default="medium")
     priority_score: Mapped[float] = mapped_column(Float, default=0.5)
     status: Mapped[str] = mapped_column(String(20), default="proposed")
@@ -2204,6 +2205,38 @@ class PilotReview(Base):
     revision: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ContextBinding(Base):
+    __tablename__ = "context_binding"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(40), index=True)
+    entry_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    term: Mapped[str] = mapped_column(String(200))
+    state: Mapped[str] = mapped_column(String(20), default="draft")
+    definition: Mapped[dict[str, Any]] = mapped_column(JSON)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = _ts()
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class GoldenQuestion(Base):
+    __tablename__ = "golden_question"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(40), index=True)
+    definition: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_by: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = _ts()
+
+
+class GroundingEvaluation(Base):
+    __tablename__ = "grounding_evaluation"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(40), index=True)
+    reviewer_id: Mapped[str] = mapped_column(String(40))
+    result: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = _ts()
 
 
 from analystos.db import column_presence  # noqa: E402,F401  (registers the absent-column filter, P7-20)

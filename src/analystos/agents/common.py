@@ -302,7 +302,9 @@ def knowledge_version_for(ctx: Any) -> str | None:
 def context_header(ctx: Any) -> dict[str, Any]:
     """Workspace header (P4-T04): stable per workspace and scope, so it sits in the cached prompt
     prefix right after the static system text. Nothing objective- or run-specific goes here."""
-    header: dict[str, Any] = {}
+    from datetime import date
+
+    header: dict[str, Any] = {"knowledge_effective_date": date.today().isoformat()}
     workspace = getattr(ctx, "workspace", None)
     if getattr(workspace, "name", None):
         header["workspace"] = workspace.name
@@ -339,6 +341,17 @@ def compile_for(ctx: Any, purpose: str, required: dict[str, Any], *, objective: 
     profile, knowledge_chars = knowledge_scope(ctx, profile)
     run = getattr(ctx, "run", None)
     context = ((getattr(run, "capabilities", None) or {}).get("analysis_context") or {}) if run else {}
+    from analystos.services.context_grounding import pinned_prompt_context
+
+    pinned, pinned_receipts = pinned_prompt_context(run, getattr(ctx, "scope", None))
+    from analystos.core.ids import stable_hash
+    for meaning in (required.get("resolved_meaning") or {}).get("resolutions", []):
+        if meaning.get("state") == "resolved":
+            pinned_receipts.append({"id": meaning["id"], "section": "resolved_meaning", "source": meaning.get("by"),
+                                    "revision": meaning.get("revision"), "columns": meaning.get("columns", []),
+                                    "sha256": stable_hash(meaning)})
+    if pinned:
+        required = {**required, "reviewed_business_context": pinned}
     if context:
         spec = context.get("spec") or {}
         # The reviewed, pinned business lens travels with every model purpose; it never changes
@@ -353,7 +366,7 @@ def compile_for(ctx: Any, purpose: str, required: dict[str, Any], *, objective: 
         catalog = (catalog_for_prompt(ctx, include_values=profile.catalog_detail == "profile", objective=objective, capped=False)
                    if "catalog" in profile.sections else None)
     if not settings.context.compiler_enabled:  # admin kill switch: the increment-3 payload, fit_payload only
-        return CompiledContext(purpose=purpose, header={}, body={**required, **({"catalog": catalog} if catalog else {})})
+        return CompiledContext(purpose=purpose, header={}, body={**required, **({"catalog": catalog} if catalog else {})}, receipts=pinned_receipts)
     header = context_header(ctx)
     limit = int(settings.llm.max_prompt_tokens * 3.6) - _SYSTEM_RESERVE_CHARS
     key = _context_key(ctx, purpose, profile, settings, objective=objective, required=required, catalog=catalog,
@@ -365,6 +378,7 @@ def compile_for(ctx: Any, purpose: str, required: dict[str, Any], *, objective: 
         return reused
     compiled, complete = _compile(ctx, purpose, profile, settings, objective=objective, required=required, catalog=catalog,
                                   reference_text=reference_text, header=header, limit=limit, knowledge_chars=knowledge_chars)
+    compiled.receipts.extend(pinned_receipts)
     if key and complete:  # a context compiled without its knowledge (load failed) is not kept
         _COMPILED.put(key, purpose, compiled, ttl=settings.context.cache_ttl_seconds, workspace_id=workspace_id)
     return compiled
@@ -407,7 +421,9 @@ def _compile(ctx: Any, purpose: str, profile: Any, settings: Any, *, objective: 
         else:
             try:
                 with session_scope() as s:
-                    knowledge = load_knowledge(s, workspace_id, sections, run_id=getattr(run, "id", None), query=query)
+                    knowledge = load_knowledge(s, workspace_id, sections, run_id=getattr(run, "id", None), query=query,
+                                               assets=getattr(getattr(ctx, "scope", None), "assets", None),
+                                               denied_columns=getattr(getattr(ctx, "scope", None), "denied_columns", ()))
                 if cache_key:
                     rows = [dataclasses.asdict(k) for k in knowledge]
                     context_cache.put(cache_key, rows, chars=len(compact_json(rows)), ttl=settings.context.cache_ttl_seconds)
@@ -543,7 +559,9 @@ def _retrieval_key(ctx: Any, sections: list[str], query: str | None) -> str | No
     if set(sections) & _SESSION_SECTIONS and session is None:
         return None
     run = getattr(ctx, "run", None)
-    return context_cache.key("retrieval", workspace_id, {"knowledge": knowledge, "sections": sorted(sections), "query": query,
+    from datetime import date
+
+    return context_cache.key("retrieval", workspace_id, {"knowledge": knowledge, "effective_date": date.today().isoformat(), "sections": sorted(sections), "query": query,
                                                          "session": session, "run": getattr(run, "id", None)})
 
 

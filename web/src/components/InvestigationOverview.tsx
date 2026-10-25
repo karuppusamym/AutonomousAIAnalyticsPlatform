@@ -15,8 +15,8 @@ export function findingStanding(finding: Insight): "verified" | "review" | "excl
   return finding.verified ? "verified" : "review";
 }
 
-export function InvestigationOverview({ run, onExplore, onPlan, onApprovals }: {
-  run: RunDetail; onExplore: () => void; onPlan: () => void; onApprovals: () => void;
+export function InvestigationOverview({ run, onExplore, onPlan, onApprovals, onContext }: {
+  run: RunDetail; onExplore: () => void; onPlan: () => void; onApprovals: () => void; onContext?: () => void;
 }) {
   const verified = run.insights.filter((i) => findingStanding(i) === "verified");
   const review = run.insights.filter((i) => findingStanding(i) === "review");
@@ -27,8 +27,11 @@ export function InvestigationOverview({ run, onExplore, onPlan, onApprovals }: {
   const findings = [...verified, ...review].slice(0, 3);
   const caveats = [...new Set([...verified, ...review].flatMap(caveatsOf))];
   const stopped = ["FAILED", "CANCELLED", "REJECTED"].includes(run.status);
+  const meaningWaiting = run.tasks.some(t => t.status === "WAITING_USER" && Array.isArray(t.output?.meaning_questions) && t.output.meaning_questions.length > 0);
   const next = stopped
     ? { title: "Review where the investigation stopped", text: "Results may be incomplete. Inspect the steps and any errors before using the findings.", action: "Inspect steps", click: onPlan }
+    : meaningWaiting
+      ? { title: "A business definition needs review", text: "Context resolution could not settle a material meaning. Review the remaining questions before testing continues.", action: "Review context", click: onContext ?? onPlan }
     : pending.length
       ? { title: "A decision is waiting", text: "Review the proposed action and its evidence. Nothing is approved by viewing this summary.", action: "Review approvals", click: onApprovals }
       : run.status === "PAUSED"

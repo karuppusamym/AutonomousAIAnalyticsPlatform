@@ -2,7 +2,7 @@
 apiVersion: analystos/v1
 kind: Agent
 id: agent.investigator
-version: 1.0.0
+version: 1.1.0
 summary: Investigation / Hypothesis Agent
 entry: python:analystos.agents.investigator:generate_hypotheses
 determinism: model
@@ -33,9 +33,10 @@ spec:
   model_purposes:
   - hypothesis_generation
   - follow_up_generation
+  - glossary_suggestion
   prompt_version: v1
   budget:
-    llm_calls: 1
+    llm_calls: 2
   policies:
     max_rows_extract: 500000
     pii_access: allowed

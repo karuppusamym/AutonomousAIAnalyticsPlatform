@@ -55,6 +55,12 @@ def search(session: Session, workspace_id: str, query: str, *, limit: int = 8, k
         out.append(_hit_entry(session, h))
         if len(seen) >= limit:
             break
+    from types import SimpleNamespace
+
+    from analystos.services.context_grounding import filter_entries
+
+    allowed = {e.id for e in filter_entries(session, workspace_id, [SimpleNamespace(**e) for e in out])}
+    out = [e for e in out if e["id"] in allowed]
     out.sort(key=lambda r: (-r["score"], r["name"], r["id"]))
     return out[:limit]
 

@@ -31,7 +31,7 @@ export function ReviewedContext({ wsId, role, compact = false }: { wsId: string;
     <details open={editing || undefined}><summary>{compact ? "Show reviewed context" : "Review definitions and corrections"}</summary>
       {facts.length ? <ul className="list small">{facts.map((f) => <li key={f.key}><strong>{f.subject || f.field.replace(/_/g, " ")}</strong>: {fmtValue(f.value)} <span className="muted">· {f.review_state} · v{f.version}</span></li>)}</ul>
         : <p className="small muted">No reviewed facts yet. Add your business definitions before interpreting a finding.</p>}
-      <p className="small"><Link to={to.data(wsId, "brief")}>Review all facts, suggestions, metrics and relationships in the catalog</Link></p>
+      <p className="small"><Link to={to.data(wsId, "grounding")}>Review context coverage and map business terms</Link> · <Link to={to.data(wsId, "brief")}>Review all facts, suggestions, metrics and relationships in the catalog</Link></p>
       {!compact && roleAtLeast(role, "editor") && <button type="button" className="btn btn-sm" onClick={() => setEditing((v) => !v)}>{editing ? "Close context editor" : "Add a definition or correction"}</button>}
       {editing && <form className="form" aria-label="Save reviewed business context" onSubmit={save}>
         <Field label="Context type" htmlFor={`${id}-kind`}><select id={`${id}-kind`} value={kind} onChange={(e) => setKind(e.target.value)}>

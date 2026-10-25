@@ -11,6 +11,7 @@ from analystos.runtime.context import RunContext
 
 def load_context(ctx: RunContext) -> dict:
     notes = [i.get("text", "") for i in ctx.run.instructions if i.get("kind") in ("add_context", "redirect")]
+    question = ctx.run.objective + "\n" + "\n".join(notes)
     pinned = (ctx.run.origin or {}).get("reviewed_context")
     if pinned:
         from analystos.services.investigation_value import visible_facts
@@ -25,6 +26,14 @@ def load_context(ctx: RunContext) -> dict:
                                          user=ctx.user, run_id=ctx.run.id, denied_columns=ctx.scope.denied_columns)
 
     package = ctx.tools().invoke("context.search", {"objective": ctx.run.objective, "assets": ctx.scope.assets}, retrieve)
+    from analystos.contracts.grounding import ResolveIn
+    from analystos.services.context_grounding import resolve
+
+    with session_scope() as s:
+        meaning = resolve(s, ctx.user, ctx.workspace.id,
+                          ResolveIn(question=question[:4000], source_ids=ctx.scope.source_ids, use_model=True),
+                          router=ctx.router, call_ctx=ctx.call_ctx(), reviewed_context=pinned, agent_ctx=ctx)
+    package["grounding"] = meaning
     if pinned:
         package["reviewed_context"] = {**pinned, "facts": facts}
     pinned_context = (ctx.run.capabilities or {}).get("analysis_context")
@@ -52,4 +61,4 @@ def load_context(ctx: RunContext) -> dict:
     ctx.say(f"Loaded context: {len(package['glossary'])} glossary entries, {len(package['metrics'])} known metrics, "
             f"{len(resolved)} business terms mapped to columns, {len(package['graph'])} graph links."
             + (f" Unmapped objective terms: {', '.join(ambiguous)}." if ambiguous else ""))
-    return {"artifact_id": art.id, "resolved_terms": resolved, "ambiguous_terms": ambiguous}
+    return {"artifact_id": art.id, "resolved_terms": resolved, "ambiguous_terms": ambiguous, "grounding": meaning}

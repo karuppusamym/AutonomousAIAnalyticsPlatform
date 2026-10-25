@@ -2,7 +2,7 @@
 
 Prepared 25 October 2026 · current implementation on `codex/investigator-demo`
 
-Review addendum: the [deeper context-path audit](../70-reviews/2026-10-25-context-and-hypothesis-deep-review.md) found that the guided run's reviewed brief is pinned and stored in its context artifact, but is not explicitly forwarded by the shared downstream prompt builder. Published analysis contexts do have that handoff. Do not interpret a pinned fact count as proof that the hypothesis model consumed every pinned fact. Fixing this handoff is the first recommended improvement.
+Implementation update: the [deeper context-path audit](../70-reviews/2026-10-25-context-and-hypothesis-deep-review.md) identified a missing prompt handoff. That path now explicitly carries scoped reviewed facts, versions and receipts. The new **Context & mappings** studio adds guided mappings, lifecycle controls and golden grounding checks. See the [onboarding runbook](context-mapping-and-domain-onboarding.md). A pinned fact count alone still does not prove a particular model was called; inspect its prompt receipts and per-test provenance.
 
 ## Executive explanation
 
@@ -134,7 +134,7 @@ The 35 glossary-linked columns out of 212 selected columns demonstrate partial l
 2. **Select and profile the right tables.** In Sources, select the intended data. In Data → Catalog, review business names, descriptions, roles, units, sensitive columns and glossary aliases. Check keys and relationship cardinality; do not join on similar-looking names alone.
 3. **Add a reviewed definition.** For a quick addition use the overview's reusable business context or Data → Brief & readiness. Add the definition, correction or prohibited interpretation and review any suggested assertions.
 4. **Add richer reference documents.** Use Data → Documents → New document in a writable pack, or Import & export for supported knowledge bundles. Capture policy, examples, exclusions, synonyms, an accountable owner, source reference and effective date. Mark reviewed only after an owner checks it.
-5. **Make data mappings explicit.** Use catalog glossary aliases for columns and the document's `analystos.mapped_columns` extension for exact references. The document editor exposes extensions under Other frontmatter. Keep the reference paths consistent with this workspace's catalog. This is currently a technical editing step; a guided mapping wizard would improve it.
+5. **Make data mappings explicit.** Use Data → Context & mappings to select real source columns, enter examples and evidence, assign an owner and review applicability. This guided editor does not require metadata JSON. Catalog aliases and document `analystos.mapped_columns` extensions remain available for existing workflows.
 6. **Define the metric and joins.** Use Data → Metrics for the exact formula, denominator, filters, time field, time zone and units. Use Definitions to review the semantic model and relationships. Narrative policy alone does not create an executable KPI or a validated join.
 7. **Check retrieval and results.** Preview the question's context using the context tooling/API, inspect run context receipts and test a small known dataset. Check both positive and negative examples. Then start a fresh guided investigation with the reviewed brief pinned.
 
@@ -157,10 +157,10 @@ Do not equate “SLA met = false” with “SLA breached = true” until nulls, 
 
 | Priority | Improvement | Why it matters |
 |---|---|---|
-| 1 | Mapping coverage and explanation screen | Show resolved, missing, ambiguous and outdated mappings; distinguish available knowledge from knowledge used in this run |
-| 2 | Guided domain onboarding | Let owners map business terms to sources/tables/columns, test examples and approve mappings without editing metadata JSON |
-| 3 | Knowledge applicability and lifecycle | Add clearer source/domain applicability, effective dates, expiry, conflicts and review ownership; flag broad unmapped rules |
-| 4 | Golden-question evaluation and real pilot | Use known answers and failed cases to measure accuracy, correction effort, time saved and repeat usage |
+| 1 | Populate and review domain mappings | The coverage screen and guided editor are implemented; domain owners still need to approve the organization's actual definitions and examples |
+| 2 | Expand owner-reviewed numerical answer evaluations | Golden grounding checks are implemented; column/clarification checks alone do not establish numerical correctness |
+| 3 | Conduct the real analyst pilot | Use actual tasks and measurements to evaluate accuracy, correction effort, time benefit and repeat usage |
+| 4 | Measure production capacity and operations | Use pilot workloads to prioritize concurrency, latency, query cost, deployment and support work |
 
 After the pilot demonstrates reliable value, measure concurrency, query latency and provider cost before selecting production scaling work. The architecture has queues, budgets, caching and versioning, but this demo does not establish enterprise capacity or production readiness.
 

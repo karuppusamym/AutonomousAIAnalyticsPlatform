@@ -78,6 +78,8 @@ EVENT_TYPES = {
     "bi_dashboard.imported", "bi_dashboard.drift_detected", "bi_dashboard.update_requested", "bi_dashboard.updated",
 }
 
+EVENT_TYPES |= {"context.binding_saved", "context.binding_validated", "context.evaluation_saved", "context.meaning_recheck", "context.golden_saved"}
+
 RUN_TERMINAL = {"COMPLETED", "FAILED", "REJECTED", "CANCELLED"}
 RUN_STATUSES = ["NEW", "PLANNING", "READY", "RUNNING", "WAITING_TOOL", "WAITING_USER", "PAUSED",
                 "EVALUATING", "VERIFYING", *sorted(RUN_TERMINAL)]
