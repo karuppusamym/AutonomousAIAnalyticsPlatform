@@ -25,7 +25,7 @@ Superset's scheduled email/screenshot report integration is separate from these 
 
 There are 11 topic drafts and eight rendered reports (HTML and Markdown). They reuse the latest completed investigation in each workspace. The draft summaries explicitly disclose saved snapshots and the need to review freshness. Existing Superset dashboards were not renamed or republished by this operation.
 
-Use Outputs → Dashboards or Outputs → Reports in the relevant workspace. New generated titles use `Workspace name / Topic` (or executive/operational title). Superset preserves the approved DashboardSpec title, so newly approved publications use the same label there. This is a naming convention, not a new Superset folder or tag feature. The existing workspace-scoped slug remains the stable identity.
+Use Outputs → Dashboards or Outputs → Reports in the relevant workspace. Lists, selection controls and search now use business titles; technical keys remain internal identities. New generated titles use `Workspace name / Topic` (or executive/operational title). Superset preserves the approved DashboardSpec title, so newly approved publications use the same label there. This is a naming convention, not a new Superset folder or tag feature. The existing workspace-scoped slug remains the stable identity.
 
 ## Review and publishing
 

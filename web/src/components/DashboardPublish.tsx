@@ -26,8 +26,8 @@ export function PublishCard({ wsId, artifact }: { wsId: string; artifact: Artifa
       ) : (
         <>
           <p className="small muted">
-            Publishing writes outside the platform, so it is a proposal that an approver decides in the approval inbox. The preview below is
-            exactly what the proposal publishes.
+            Publishing writes outside the platform, so it is a proposal that an approver decides in the approval inbox. The proposal covers the investigation’s reviewed bundle, which may include several dashboards and datasets.
+            This button opens an existing pending proposal; a new draft needs to be included in that reviewed bundle.
           </p>
           {!proposal && (
             <button type="button" className="btn btn-primary btn-sm" disabled={act.busy} onClick={() => void request()}>

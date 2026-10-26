@@ -1,3 +1,4 @@
+import { outputDisplayName } from "../lib/outputNames";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, type Artifact, type ArtifactDetail, type Insight, type ProcessAnalysis, type RecipeRun, type Run } from "../api";
@@ -108,7 +109,7 @@ export function OutputsPage() {
     if (tableNames) counts.set("table", tableNames);
   }
   const shown = scopedItems.filter((i) => (!type || typeOf(i) === type) &&
-    `${i.kind === "finding" ? i.finding.title : i.kind === "artifact" ? i.artifact.name : i.run.recipe_name} ${runById.get(analysisOf(i) ?? "")?.objective ?? ""}`.toLowerCase().includes(search.toLowerCase()));
+    `${i.kind === "finding" ? i.finding.title : i.kind === "artifact" ? `${outputDisplayName(i.artifact)} ${i.artifact.name}` : i.run.recipe_name} ${runById.get(analysisOf(i) ?? "")?.objective ?? ""}`.toLowerCase().includes(search.toLowerCase()));
   // Open the newest visible output on first visit so the detail pane is useful immediately.
   const selected = requestedSelection && shown.some((i) => i.id === requestedSelection)
     ? requestedSelection : shown[0]?.id ?? null;
@@ -160,7 +161,7 @@ export function OutputsPage() {
             {shown.map((item) => <option key={`${item.kind}-${item.id}`} value={item.id}>
               {item.kind === "finding" ? `${item.finding.code} · ${item.finding.title}`
                 : item.kind === "prepared" ? `${item.run.recipe_name} · prepared data`
-                  : `${item.artifact.name} · ${TYPE_WORD[item.type] || item.artifact.type.replace(/_/g, " ")}`}
+                  : `${outputDisplayName(item.artifact)} · ${TYPE_WORD[item.type] || item.artifact.type.replace(/_/g, " ")}`}
             </option>)}
           </select>
           <span className="muted small">Choose an item to open its detail and lineage.</span>
@@ -263,7 +264,7 @@ function OutputRow({ item: i, run }: { item: Item; run?: Run }) {
   const a = i.artifact;
   return (
     <>
-      <span className="list-button-head"><span className="clamp-1">{a.name}</span>
+      <span className="list-button-head"><span className="clamp-1">{outputDisplayName(a)}</span>
         <span className="muted small">{TYPE_WORD[i.type] || a.type.replace(/_/g, " ")} · v{a.version}</span></span>
       <span className="chip-row"><StatusBadge status={a.status} />{a.platform && <span className="tag">{a.platform}</span>}
         <span className="muted small">{fmtDate(a.created_at)}</span></span>
@@ -294,7 +295,7 @@ function ArtifactView({ id, wsId, onSelect }: { id: string; wsId: string; onSele
   const a = d.data;
   return (
     <div className="stack">
-      <Card title={<>{a.name} <span className="muted small">· {a.type.replace(/_/g, " ")} · v{a.version}</span></>} actions={<>
+      <Card title={<>{outputDisplayName(a)} <span className="muted small">· {a.type.replace(/_/g, " ")} · v{a.version}</span></>} actions={<>
         <StatusBadge status={a.status} />
         {a.external_url && <a className="btn btn-sm" href={a.external_url} target="_blank" rel="noreferrer noopener">Open in {a.platform ?? "BI"} ↗</a>}
       </>}>

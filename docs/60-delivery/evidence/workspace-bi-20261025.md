@@ -24,3 +24,7 @@ Retail drafts include Activity and volume (`art_4a54c17370e9`), Delivery reliabi
 These are additional local draft views over existing chart snapshots, not new analytical findings or newly verified metrics. They do not claim that old snapshots are current after source refresh. The eight existing Superset dashboards remain unchanged; external publication needs an exact reviewed bundle and existing human approval. The current Publish UI retrieves a pending whole-run proposal; publishing selected topic drafts independently remains future work. No email recipients, schedules or deliveries were created.
 
 See [workspace report/Superset guide](../../30-runbooks/workspace-reports-and-superset.md) for the pipeline, collection inventory, publishing constraints and remaining priorities.
+
+## Output-list follow-up
+
+The output list, selector, search and artifact heading now prefer a dashboard/report's business title over its internal artifact key. Legacy or invalid titles fall back to the original name. The Publish explanation now accurately states that it retrieves a pending whole-investigation bundle proposal rather than publishing exactly one selected draft. Production frontend build and 38 UI/contract tests passed; the real browser journey was rerun and verifies the human-readable selector title and draft preview. Existing large-bundle advisory remains.
