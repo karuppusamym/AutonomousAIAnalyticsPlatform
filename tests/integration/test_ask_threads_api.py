@@ -144,6 +144,25 @@ def _frames(text: str) -> list[tuple[str, dict]]:
     return out
 
 
+def test_example_followup_uses_prior_filtered_population_without_a_model(api, world, transport):
+    headers = _login(api, "admin@analystos.local")
+    thread = api.post(f"/api/workspaces/{world['ws']}/ask/threads", headers=headers, json={}).json()
+    transport.sql = f"SELECT COUNT(*) AS n FROM {world['table']} WHERE priority = 1"
+    endpoint = f"/api/ask/threads/{thread['id']}/turns"
+    previous = api.post(endpoint, headers=headers, json={"question":"Count incidents with priority exactly one"}).json()
+    assert previous["status"] == "answered"
+    calls = len(transport.chat_calls)
+    response = api.post(endpoint, headers=headers, json={"question":"list down few same incident"})
+    assert response.status_code == 200
+    sample = response.json()
+    assert sample["status"] == "answered" and sample["answered_by"] == "rules"
+    assert sample["result"]["row_count"] == 5
+    assert sample["provenance"]["parent_turn_id"] == previous["id"]
+    assert "priority = 1" in sample["sql"]
+    assert len(transport.chat_calls) == calls
+    assert "not a random or representative sample" in sample["explanation"]
+
+
 def test_ask_thread_streams_stages_records_decisions_and_promotes(api, world, transport):
     admin, approver = _login(api, "admin@analystos.local"), _login(api, "approver@analystos.local")
     ws, table = world["ws"], world["table"]

@@ -507,6 +507,11 @@ def ask_in_thread(user: User, thread_id: str, question: str, parameters: dict[st
         with session_scope() as s:
             ctx = adhoc_context(s, user, workspace_id)
         ctx.turn_id, ctx.thread_id, ctx.on_stage = turn_id, thread_id, stage
+        with session_scope() as s:
+            previous = s.scalar(select(AskTurn).where(AskTurn.thread_id == thread_id, AskTurn.seq < seq,
+                                                     AskTurn.status == "answered").order_by(AskTurn.seq.desc()).limit(1))
+            ctx.previous_answer = ({"id": previous.id, "sql": previous.sql,
+                                    "rules": (previous.provenance or {}).get("rules", {})} if previous else None)
         if not ctx.scope.assets:
             out = {"status": "refused", "refusal": refusal("no_scope", "No selected, ready tables are in your scope.")}
         elif mode == "analyst":

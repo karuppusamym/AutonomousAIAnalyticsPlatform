@@ -728,3 +728,7 @@ Evidence: 53 UI tests, five mock browser journeys, one real-API existing-workspa
 ## 2026-10-25 — Workspace source repair (SOURCE-REPAIR-01)
 
 Compose now shares persistent `runtime-data:/app/var` across the API and trusted workers/scheduler, excluding isolated pools. Recovered missing file inputs without deleting workspace definitions. Live checks cover all four active workspaces, six connections, 16 selected table refreshes with retained counts, six separate source schemas and four rejected cross-workspace read probes. Connections and counts survive two container recreations. Eleven static configuration checks pass; bundled ServiceNow remains a mock. See [repair evidence](evidence/workspace-source-repair-20261025.md).
+
+## 2026-10-25 — Sample-record follow-ups (ASK-SAMPLE-01)
+
+`agents/ask_samples.py` and the Ask thread service resolve small example requests using current catalog scope and a prior successful table/filter. Related details follow validated relationships; SQL still runs through QueryGateway after authorization and budget checks. Exact retail wording and a related-details request both return the same five order IDs across orders/customers/products. 126 unit tests, one Postgres API integration case and one real browser journey pass. See [dated evidence](evidence/ask-samples-20261025.md).

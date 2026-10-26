@@ -645,6 +645,11 @@ def _ask(ctx: RunContext, question: str, *, max_repairs: int = 2, parameters: di
     _stage(ctx, "scope", "Checking what you are allowed to see")
     _authorize_ask(ctx)
     _check_budget(ctx)
+    from analystos.agents.ask_samples import sample_answer
+
+    sample = sample_answer(ctx, question)
+    if sample is not None:
+        return sample
     semantic = _semantic_answer(ctx, question, parameters)
     if semantic is not None:
         return semantic

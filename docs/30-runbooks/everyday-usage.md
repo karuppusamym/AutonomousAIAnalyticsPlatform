@@ -33,3 +33,11 @@ Viewers can read definitions and evidence. Analysts can resolve questions and ru
 The software supports the real analyst pilot, but actual timings, corrections and owner sign-off must come from participating analysts. Company identity-provider configuration and certification against external warehouse instances require those environments. The optional isolated Python execution service is still unavailable locally. None of these are marked complete by a UI rehearsal.
 
 Detailed owner instructions: [Context mapping and domain onboarding](context-mapping-and-domain-onboarding.md).
+
+## See examples and related records
+
+In the Retail Orders workspace, ask **How many orders are there?**, then **Show 5 sample orders**. The app returns a few example rows. **Show 5 sample orders with related details** includes matching customer and product fields using the reviewed relationships. These prompts use the bounded catalog rule path and the query gateway; no model call is needed.
+
+A follow-up such as “list down few same order” is interpreted as a sample request only when the preceding successful answer identifies the matching table. The answer states that interpretation explicitly. A real duplicate request, a filtered new question or an unclear table keeps the normal generation/clarification path. Prior single-table filters are preserved when readable under current access.
+
+Example rows help explain records and joins. They are ordered examples, not a statistically representative sample. Use a question about the full population when starting an investigation into business causes. Related tables require validated same-source many-to-one or one-to-one relationships; unrelated tables are not joined automatically.
