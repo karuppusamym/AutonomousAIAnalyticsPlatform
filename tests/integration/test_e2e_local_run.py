@@ -125,7 +125,7 @@ def test_full_run_without_models(control_db, servicenow_url, monkeypatch):
             assert by_type.get("dataset")
             assert len(by_type.get("metric", [])) >= 3
             assert len(by_type.get("chart", [])) >= 5
-            assert {a.name for a in by_type.get("dashboard", [])} == {"executive", "operational"}
+            assert {"executive", "operational", "topic_activity"} <= {a.name for a in by_type.get("dashboard", [])}
             assert all(a.status == "published" and a.platform == "preview" for a in by_type["dashboard"])
             assert queries is not None
             assert r.summary.get("published") is True

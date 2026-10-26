@@ -732,3 +732,7 @@ Compose now shares persistent `runtime-data:/app/var` across the API and trusted
 ## 2026-10-25 — Sample-record follow-ups (ASK-SAMPLE-01)
 
 `agents/ask_samples.py` and the Ask thread service resolve small example requests using current catalog scope and a prior successful table/filter. Related details follow validated relationships; SQL still runs through QueryGateway after authorization and budget checks. Exact retail wording and a related-details request both return the same five order IDs across orders/customers/products. 126 unit tests, one Postgres API integration case and one real browser journey pass. See [dated evidence](evidence/ask-samples-20261025.md).
+
+## 2026-10-25 — Workspace report collections (BI-VIEWS-01/02)
+
+Workspace display names now prefix generated dashboards; topic collections reuse available descriptive measures and validated chart specs. Eleven local dashboard drafts and eight historical-run HTML/Markdown reports were prepared with snapshot caveats. 114 unit tests, three local full-flow integrations and a real-API browser preview pass. Existing eight Superset dashboards remain unchanged pending refreshed bundles and approval. Independent per-collection publishing remains open. See [evidence](evidence/workspace-bi-20261025.md) and [usage guide](../30-runbooks/workspace-reports-and-superset.md).
