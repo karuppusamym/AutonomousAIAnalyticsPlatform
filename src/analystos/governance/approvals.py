@@ -21,7 +21,7 @@ from analystos.governance.policy import get_workspace, load_policy, member_role
 from analystos.security.auth import APPROVER_ROLES, role_at_least
 
 # Actions whose approver must differ from the requester whatever the workspace policy says (P4-K03).
-ALWAYS_SEPARATE_DUTIES = {"semantic_metric.approve", "semantic_model.approve", "semantic_relationship.accept",
+ALWAYS_SEPARATE_DUTIES = {"semantic_model.approve", "semantic_relationship.accept",
                           "delivery_destination.authorize"}  # N-3: external egress is never self-authorized
 
 

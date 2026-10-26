@@ -33,7 +33,7 @@ export const POLICY_FIELDS: PolicyField[] = [
   { key: "restricted_columns", label: "Columns agents may never read", hint: "One per line: schema.table.column, or *.column for every table.", kind: "list" },
   { key: "publish_destinations", label: "Where outputs may be published", hint: "One destination per line, e.g. superset.", kind: "list" },
   { key: "publish_requires_approval", label: "Publishing needs an approval", hint: "Recommended; the platform may require it regardless.", kind: "bool" },
-  { key: "separation_of_duties", label: "The person who asks cannot approve", hint: "An approver must be someone other than the requester.", kind: "bool" },
+  { key: "separation_of_duties", label: "The person who asks cannot approve", hint: "When on, KPI and publication reviewers must differ from the requester. When off, an authorized requester may approve their own KPI or publication. Model/relationship review and external destination authorization still require a different reviewer.", kind: "bool" },
 ];
 
 /** A form value → the policy value (empty clears the field so the platform default applies). */

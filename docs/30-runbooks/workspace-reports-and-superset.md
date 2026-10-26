@@ -41,3 +41,9 @@ Before publishing these snapshot-based drafts, refresh the relevant analysis, ve
 - Configure scheduled report delivery only after owners select recipients, timing and the reviewed dashboard/report.
 
 Generation modules: `agents/visualization.py`, `skills/dashboard_collections.py`, `services/reports.py`; publishing: `agents/publisher.py`, `publishing/superset.py`.
+
+## Single-reviewer publishing (updated 2026-10-25)
+
+The existing **The person who asks cannot approve** switch now governs KPI approvals as well as publication approvals. With separation of duties off, a requester with approval rights can explicitly approve their own KPI or publication. With it on, a different reviewer is required. This does not disable approval, definition validation, role checks, expiry or payload/plan/policy verification. Structural model review, relationship acceptance and external delivery-destination authorization retain their separate-reviewer rules.
+
+Retail run `run_7896fbdad581` had already received publication approval `apr_5034c738fd80`, but its publish step failed at bundled KPI self-review. After the rule was made consistent with the disabled switch, the exact unchanged approved bundle was reverified and retried. Publication `pub_d685edb69e1c` succeeded: executive dashboard 16, operational 17, activity 28 and delivery 29. No new approval was fabricated or granted as a different user. All 12 published chart data requests succeeded. Earlier statements that all KPI approvals always need a different person describe the previous implementation.

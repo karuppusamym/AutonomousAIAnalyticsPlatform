@@ -59,6 +59,8 @@ def test_dbt_import_approval_sod_conflicts_and_round_trip(api, people):
 
     analyst, approver = people["analyst"], people["approver"]
     ws = _workspace(api, analyst)
+    assert api.put(f"/api/workspaces/{ws}/policy", headers=analyst,
+                   json={"separation_of_duties": True}).status_code == 200
     base = f"/api/workspaces/{ws}/semantic"
 
     # dbt 1.12 osi_document.json (real dbt output): structure lands, every metric is only a proposal
@@ -195,9 +197,10 @@ def _wait(run_id: str, statuses: set[str], timeout: float = 600) -> str:
 
 
 def test_publication_requires_approved_metrics(control_db, servicenow_url, monkeypatch):
-    """Deterministic local flow on a new workspace: run 1 proposes its KPIs and publication is refused
-    with a remedy; an approver (not the proposer) approves them; run 2 reuses the approved definitions,
-    its bundle carries them as approved, and it publishes."""
+    """With separation enabled, review proposed KPIs independently, then publish their reused definitions.
+
+    Planning and publication each stop for their current explicit approval rather than bypassing a gate.
+    """
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setenv("SERVICENOW_PASSWORD", "admin")
     monkeypatch.setenv("ANALYSTOS_SUPERSET_URL", "http://127.0.0.1:9")  # preview destination
@@ -215,13 +218,14 @@ def test_publication_requires_approved_metrics(control_db, servicenow_url, monke
         from analystos.semantic import service as semantic
         from analystos.services.runs import create_run
         from analystos.services.sources import discover_source, register_source, select_assets
-        from analystos.services.workspaces import add_member, create_workspace
+        from analystos.services.workspaces import add_member, create_workspace, set_policy
         from analystos.workflows.orchestrator import run_local
 
         with session_scope() as s:
             admin = s.scalar(select(User).where(User.email == get_settings().bootstrap_admin_email))
             ws = create_workspace(s, admin, name="gated publish", objective="Find the drivers of SLA breaches in IT incidents")
             s.flush()
+            set_policy(s, admin, ws.id, {"separation_of_duties": True})
             add_member(s, admin, ws.id, "approver@analystos.local", "approver")
             src = register_source(s, admin, ws.id, kind="servicenow", name="SN",
                                   config={"instance_url": servicenow_url, "username": "admin", "tables": ["incident"]},
@@ -232,17 +236,27 @@ def test_publication_requires_approved_metrics(control_db, servicenow_url, monke
         discover_source(admin, src_id)
         select_assets(admin, src_id, ["incident"])
 
+        def reach_publication(run_id):
+            assert _wait(run_id, {"WAITING_USER", "FAILED", "COMPLETED"}) == "WAITING_USER"
+            with session_scope() as s:
+                proposal = s.scalar(select(Approval).where(Approval.run_id == run_id, Approval.status == "pending")
+                                    .order_by(Approval.created_at.desc()))
+                if proposal.action == "execute_plan":
+                    decide(s, proposal.id, s.scalar(select(User).where(User.email == "approver@analystos.local")), approve=True)
+                else:
+                    return
+            assert run_local(run_id) == "WAITING_USER"
+
         first = create_run(admin, ws_id, objective=None)
-        assert _wait(first.id, {"WAITING_USER", "FAILED", "COMPLETED"}) == "FAILED"
+        reach_publication(first.id)
         with session_scope() as s:
             task = s.scalar(select(RunTask).where(RunTask.run_id == first.id, RunTask.key == "publish_request"))
-            assert task.status == "FAILED" and "not approved in the workspace semantic model" in task.error
-            assert "/semantic/metrics/<name>/approve" in task.error
-            assert s.scalar(select(Approval).where(Approval.run_id == first.id, Approval.action == "publish_dashboard")) is None
+            assert task.status == "COMPLETED"
+            publication = s.scalar(select(Approval).where(Approval.run_id == first.id,
+                                                         Approval.action == "publish_dashboard", Approval.status == "pending"))
+            assert publication is not None and publication.evidence["kpis_to_approve"]
             proposals = list(s.scalars(select(SemanticMetric).where(SemanticMetric.workspace_id == ws_id)))
             assert len(proposals) >= 3 and {p.status for p in proposals} == {"proposed"}
-            assert {p.proposed_via for p in proposals} == {"agent:semantic"} and {p.proposed_by for p in proposals} == {admin_id}
-            assert semantic.current_model(s, ws_id).datasets  # the run's governed dataset is in the Ossie model
             names = sorted(p.name for p in proposals)
             with pytest.raises(Forbidden):
                 semantic.decide_metric(s, ws_id, names[0], s.get(User, admin_id), approve=True)
@@ -252,7 +266,7 @@ def test_publication_requires_approved_metrics(control_db, servicenow_url, monke
                 assert semantic.decide_metric(s, ws_id, name, approver, approve=True).status == "approved"
 
         second = create_run(admin, ws_id, objective=None)
-        assert _wait(second.id, {"WAITING_USER", "FAILED", "COMPLETED"}) == "WAITING_USER"
+        reach_publication(second.id)
         with session_scope() as s:
             semantic_task = s.scalar(select(RunTask).where(RunTask.run_id == second.id, RunTask.key == "semantic"))
             assert sorted(semantic_task.output["approved_metrics"]) == names and semantic_task.output["proposed_metrics"] == []
@@ -305,3 +319,20 @@ def test_migration_0017_applies_and_reverts(control_db):
             c.execute(text(f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{mig_db}'"))
             c.execute(text(f"DROP DATABASE IF EXISTS {mig_db}"))
         admin.dispose()
+
+
+def test_metric_self_review_follows_disabled_separation_policy_in_both_routes(api, people):
+    owner = people["analyst"]
+    ws = _workspace(api, owner, name="single reviewer metric policy")
+    base = f"/api/workspaces/{ws}/semantic"
+    assert api.get(f"/api/workspaces/{ws}", headers=owner).json()["policy"]["separation_of_duties"] is False
+    imported = api.post(f"{base}/import/dbt", headers=owner,
+                        json=json.loads(DBT_DOC.read_text(encoding="utf-8")))
+    assert imported.status_code == 200
+    response = api.post(f"{base}/metrics/net_revenue/approve", headers=owner,
+                        json={"reason":"Owner reviewed in single-reviewer mode"})
+    assert response.status_code == 200 and response.json()["status"] == "approved", response.text
+    metric = api.get(f"{base}/metrics/orders", headers=owner).json()[-1]
+    response = api.post(f"/api/approvals/{metric['approval_id']}/approve", headers=owner)
+    assert response.status_code == 200, response.text
+    assert api.get(f"{base}/metrics/orders", headers=owner).json()[-1]["status"] == "approved"

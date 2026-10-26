@@ -4,8 +4,8 @@
   each metric name has its own version history and status.
 - **Approval workflow.** A proposal (from a user, an agent inside a run, or an import) is a
   `semantic_metric` row in `proposed` plus a hash-bound `Approval` (governance/approvals). Only a
-  different person with an approver role can approve it (separation of duties is enforced for this
-  action whatever the workspace policy says); approval re-verifies the payload hash and deprecates the
+  person with an approver role can approve it; a different reviewer is required when the workspace
+  separation-of-duties policy is enabled. Approval re-verifies the payload hash and deprecates the
   name's previous approved version. Nothing a model or an import writes is approved automatically.
 - **Conflicts (SEM-005).** Duplicate expressions under different names, and one name with competing
   definitions, are computed from the live rows and surfaced — never silently dropped.
@@ -363,7 +363,10 @@ def decide_metric(session: Session, workspace_id: str, name: str, user: User, *,
     row = _pending(session, workspace_id, name, version)
     if approve:
         _check_definition(session, row)
-    if row.proposed_by == user.id:
+    from analystos.governance.policy import get_workspace, load_policy
+
+    policy = load_policy(session, get_workspace(session, workspace_id))
+    if policy.separation_of_duties and row.proposed_by == user.id:
         # own session: the caller's transaction rolls back with the Forbidden, the denial must stay on record
         audit(f"user:{user.id}", "semantic.metric.self_approval_blocked", workspace_id=workspace_id, target=row.id,
               decision="deny", reasons=["separation_of_duties"])

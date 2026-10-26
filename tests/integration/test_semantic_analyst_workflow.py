@@ -58,6 +58,8 @@ def env(api):
     r = api.post("/api/workspaces", headers=analyst, json={"name": "analyst workflow", "objective": "Governed KPIs"})
     assert r.status_code == 200, r.text
     ws = r.json()["id"]
+    assert api.put(f"/api/workspaces/{ws}/policy", headers=analyst,
+                   json={"separation_of_duties": True}).status_code == 200
     for email, role in (("approver@analystos.local", "approver"), ("admin@analystos.local", "editor")):
         assert api.post(f"/api/workspaces/{ws}/members", headers=analyst, json={"email": email, "role": role}).status_code == 200
     folder = get_settings().upload_dir / ws / "shop"

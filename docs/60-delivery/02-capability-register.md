@@ -736,3 +736,7 @@ Compose now shares persistent `runtime-data:/app/var` across the API and trusted
 ## 2026-10-25 — Workspace report collections (BI-VIEWS-01/02)
 
 Workspace display names now prefix generated dashboards; topic collections reuse available descriptive measures and validated chart specs. Eleven local dashboard drafts and eight historical-run HTML/Markdown reports were prepared with snapshot caveats. 114 unit tests, three local full-flow integrations and a real-API browser preview pass. Existing eight Superset dashboards remain unchanged pending refreshed bundles and approval. Independent per-collection publishing remains open. See [evidence](evidence/workspace-bi-20261025.md) and [usage guide](../30-runbooks/workspace-reports-and-superset.md).
+
+## 2026-10-25 — Single-reviewer publishing (PUBLISH-SELF-01)
+
+Per the user's explicit request, KPI review now respects workspace separation-of-duties configuration through both API routes. Existing role/hash/policy/expiry/definition checks remain; structural model, relationship and destination reviews retain independent-review rules. The user's already-approved, unchanged retail bundle was reverified and retried successfully: four published Superset dashboards and 12 working chart data requests. Twenty integration, 44 unit and 36 UI tests pass. See [evidence](evidence/single-reviewer-publishing-20261025.md).
