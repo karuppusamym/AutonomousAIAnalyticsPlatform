@@ -11,6 +11,12 @@ check the evidence and source freshness before relying on an older finding.
 
 ## How generation works
 
+When starting from an Ask answer, **Investigate why** first opens an editable business question.
+Replace a sample request with the outcome you want explained, including the period and comparison,
+then choose **Start investigation**. Sample rows and the Ask SQL filters are not automatically the
+new run's scope. Check the proposed analysis and any clarification requests; canceling the editor
+does not start a run.
+
 1. An investigation selects authorized source tables and produces an analytical dataset and metric definitions. The model can propose analysis; validated SQL and statistics compute the numbers.
 2. The visualization agent chooses chart types, computes previews through QueryGateway, and lays out executive and operational dashboards. It now also creates topic dashboards when enough descriptive charts exist. A topic cannot invent a metric or reuse an unverified causal claim as a descriptive measure.
 3. Publication packages datasets, measures, charts and dashboards into a bundle. Governance checks current evidence and metric policy. A human approval binds the exact payload and plan hashes. The publisher verifies that approval before writing to Superset.

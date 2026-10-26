@@ -1,5 +1,14 @@
 # Capability register (evidence)
 
+## 2026-10-26 — ASK-BRIEF-01 Ask-to-investigation handoff
+
+Ask's Investigate why action opens an inline editable objective, initially the original question.
+It explains broader investigation scope, non-inheritance of SQL filters and sample limits, hypothesis
+outcomes and publication review. Only Start investigation calls the existing promotion API, passing
+the edited objective and retaining the Ask lineage path. Cancel makes no request. Tests: 33 Ask and
+downstream UI cases, production build, one browser journey and a live Retail sample-thread editor check.
+See [evidence](evidence/ask-investigation-brief-20261026.md).
+
 ## 2026-10-26 — BI-LIBRARY-01 published workspace collection
 
 Outputs now offers a searchable published dashboard/report collection across the current workspace's

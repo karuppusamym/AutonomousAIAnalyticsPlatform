@@ -233,8 +233,34 @@ describe("Ask page (P4-U02)", () => {
     fireEvent.click(within(promote).getByRole("button", { name: "Add to dashboard" }));
     expect(await within(promote).findByText(/Waiting for approval/)).toBeTruthy();
     fireEvent.click(within(promote).getByRole("button", { name: "Investigate why" }));
+    const investigation = within(promote).getByRole("form", { name: "Plan an investigation" });
+    expect(calls(fetchMock, "POST", /\/ask\/turns\/askt_1\/promote$/).map(([, init]) => JSON.parse(String(init.body)).target)).not.toContain("investigate");
+    expect(within(investigation).getByText(/not limited to those rows/)).toBeTruthy();
+    fireEvent.change(within(investigation).getByLabelText("What should the investigation explain?"), { target: { value: "Why did P1 incidents rise last month?" } });
+    fireEvent.click(within(investigation).getByRole("button", { name: "Start investigation" }));
     expect(await screen.findByRole("heading", { level: 1, name: /Why are P1 resolution times rising/ })).toBeTruthy();
+    const last = calls(fetchMock, "POST", /\/ask\/turns\/askt_1\/promote$/).at(-1)!;
+    expect(JSON.parse(String(last[1].body))).toEqual({ target: "investigate", objective: "Why did P1 incidents rise last month?" });
     await waitFor(() => expect(calls(fetchMock, "GET", new RegExp(`/analysis/${RUN}$`)).length).toBeGreaterThan(0));
+  });
+
+  it("lets the user cancel or refine an investigation without starting work", async () => {
+    const fetchMock = mockFetch();
+    renderAt(`/w/${WS}/ask`);
+    await ask("How many P1 incidents per assignment group?");
+    const promote = await screen.findByRole("region", { name: "Promote this answer" });
+    fireEvent.click(within(promote).getByRole("button", { name: "Investigate why" }));
+    const form = within(promote).getByRole("form", { name: "Plan an investigation" });
+    const objective = within(form).getByLabelText("What should the investigation explain?") as HTMLTextAreaElement;
+    expect(objective.value).toBe("How many P1 incidents per assignment group?");
+    fireEvent.change(objective, { target: { value: "    " } });
+    expect((within(form).getByRole("button", { name: "Start investigation" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(objective, { target: { value: "Why did P1 incidents rise in September?" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Cancel" }));
+    expect(within(promote).queryByRole("form", { name: "Plan an investigation" })).toBeNull();
+    expect(calls(fetchMock, "POST", /\/ask\/turns\/askt_1\/promote$/)).toHaveLength(0);
+    fireEvent.click(within(promote).getByRole("button", { name: "Investigate why" }));
+    expect((within(promote).getByLabelText("What should the investigation explain?") as HTMLTextAreaElement).value).toBe("Why did P1 incidents rise in September?");
   });
 
   it("lists, searches and reopens threads", async () => {

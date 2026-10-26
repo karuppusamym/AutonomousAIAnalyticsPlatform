@@ -404,6 +404,7 @@ test.describe("Ask (P4-U02)", () => {
     await expect(promote.getByText(/Monitor "P1 incidents per assignment group" created/)).toBeVisible();
 
     await promote.getByRole("button", { name: "Investigate why" }).click();
+    await promote.getByRole("button", { name: "Start investigation" }).click();
     await expect(page).toHaveURL(`/w/${WS}/work/investigations/${RUN}`);
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Why are P1 resolution times rising?");
     expect(api.unmatched).toEqual([]);

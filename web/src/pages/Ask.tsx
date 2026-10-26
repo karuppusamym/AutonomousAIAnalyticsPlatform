@@ -205,6 +205,8 @@ function PromoteBar({ turn, role, onRecorded }: { turn: AskTurn; role: string | 
   const navigate = useNavigate();
   const act = useAction();
   const [monitorOpen, setMonitorOpen] = useState(false);
+  const [investigationOpen, setInvestigationOpen] = useState(false);
+  const [objective, setObjective] = useState(turn.question);
   const [kind, setKind] = useState<MonitorKind>("metric_drift");
   const [op, setOp] = useState(">");
   const [value, setValue] = useState("");
@@ -235,9 +237,25 @@ function PromoteBar({ turn, role, onRecorded }: { turn: AskTurn; role: string | 
         {can("monitor") && <button type="button" className="btn btn-sm" disabled={act.busy} aria-expanded={monitorOpen} onClick={() => setMonitorOpen((o) => !o)}>{PROMOTE_LABELS.monitor}</button>}
         {can("dashboard") && <button type="button" className="btn btn-sm" disabled={act.busy} onClick={() => void promote({ target: "dashboard" })}>{PROMOTE_LABELS.dashboard}</button>}
         {can("report") && <button type="button" className="btn btn-sm" disabled={act.busy} onClick={() => void promote({ target: "report" })}>{PROMOTE_LABELS.report}</button>}
-        {can("investigate") && <button type="button" className="btn btn-sm btn-primary" disabled={act.busy} onClick={() => void promote({ target: "investigate" })}>{PROMOTE_LABELS.investigate}</button>}
+        {can("investigate") && <button type="button" className="btn btn-sm btn-primary" disabled={act.busy} aria-expanded={investigationOpen} onClick={() => setInvestigationOpen((open) => !open)}>{PROMOTE_LABELS.investigate}</button>}
       </div>
       {hint && <p className="small muted" role="note">{hint}</p>}
+      {investigationOpen && (
+        <form className="form" aria-label="Plan an investigation" onSubmit={(e) => {
+          e.preventDefault();
+          if (objective.trim().length >= 10 && objective.trim().length <= 2000) void promote({ target: "investigate", objective: objective.trim() });
+        }}>
+          <Field label="What should the investigation explain?" htmlFor={`${id}-objective`} hint="Describe the outcome, period and comparison you care about. For example: Why did late deliveries rise last month, and which products or regions contributed?">
+            <textarea id={`${id}-objective`} rows={3} required minLength={10} maxLength={2000} value={objective} onChange={(e) => setObjective(e.target.value)} />
+          </Field>
+          <p className="small muted">This starts a new analysis using data you can access in this workspace. Sample rows are examples; the investigation is not limited to those rows and does not automatically reuse this answer’s SQL filters. Include any required period or population in your question; review the proposed plan before execution.</p>
+          <p className="small muted">The investigation tests possible explanations. A hypothesis may be supported, rejected or inconclusive; publishing its outputs still requires the applicable approval.</p>
+          <div className="form-actions">
+            <button type="button" className="btn btn-sm" onClick={() => setInvestigationOpen(false)}>Cancel</button>
+            <button type="submit" className="btn btn-sm btn-primary" disabled={act.busy || objective.trim().length < 10 || objective.trim().length > 2000}>{act.busy ? "Starting…" : "Start investigation"}</button>
+          </div>
+        </form>
+      )}
       {monitorOpen && (
         <form className="form-row" aria-label="New monitor" onSubmit={submitMonitor}>
           <Field label="Watch for" htmlFor={`${id}-kind`}>
