@@ -5,6 +5,7 @@ import { api, type Artifact, type ArtifactDetail, type Insight, type ProcessAnal
 import { useAuth } from "../auth";
 import { ChartView } from "../components/Chart";
 import { PublishCard } from "../components/DashboardPublish";
+import { PublishedOutputs } from "../components/PublishedOutputs";
 import { DashboardPreview } from "../components/DashboardPreview";
 import { ExistingDashboards } from "../components/ExistingDashboards";
 import { LineageGraph } from "../components/LineageGraph";
@@ -124,6 +125,8 @@ export function OutputsPage() {
   return (
     <div className="page outputs-page">
       <PageHeader title="Outputs" subtitle="Findings and stories belong to the investigation question that produced them. Choose an investigation to review its outputs." />
+      {!insightId && (!type || type === "dashboard" || type === "report") && <PublishedOutputs wsId={wsId} artifacts={artifacts.data ?? []}
+        onSelect={(a) => { setSearch(""); set({ type: a.type, artifact: a.id, analysis: a.run_id, dashboard: null, run: null }); }} />}
       <nav className="chip-row type-filter" aria-label="Filter outputs by type">
         <Link className={`chip ${type ? "" : "active"}`} aria-current={type ? undefined : "page"} to={to.outputs(wsId, { analysis: activeAnalysis ?? undefined })}>All ({scopedItems.length})</Link>
         {filters.map((f) => (

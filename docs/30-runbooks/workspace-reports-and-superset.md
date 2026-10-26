@@ -1,5 +1,14 @@
 # Workspace reports and Superset
 
+## Find published dashboards quickly
+
+Open **Outputs → Published dashboards & reports**. This searchable collection spans all investigations
+in the current workspace and shows the newest record for each published BI object. **Open in Superset**
+opens the BI dashboard; **Details & evidence** selects its originating investigation and artifact.
+Drafts remain in the normal outputs list. Superset uses a separate login session: sign in to the BI
+tool in the same browser, then reopen the dashboard link. Publication does not rerun analysis;
+check the evidence and source freshness before relying on an older finding.
+
 ## How generation works
 
 1. An investigation selects authorized source tables and produces an analytical dataset and metric definitions. The model can propose analysis; validated SQL and statistics compute the numbers.

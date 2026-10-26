@@ -1,5 +1,14 @@
 # Capability register (evidence)
 
+## 2026-10-26 — BI-LIBRARY-01 published workspace collection
+
+Outputs now offers a searchable published dashboard/report collection across the current workspace's
+investigations. Repeated records for the same platform/type/external ID show the newest record;
+drafts and other workspace records are excluded. Direct BI links retain separate BI authentication,
+while Details & evidence selects the originating artifact and investigation. Missing or unsafe URLs
+keep the evidence action available. Nine UI checks, production build and a live Retail browser check
+passed. See [evidence](evidence/published-library-20261026.md).
+
 ## 2026-10-25 — DEMO-03 cleanup and OpenRouter readiness
 
 Pinned SQLGlot to 30.20.0 after a rebuilt image installed 30.24.0 and broke the gateway's
