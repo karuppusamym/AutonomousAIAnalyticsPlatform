@@ -247,3 +247,11 @@ and a deterministic `idempotency_key`, then `raise_for_result(dispatch_isolated(
 job gets `{**job, "inputs": {artifact_id: path}}` and its returned dict becomes the JSON output `result`;
 `ctx.trial()` (context handlers) enforces `max_trials`. When the pool is not configured, `require_pool`
 raises `FeatureUnavailable` with the remedy; the manifest should declare `requires: [pool:compute-ml]`.
+
+## Persistent uploads and artifacts
+
+Compose mounts the named `runtime-data` volume at `/app/var` for the API and standard/scale workers and scheduler. This preserves workspace uploads, file-backed sources and artifacts across container replacement. Each file source still uses its workspace folder below `/app/var/uploads`; each staged source has its own analytics schema and workspace reader grants. Isolated compute pools do not receive this volume.
+
+Back up both PostgreSQL databases and this volume. A database backup alone preserves staged tables and source records, but cannot restore missing uploaded files. Ordinary `docker compose up -d` or container recreation keeps the volume; `docker compose down -v` removes named volumes and is destructive. Existing installations must copy their current `/app/var` contents into the volume before replacing their first container with this configuration. Use a reviewed backup/restore process and preserve file ownership for UID 10001.
+
+A recovered staged snapshot can serve as a demo-file recovery input only after authorized reads and type/value checks. It is not proof that the original upstream population was complete. Refresh through Sources after recovery, then recheck dependent findings whose evidence was invalidated by a data-version change.

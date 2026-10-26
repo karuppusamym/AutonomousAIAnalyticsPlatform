@@ -92,6 +92,18 @@ def test_lite_is_postgres_api_web_and_the_runbook_profiles_exist():
         assert profile in profiles and f"`{profile}`" in runbook, profile
 
 
+def test_uploads_and_artifacts_survive_recreation_and_are_shared_with_workers():
+    config = yaml.safe_load((ROOT / "compose.yaml").read_text(encoding="utf-8"))
+    assert "runtime-data" in config["volumes"]
+    for name in ("api", "worker", "scheduler", "worker-analysis", "worker-compute", "worker-publish", "worker-crawl"):
+        assert "runtime-data:/app/var" in SERVICES[name].get("volumes", []), name
+
+
+def test_isolated_compute_does_not_mount_platform_runtime_data():
+    for name in ("worker-compute-py", "worker-compute-ml"):
+        assert not any("runtime-data" in mount for mount in SERVICES[name].get("volumes", [])), name
+
+
 @pytest.mark.parametrize("script", ["deploy/superset/bootstrap.sh", "deploy/postgres/02-extensions.sh", "scripts/demo.sh"])
 def test_shell_scripts_run_in_linux_containers_from_a_windows_checkout(script):
     """A Windows checkout with core.autocrlf would give `bash\\r: not found`: .gitattributes pins LF."""

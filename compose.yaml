@@ -92,6 +92,7 @@ services:
       retries: 20
 
   api:
+    volumes: [runtime-data:/app/var]
     build:
       context: .
       dockerfile: deploy/docker/Dockerfile
@@ -142,6 +143,7 @@ services:
 
   # standard: one worker serving every task queue (config/task_queues.yaml).
   worker:
+    volumes: [runtime-data:/app/var]
     build: *worker-build
     profiles: ["standard"]
     environment: {<<: *app-env, ANALYSTOS_WORKER_QUEUES: all}
@@ -150,6 +152,7 @@ services:
     command: ["analystos", "worker"]
 
   scheduler:
+    volumes: [runtime-data:/app/var]
     build: *worker-build
     profiles: ["standard", "scale"]
     environment: *app-env
@@ -159,6 +162,7 @@ services:
   # scale: one service per worker pool (spec v3 §8): each serves only its task queue(s) and scales on its own,
   #   e.g. docker compose ... up -d --scale worker-compute=4 --scale worker-analysis=2
   worker-analysis:
+    volumes: [runtime-data:/app/var]
     build: *worker-build
     profiles: ["scale"]
     environment: {<<: *app-env, ANALYSTOS_WORKER_QUEUES: analysis}
@@ -167,6 +171,7 @@ services:
     command: ["analystos", "worker"]
 
   worker-compute:
+    volumes: [runtime-data:/app/var]
     # CPU-bound statistics in a process pool; give it CPUs rather than replicas of the other pools.
     build: *worker-build
     profiles: ["scale"]
@@ -176,6 +181,7 @@ services:
     command: ["analystos", "worker"]
 
   worker-publish:
+    volumes: [runtime-data:/app/var]
     build: *worker-build
     profiles: ["scale"]
     environment: {<<: *app-env, ANALYSTOS_WORKER_QUEUES: publish}
@@ -184,6 +190,7 @@ services:
     command: ["analystos", "worker"]
 
   worker-crawl:
+    volumes: [runtime-data:/app/var]
     build: *worker-build
     profiles: ["scale"]
     # elt runs playbook.elt_build (P4-E04): dbt parse/build via ANALYSTOS_DBT_EXECUTABLE (a dbt Core venv or image
@@ -314,5 +321,7 @@ networks:
     internal: true
 
 volumes:
+  # Shared durable uploads/artifacts: source paths must survive API/worker recreation.
+  runtime-data:
   pgdata:
   neo4jdata:
