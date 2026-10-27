@@ -69,7 +69,7 @@ AT-03, AT-04, AT-09, AT-11, AT-12; `test_tier_cannot_be_lowered`; `test_replan_i
 
 Code: `src/analystos/autonomy/` (`goals.py`, `complexity.py`, `budget.py`, `replan.py`, `models.py`),
 `api/routers/goals_v2.py`, engine hooks in `runtime/engine.py`, loops in `workflows/analysis_workflow.py` and
-`workflows/orchestrator.py`, templates in `capabilities/builtin/playbooks/`, migration `0061_goals`. Contract:
+`workflows/orchestrator.py`, templates in `capabilities/builtin/playbooks/`, migration `0064_goals`. Contract:
 [`docs/20-contracts/05-goal-api-v2.md`](../20-contracts/05-goal-api-v2.md). Deviations from §3:
 
 * **T1.** `GET /v2/runs/{id}` etc. are not under a workspace path; the run is authorized in its own workspace
