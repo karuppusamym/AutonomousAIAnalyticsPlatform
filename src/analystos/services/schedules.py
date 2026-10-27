@@ -544,6 +544,10 @@ def housekeeping() -> dict[str, Any]:
         out["freshness_alerts"] = len(check_freshness())
     except Exception:
         log.exception("pipeline freshness check failed")
+    from analystos.conversations import retention, summaries
+
+    out["conversation_summaries"] = len(summaries.summarize_idle_quietly())  # S04: idle 30 min -> summary
+    out["conversation_retention"] = retention.apply_retention_quietly()  # S04: at most hourly; skips legal holds
     try:  # N-3: approved external deliveries that are due (bounded retries; never fatal to the loop)
         from analystos.services.deliveries import process_due
 

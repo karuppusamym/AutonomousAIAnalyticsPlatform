@@ -134,6 +134,12 @@ ONLY numbers present in `history`. Return JSON: {"actions": [{"capability": str,
 Use only numbers present in `facts`. Associations, not causation. End with one line of recommended next steps.
 Return JSON: {"summary_markdown": str}.""",
 
+    "conversation_summary.v1": """Summarize a data conversation for a colleague. For each answered message write ONE short
+claim that states its answer. Quote numbers exactly as they appear in that message's `facts` or `row_count`, and name
+the message by its `seq`; never combine, round differently or invent a number. Code checks every number against the
+message it cites and drops claims that do not match. Return JSON: {"answers": [{"seq": int, "claim": str}]}.
+""" + UNTRUSTED_NOTE,
+
     "analyst_planning.v1": """You plan an analytics question into at most 4 steps. Each step is ONE standalone
 natural-language question that a single governed query can answer (a total, a breakdown by one or two dimensions, a
 trend, a ranking, or two periods side by side). You never write SQL; the platform answers each step through its own

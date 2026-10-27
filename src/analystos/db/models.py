@@ -1515,7 +1515,8 @@ class BuildJob(Base):
 
 # ------------------------------------------------------------------------------ Ask threads (P4-U02)
 class AskThread(Base):
-    """A persisted Ask conversation. Private to its creator; the workspace scopes what it can read."""
+    """A persisted Ask conversation. Private to its creator; the workspace scopes what it can read.
+    API v2 calls it a `conversation` and its turns `messages` (spec S04, `conversations/service.py`)."""
 
     __tablename__ = "ask_thread"
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
@@ -1526,6 +1527,15 @@ class AskThread(Base):
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")  # P4-06: optional If-Match on PATCH
+    # S04: where it was started, the Desk request that opened it, and the branch it continues
+    channel: Mapped[str] = mapped_column(String(20), default="ui", server_default="ui")  # ui|api|mcp|teams|slack|email
+    request_id: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    parent_conversation_id: Mapped[str | None] = mapped_column(ForeignKey("ask_thread.id", ondelete="SET NULL"),
+                                                               nullable=True, index=True)
+    branch_from_message_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    legal_hold: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    summarized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AskTurn(Base):
@@ -2307,6 +2317,12 @@ class GroundingEvaluation(Base):
     created_at: Mapped[datetime] = _ts()
 
 
+from analystos.conversations.models import (  # noqa: E402,F401  (conversation memory, S04)
+    ConversationCorrection,
+    ConversationMemoryEntry,
+    ConversationState,
+    ConversationSummary,
+)
 from analystos.db import column_presence  # noqa: E402,F401  (registers the absent-column filter, P7-20)
 from analystos.desk.models import ClassBaseline, Request, RequestEvent  # noqa: E402,F401  (Request Desk, S13)
 from analystos.tenancy.schema import attach_tenant_columns  # noqa: E402

@@ -373,6 +373,11 @@
       "default": false,
       "title": "Require Approved Metrics",
       "type": "boolean"
+    },
+    "share_conversation_summaries": {
+      "default": false,
+      "title": "Share Conversation Summaries",
+      "type": "boolean"
     }
   },
   "title": "WorkspacePolicyDoc",

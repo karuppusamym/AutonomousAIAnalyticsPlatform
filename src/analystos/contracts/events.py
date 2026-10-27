@@ -83,6 +83,10 @@ EVENT_TYPES |= {"request.created", "request.duplicate_linked", "request.follower
                 "request.state_changed", "request.escalated", "request.assigned", "request.answered", "request.accepted",
                 "request.reopened", "request.declined", "request.sla_breached"}
 
+# Conversations and memory (S04): created, branched, a non-Ask message, corrections, summaries, holds, deletion
+EVENT_TYPES |= {"conversation.created", "conversation.branched", "conversation.message", "conversation.correction_applied",
+                "conversation.summarized", "conversation.legal_hold", "conversation.deleted"}
+
 EVENT_TYPES |= {"context.binding_saved", "context.binding_validated", "context.evaluation_saved", "context.meaning_recheck", "context.golden_saved"}
 
 RUN_TERMINAL = {"COMPLETED", "FAILED", "REJECTED", "CANCELLED"}

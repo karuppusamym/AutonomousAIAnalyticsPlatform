@@ -79,6 +79,27 @@ TOOL_DEFS: dict[str, dict[str, Any]] = {
                        "schema": {"type": "object", "properties": {"workspace_id": _ws_prop(),
                                                                    "request_id": {"type": "string"}},
                                   "required": ["request_id"]}, "read_only": True},
+    "conversation.start": {"description": "Start a conversation with the analyst Request Desk: the first message becomes a "
+                                          "Desk request (triaged, answered by the governed paths or escalated). Returns the "
+                                          "conversation id, the request and, when answered, the message with its answer.",
+                           "schema": {"type": "object", "properties": {
+                               "workspace_id": _ws_prop(), "text": {"type": "string", "minLength": 3, "maxLength": 4000},
+                               "title": {"type": "string", "maxLength": 300},
+                               "priority": {"type": "string", "enum": ["low", "normal", "high", "urgent"]}},
+                               "required": ["text"]}, "read_only": False},
+    "conversation.say": {"description": "Add a message to a conversation this client started (a follow-up builds on the "
+                                        "previous answer). The message becomes a Desk request like conversation.start.",
+                         "schema": {"type": "object", "properties": {
+                             "workspace_id": _ws_prop(), "conversation_id": {"type": "string"},
+                             "text": {"type": "string", "minLength": 3, "maxLength": 4000},
+                             "priority": {"type": "string", "enum": ["low", "normal", "high", "urgent"]}},
+                             "required": ["conversation_id", "text"]}, "read_only": False},
+    "conversation.summary": {"description": "The structured summary of a conversation this client started: questions, "
+                                            "answers (each claim cites the message whose computed result it quotes), "
+                                            "corrections and open questions.",
+                             "schema": {"type": "object", "properties": {"workspace_id": _ws_prop(),
+                                                                         "conversation_id": {"type": "string"}},
+                                        "required": ["conversation_id"]}, "read_only": True},
 }
 
 
@@ -197,9 +218,80 @@ def _tool_request_status(principal: G.ClientPrincipal, ws: str, args: dict[str, 
         return {k: out.get(k) for k in _REQUEST_FIELDS}
 
 
+def _last_message(principal: G.ClientPrincipal, conversation_id: str) -> dict[str, Any] | None:
+    from analystos.conversations import state as st
+    from analystos.conversations.service import load, message_view
+
+    with session_scope() as s:
+        conv = load(s, _service_user(s, principal), conversation_id)
+        own = [t for t, inherited in st.history(s, conv) if not inherited]
+        if not own:
+            return None
+        msg = message_view(s, own[-1])
+    answer = msg["answer"]
+    result = dict(answer.get("result") or {})
+    rows = result.get("rows") or []
+    result["rows"], result["rows_returned"] = rows[:MAX_ROWS_OUT], min(len(rows), MAX_ROWS_OUT)
+    return {"id": msg["id"], "seq": msg["seq"], "text": msg["text"], "status": msg["status"],
+            "answer": {"explanation": answer.get("explanation"), "sql": answer.get("sql"), "result": result,
+                       "refusal": answer.get("refusal"), "governance": answer.get("governance"),
+                       "answered_by": answer.get("answered_by")}}
+
+
+def _conversation_turn(principal: G.ClientPrincipal, ws: str, conversation_id: str, args: dict[str, Any]) -> dict[str, Any]:
+    from analystos.desk.service import submit
+
+    with session_scope() as s:
+        user = _service_user(s, principal)
+        s.expunge(user)
+    out = submit(user, ws, str(args.get("text") or ""), channel="mcp", priority=str(args.get("priority") or "normal"),
+                 conversation_id=conversation_id)
+    return {"conversation_id": conversation_id, "request": {k: out.get(k) for k in _REQUEST_FIELDS},
+            "message": _last_message(principal, conversation_id)}
+
+
+def _tool_conversation_start(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
+    from analystos.conversations.service import create
+    from analystos.db.models import AskThread
+
+    text = str(args.get("text") or "").strip()
+    if len(text) < 3:
+        raise InvalidInput("text is required")
+    with session_scope() as s:
+        conv = create(s, _service_user(s, principal), ws, title=str(args.get("title") or text)[:300], channel="mcp")
+        conversation_id = conv.id
+    out = _conversation_turn(principal, ws, conversation_id, args)
+    with session_scope() as s:
+        s.get(AskThread, conversation_id).request_id = out["request"]["id"]
+    return out
+
+
+def _tool_conversation_say(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
+    from analystos.conversations.service import load
+
+    conversation_id = str(args.get("conversation_id") or "")
+    with session_scope() as s:
+        load(s, _service_user(s, principal), conversation_id, ws)  # participant, in this workspace, or 404
+    return _conversation_turn(principal, ws, conversation_id, args)
+
+
+def _tool_conversation_summary(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
+    from analystos.conversations import summaries
+    from analystos.conversations.service import load
+
+    conversation_id = str(args.get("conversation_id") or "")
+    with session_scope() as s:
+        user = _service_user(s, principal)
+        load(s, user, conversation_id, ws)  # participant only
+        s.expunge(user)
+    return summaries.current(user, conversation_id, refresh_if_stale=True)
+
+
 TOOL_IMPLS: dict[str, Callable[[G.ClientPrincipal, str, dict[str, Any]], dict[str, Any]]] = {
     "ask": _tool_ask, "investigate": _tool_investigate, "get_finding_evidence": _tool_finding_evidence,
     "validate_sql": _tool_validate_sql, "request.create": _tool_request_create, "request.status": _tool_request_status,
+    "conversation.start": _tool_conversation_start, "conversation.say": _tool_conversation_say,
+    "conversation.summary": _tool_conversation_summary,
 }
 
 

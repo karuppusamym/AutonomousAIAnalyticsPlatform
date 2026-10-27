@@ -113,6 +113,8 @@ class WorkspacePolicyDoc(BaseModel):
     # P4-K03: publication refuses a KPI that is not an approved metric of the workspace semantic model.
     # False here keeps workspaces created before the semantic layer working; create_workspace sets True.
     require_approved_metrics: bool = False
+    # S04: conversation summaries go to the ledger as workspace knowledge (else personal to the participant).
+    share_conversation_summaries: bool = False
 
 
 class DataScope(BaseModel):

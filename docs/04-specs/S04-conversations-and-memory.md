@@ -65,3 +65,55 @@ AT-18; `test_branch_restores_state`; `test_summary_numbers_cite_turns`; `test_pe
 | S04-T4 | Typed corrections + promotion flow | 2d |
 | S04-T5 | Retention + delete cascade + legal hold | 1.5d |
 | S04-T6 | MCP conversation tools | 1d |
+
+## 7. As built (2026-10-27, T1–T6)
+Code: `src/analystos/conversations/` (`service`, `state`, `corrections`, `summaries`, `retention`, `ledger`, `models`),
+`api/routers/conversations.py` (prefix `/v2`), MCP tools in `mcp/server.py`, migration `0061_conversations`.
+Tests: `tests/unit/test_conversations.py`, `tests/integration/test_conversations.py` (Postgres, RLS, strict tenancy).
+
+Deviations and decisions:
+* **Conversation = `ask_thread`, message = `ask_turn`** through the service layer (no SQL views). `tenant_id` is the
+  existing trigger-filled column (shown from the workspace); new columns `channel`, `request_id`,
+  `parent_conversation_id`, `branch_from_message_id`, `legal_hold`, `closed_at`, `summarized_at`.
+* **Participants** are the owner only (no sharing yet). v2 has no admin bypass to messages or state; a platform admin
+  may file a deletion request. Another member, workspace or tenant gets the same 404.
+* **Branches inherit by reference.** A branch shows its parent's messages up to the branch point (`inherited: true`),
+  continues the numbering, and its follow-ups build on the branch-point answer. State versions carry `at_seq`; a branch
+  copies the latest version with `at_seq <= N` (corrections made after N but before N+1 are included).
+  `mode=edit` = branch just before the edited message, then ask there. `mode=investigate` starts a run and records a
+  message with status `delegated` and the run id. Attachments are references (`message` | `artifact`), never content.
+* **Ledger interface.** The S03 `context_ledger_entry` table is not on `main` yet. S04 writes through
+  `conversations/ledger.py` (`ContextLedger.upsert/remove/remove_for_conversation`); the default `InterimLedger` stores
+  rows in `conversation_memory_entry`, which has the S03 columns plus `conversation_id` (for deletion). **S03 to do:**
+  install its writer with `set_ledger(...)` (or move these rows into `context_ledger_entry`) — the S04 callers do
+  not change. Owner rows stay in `conversation_summary` / `conversation_correction`.
+* **Corrections.** T2 personal memory is `conversation_correction(scope=personal)` (180-day TTL), projected with
+  trust `personal`, owner-only. "Make this the team definition" proposes a `knowledge_suggestion` (kind `definition`,
+  subject `term:<key>`, origin `conversation.correction`); the existing knowledge review (workspace editor or owner)
+  approves it, and a hook in `knowledge/suggestions.review` marks the correction `approved` (ledger trust `approved`).
+  Promotion is `POST …/corrections/{id}/promote {to}` (session → personal → workspace_proposed). Memory precedence is
+  session > personal > approved team; a differing meaning is reported as an override and named in the Ask stages,
+  never applied silently. The generation prompt receives clarifications as labelled data
+  (`conversation_clarifications`).
+* **Summaries.** Rules build one claim per answered message from its stored result; the `summarization` purpose may
+  reword claims only through `model_gate` (in `auto` mode the rules summary is used, so no call). Every claim passes
+  the numbers guard against the cited message's result; failing model claims are dropped and listed in
+  `guard.dropped`. The idle sweep (30 min, scheduler housekeeping) uses rules only. The model sees questions,
+  explanations and single-row aggregates, never result rows. Policy flag `share_conversation_summaries`
+  (workspace policy, default false) selects trust `workspace` over `personal`.
+* **Retention.** `tenant.settings.conversations = {messages_days: 365, results_days: 30}` (API
+  `/v2/tenants/{id}/conversation-retention`, tenant admin). There is no result-handle store yet (S02-T3), so
+  `results_days` clears the rows inside stored answers and keeps query id and result hash. Personal memory expires
+  after 180 days. The sweep runs from scheduler housekeeping at most hourly, per tenant binding; legal holds are
+  skipped. Legal hold is set by a tenant admin or auditor (or platform admin) and blocks deletion (409).
+* **Deletion cascade** removes messages, their citation sets, state versions, summaries, session and personal
+  corrections, and every memory entry with its embedding; the audit tombstone holds counts only. Kept on purpose:
+  a team correction under review (detached), the Desk request record (its link is cleared), model-call and decision
+  receipts (hashes and redacted payloads, as before). **Not yet removed:** analysis steps a user ingested from an Ask
+  thread (`analysis_step` with container `ask_thread`).
+* **MCP.** `conversation.start` creates a conversation (channel `mcp`) and submits the first message as a Desk request
+  bound to it; `conversation.say` submits a Desk request in an existing conversation of the same client;
+  `conversation.summary` returns the latest summary (refreshed when messages arrived). Grants: start/say need an
+  analyst grant (like `request.create`), summary a viewer grant. A Desk duplicate link may decline a `say` (no message).
+* Not built: Teams/Slack/email intake (the channel values are accepted), sharing a conversation with more participants,
+  UI screens.

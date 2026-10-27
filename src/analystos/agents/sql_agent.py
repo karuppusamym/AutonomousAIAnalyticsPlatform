@@ -629,6 +629,10 @@ def generation_context(ctx: Any, asked_text: str, *, redacted: bool = False) -> 
     one path for the model call and for the context preview (context/preview.py)."""
     catalog = catalog_for_prompt(ctx, objective=asked_text, capped=False)
     required: dict[str, Any] = {"question": asked_text}  # the dialect is named once, in the system text
+    memory = getattr(ctx, "conversation_memory", None)
+    if memory and memory.get("clarifications"):
+        # S04: the user's own corrections (session, personal, approved team), as labelled data, never instructions
+        required["conversation_clarifications"] = memory["clarifications"]
     if redacted:
         required["redacted_values"] = QUESTION_MODEL_INSTRUCTION
     compiled = compile_for(ctx, "sql_generation", required, objective=asked_text, catalog=catalog, reference_text=asked_text)

@@ -507,6 +507,9 @@ def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[
               decision="allow" if status == "approved" else "deny", details={"kind": row.kind, "subject": row.subject,
                                                                             "revision": revision}, session=session)
     if decided:
+        from analystos.conversations.corrections import on_suggestions_decided
+
+        on_suggestions_decided(session, [(r, st) for r, st, _ in decided])  # S04: team corrections from conversations
         emit(workspace_id, "knowledge.suggestions_reviewed", {"approved": len(out["approved"]), "rejected": len(out["rejected"]),
                                                               "revision": revision}, actor=f"user:{user.id}", session=session)
     return {"revision": revision, **out, "errors": errors}

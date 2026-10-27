@@ -25,7 +25,8 @@ from analystos.db.models import McpClient, McpGrant, McpUsage, User, WorkspaceMe
 from analystos.governance.audit import audit
 from analystos.governance.policy import get_workspace
 
-TOOLS = ("ask", "investigate", "get_finding_evidence", "validate_sql", "request.create", "request.status")
+TOOLS = ("ask", "investigate", "get_finding_evidence", "validate_sql", "request.create", "request.status",
+         "conversation.start", "conversation.say", "conversation.summary")
 # P7-11: a workspace's published query tools and tested/certified read-only HTTP tools, granted by name
 # (`query.<key>`, `http.<capability id>`) or by family (`query.*`, `http.*`)
 WORKSPACE_TOOL_PREFIXES = ("query.", "http.")
@@ -34,7 +35,9 @@ GRANT_ROLES = ("viewer", "analyst")
 TOOL_MIN_ROLE = {"ask": "analyst", "investigate": "analyst", "validate_sql": "analyst",
                  "get_finding_evidence": "viewer", RESOURCE_READ: "viewer",
                  # Request Desk (S13): a request may run Ask or start an investigation, so it needs the grant those need
-                 "request.create": "analyst", "request.status": "viewer"}
+                 "request.create": "analyst", "request.status": "viewer",
+                 # Conversations (S04): start/say create Desk requests (so the request grant's role); a summary is a read
+                 "conversation.start": "analyst", "conversation.say": "analyst", "conversation.summary": "viewer"}
 DEFAULT_DAILY_QUOTA = 1000
 
 
