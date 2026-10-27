@@ -34,7 +34,7 @@ from analystos.contracts.brief import (
     assertion_key,
 )
 from analystos.core.errors import InvalidInput, NotFound, PreconditionFailed
-from analystos.core.ids import new_id, stable_hash, utcnow
+from analystos.core.ids import new_id, ordered_utcnow, stable_hash, utcnow
 from analystos.db.models import (
     Relationship,
     SemanticMetric,
@@ -114,7 +114,7 @@ def _write(session: Session, workspace_id: str, items: list[Assertion], *, actor
     version = (current.version if current is not None else 0) + 1
     row = WorkspaceBrief(id=new_id("brf"), workspace_id=workspace_id, version=version,
                          assertions=[a.model_dump(mode="json") for a in sorted(items, key=lambda a: a.key)],
-                         content_hash=digest, reason=reason[:2000], created_by=actor, created_at=utcnow())
+                         content_hash=digest, reason=reason[:2000], created_by=actor, created_at=ordered_utcnow())
     session.add(row)
     session.flush()
     emit(workspace_id, "brief.updated", {"version": version, "reason": reason[:300], "assertions": len(items)}, actor=actor,

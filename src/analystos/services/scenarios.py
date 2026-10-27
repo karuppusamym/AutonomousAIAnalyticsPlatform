@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from analystos.contracts.scenario import SCENARIO_VERSION, ScenarioResult, ScenarioSpec
 from analystos.core.errors import InvalidInput, NotFound
-from analystos.core.ids import new_id, stable_hash, utcnow
+from analystos.core.ids import new_id, ordered_utcnow, stable_hash
 from analystos.db.base import session_scope
 from analystos.db.models import User, WhatIfScenario
 from analystos.events.bus import emit
@@ -115,7 +115,7 @@ def run(user: User, workspace_id: str, spec: ScenarioSpec, *, runtime: Runtime |
                              result={**body, "columns": columns, "summary": text, "guard": checked},
                              result_hash=result_hash, semantic_model_version=provenance.get("model_version"),
                              compiler_version=provenance.get("compiler_version"), scenario_version=SCENARIO_VERSION,
-                             created_by=user.id, created_at=utcnow())
+                             created_by=user.id, created_at=ordered_utcnow())
         s.add(row)
         s.flush()
         from analystos.artifacts.registry import link, link_queries

@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from analystos.contracts.step import CellEdit, CellIn, NotebookIn, StepEdit, StepIn
 from analystos.core.errors import InvalidInput, NotFound
-from analystos.core.ids import new_id, utcnow
+from analystos.core.ids import new_id, ordered_utcnow, utcnow
 from analystos.db.base import session_scope
 from analystos.db.models import AnalysisStep, AnalysisStepVersion, Notebook, User
 from analystos.events.bus import emit
@@ -67,7 +67,7 @@ def notebook_view(session: Session, nb: Notebook) -> dict[str, Any]:
 def create(session: Session, user: User, workspace_id: str, body: NotebookIn) -> dict[str, Any]:
     require_role(session, user, workspace_id, "analyst")
     nb = Notebook(id=new_id("nb"), workspace_id=workspace_id, title=body.title.strip()[:300], revision=1, archived=False,
-                  created_by=f"user:{user.id}", created_at=utcnow(), updated_at=utcnow())
+                  created_by=f"user:{user.id}", created_at=ordered_utcnow(), updated_at=utcnow())
     session.add(nb)
     session.flush()
     steps_svc.main_branch(session, workspace_id, "notebook", nb.id, nb.created_by)

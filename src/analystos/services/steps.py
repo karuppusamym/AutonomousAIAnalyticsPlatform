@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from analystos.contracts.step import STEP_SNAPSHOT_KIND, ArtifactRef, Step, StepCheck, StepEdit, StepIn
 from analystos.core.errors import AnalystOSError, InvalidInput, NotFound, PreconditionFailed
-from analystos.core.ids import new_id, stable_hash, utcnow
+from analystos.core.ids import new_id, ordered_utcnow, stable_hash, utcnow
 from analystos.core.logging import get_logger
 from analystos.db.base import session_scope
 from analystos.db.models import (
@@ -271,7 +271,7 @@ def main_branch(session: Session, workspace_id: str, container_type: str, contai
                                                 StepBranch.parent_branch_id.is_(None)).order_by(StepBranch.created_at).limit(1))
     if b is None:
         b = StepBranch(id=new_id("brn"), workspace_id=workspace_id, container_type=container_type, container_id=container_id,
-                       name="main", base=[], status="open", merged_into=[], created_by=actor, created_at=utcnow())
+                       name="main", base=[], status="open", merged_into=[], created_by=actor, created_at=ordered_utcnow())
         session.add(b)
         session.flush()
     return b
@@ -301,12 +301,12 @@ def add_step(session: Session, *, workspace_id: str, branch: StepBranch, kind: s
     step = AnalysisStep(id=new_id("stp"), workspace_id=workspace_id, branch_id=branch.id, container_type=branch.container_type,
                         container_id=branch.container_id, seq=seq or _next_seq(session, branch.id), kind=kind,
                         title=(title or kind)[:300], depends_on=deps, current_version=1, status="pending", origin=origin,
-                        forked_from=forked_from, created_by=actor, created_at=utcnow())
+                        forked_from=forked_from, created_by=actor, created_at=ordered_utcnow())
     session.add(step)
     session.flush()
     ver = AnalysisStepVersion(id=new_id("stpv"), step_id=step.id, workspace_id=workspace_id, version=1, spec=spec,
                               spec_hash=spec_hash(kind, spec), inputs={}, status="pending", reason=reason, receipts=[],
-                              chart_spec=chart_spec, checks=[], corrections=[], created_by=actor, created_at=utcnow())
+                              chart_spec=chart_spec, checks=[], corrections=[], created_by=actor, created_at=ordered_utcnow())
     session.add(ver)
     session.flush()
     emit(workspace_id, "step.created", {"step_id": step.id, "kind": kind, "branch_id": branch.id,
@@ -325,7 +325,7 @@ def new_version(session: Session, step: AnalysisStep, *, actor: str, reason: str
     ver = AnalysisStepVersion(id=new_id("stpv"), step_id=step.id, workspace_id=step.workspace_id, version=old.version + 1,
                               spec=spec, spec_hash=spec_hash(step.kind, spec), inputs={}, status="pending", reason=reason,
                               receipts=[], chart_spec=chart_spec if chart_spec is not None else old.chart_spec, checks=[],
-                              corrections=[], created_by=actor, created_at=utcnow())
+                              corrections=[], created_by=actor, created_at=ordered_utcnow())
     session.add(ver)
     step.current_version, step.status = ver.version, "pending"
     if title:

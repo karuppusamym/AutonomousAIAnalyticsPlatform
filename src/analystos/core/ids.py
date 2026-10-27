@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import secrets
-from datetime import UTC, datetime
+import threading
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 
@@ -14,6 +15,22 @@ def new_id(prefix: str) -> str:
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+_last_stamp: datetime | None = None
+_stamp_lock = threading.Lock()
+
+
+def ordered_utcnow() -> datetime:
+    """A per-row write stamp that strictly increases within this process. The wall clock can repeat a value
+    for several milliseconds (Windows), and rows written back to back must still read back in write order."""
+    global _last_stamp
+    with _stamp_lock:
+        now = datetime.now(UTC)
+        if _last_stamp is not None and now <= _last_stamp:
+            now = _last_stamp + timedelta(microseconds=1)
+        _last_stamp = now
+        return now
 
 
 def canonical_json(value: Any) -> str:
