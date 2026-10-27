@@ -116,6 +116,9 @@ What landed, and where it differs from §3–§7. Evidence is in the tracker row
   BigQuery (dry run) and Snowflake parsers exist and are unit-tested on recorded plans, but those kinds are staged
   here, so their queries are estimated by the PostgreSQL path. The estimate runs only when a budget applies (an
   extra round trip otherwise); "actual" is the row count and result bytes, not the bytes the engine scanned.
+  In a goal run with `max_scan_bytes` (S06) each admitted statement's estimate is charged to the run
+  (`autonomy.budget.record_scan`) and a statement that would pass it is refused first (`check_scan`,
+  `reason_code=budget.run_scan_bytes`); the estimate is charged, never the engine's actual scan.
   ADBC (§3.4) is **not done**: no ADBC driver is installed in this environment; the SQLAlchemy path streams instead.
 * **T5.** Source-kind catalog `capabilities.session_identity`, driver-bound parameters `%(user)s` (AnalystOS user
   id), `%(user_email)s`, `%(workspace)s`. PostgreSQL sets transaction-local `app.user` / `app.user_email` /

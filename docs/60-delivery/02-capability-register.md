@@ -64,6 +64,21 @@ queries; AT-22 over the official MCP SDK client; grants, rate and usage; single-
 isolation of rows and keys; quarantine, classification and re-screen against the SDK test double (a double, not a
 certification). Not built: registry UI, built-in tools/agents as registry rows, a real third-party MCP server.
 
+## 2026-10-27 — S02 Connectors, query gateway, result handles, multi-source
+
+Security first: a workspace editor could register a source with `secret_ref: env:<ANY_VAR>` and receive that process
+variable as the connection password on a host they control. References a workspace user registers now name only what
+the operator allows (`ANALYSTOS_SOURCE_SECRET_*` for `env:`, configured directories for `file:`, configured prefixes for
+`vault:`, `aws-sm:`, `azure-kv:`, `gcp-sm:`), checked at registration and at resolution. The gateway gained a
+`QueryRequest` protocol with an in-process and a Temporal (`query` queue) service, Parquet result handles above 256 rows
+/ 64 KB (tenant RLS, sha256, TTL purge), a pre-execution scan budget (PostgreSQL EXPLAIN plus relation sizes), session
+identity for the source's own row security, cancel, refusals with reason codes and redacted SQL, multi-source joins in
+DuckDB over leg handles with lineage, a declarative read-only REST connector, and a certification kit
+(`analystos certify-connector`) that certified PostgreSQL 16 on 2026-10-27. Evidence: tracker rows S02-SEC, S02-T1…T8,
+S02-REG; spec As built in `docs/04-specs/S02-connectors-query-gateway.md` §8. Not done: ADBC, live Temporal,
+MSSQL/Snowflake/BigQuery certification (no access), object-store backend and encryption for handles, import-linter
+contract.
+
 ## 2026-10-27 — S13 Analyst Request Desk (T1–T4, T6 backend)
 
 New package `src/analystos/desk/`: requests from the UI/API (`POST /api/requests`) and MCP (`request.create`) are

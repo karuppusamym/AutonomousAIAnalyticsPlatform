@@ -35,7 +35,13 @@ class FakeSession:
         self.sink, self.sources = sink, sources
 
     def get(self, model, key):  # noqa: ANN001
+        for obj in self.sink:  # rows written earlier (S02: a federation leg's result_handle)
+            if isinstance(obj, model) and getattr(obj, "id", None) == key:
+                return obj
         return self.sources.get(key)
+
+    def scalar(self, stmt):  # noqa: ANN001 - no workspace policy row, no run limits
+        return None
 
     def execute(self, stmt):  # noqa: ANN001
         return SimpleNamespace(one=lambda: (1, None, 10))
@@ -81,7 +87,7 @@ def fed(tmp_path: Path):
                              status="ready", execution_mode="pushdown", staging_schema=None, last_discovered_at=None)
         for sid, fname in (("s_ops", "ops.duckdb"), ("s_crm", "crm.duckdb"))
     }
-    settings = Settings(upload_dir=tmp_path)
+    settings = Settings(upload_dir=tmp_path, result_store_dir=tmp_path / "results")
     gw = QueryGateway(settings, session_factory=lambda: FakeSession(audit, sources))
     columns = {"ops.tickets": [c for c, _, _ in TICKET_COLS], "crm.customers": [c for c, _, _ in CUSTOMER_COLS]}
     scope = DataScope(workspace_id="ws", user_id="u", role="analyst", source_ids=["s_ops", "s_crm"],
@@ -109,10 +115,12 @@ def test_planted_cross_source_effect_is_found(fed) -> None:
     region = next(e for e in report.effects if e.segment == "crm.customers.region")
     assert not region.stat.supported  # no effect was planted there
     # Every leg ran through execute() under its own source; the federated statement has its own audit row.
-    legs = [r for r in fed.audit if r.purpose.startswith("federation.leg:")]
+    audit = [r for r in fed.audit if hasattr(r, "purpose")]  # query_execution rows (legs also write result_handle rows)
+    legs = [r for r in audit if r.purpose.startswith("federation.leg:")]
     assert {r.source_id for r in legs} == {"s_ops", "s_crm"} and all(r.status == "ok" for r in legs)
+    assert all(r.result_uri for r in legs)  # S02-T7: every leg came back as a Parquet handle
     assert all(r.result_preview == [] for r in legs)  # leg rows are never retained in the audit
-    fed_rows = [r for r in fed.audit if r.purpose.startswith("federated:")]
+    fed_rows = [r for r in audit if r.purpose.startswith("federated:")]
     assert fed_rows and all(r.source_id is None for r in fed_rows)
     assert all('"email"' not in (r.executed_sql or "") for r in legs)  # only referenced columns are extracted
 
@@ -129,7 +137,7 @@ def test_denied_column_of_source_b_is_rejected_inside_a_federated_query(fed) -> 
         with pytest.raises(SQLRejected, match="restricted by policy"):
             runner(sql)
     rejected = [r for r in fed.audit if r.status == "rejected"]
-    assert len(rejected) == 4 and not [r for r in fed.audit if r.purpose.startswith("federation.leg:")]
+    assert len(rejected) == 4 and not [r for r in fed.audit if getattr(r, "purpose", "").startswith("federation.leg:")]
 
 
 def test_join_proposals_are_decided_by_containment_and_cardinality(fed) -> None:
