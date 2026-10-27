@@ -24,6 +24,13 @@ class Conflict(AnalystOSError):
     code, http_status = "conflict", 409
 
 
+class ContextConflict(Conflict):
+    """Two certified definitions of the same name disagree (spec S03 §3, v1 §6.2.4): context with a conflict
+    is blocked, never silently resolved by picking one."""
+
+    code = "context_conflict"
+
+
 class InvalidInput(AnalystOSError):
     code, http_status = "invalid_input", 422
 

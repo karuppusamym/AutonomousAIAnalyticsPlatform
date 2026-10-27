@@ -22,6 +22,7 @@ from typing import Any
 import anyio
 from sqlalchemy import select
 
+from analystos.context.ledger import KINDS as LEDGER_KINDS
 from analystos.core.errors import AnalystOSError, Forbidden, InvalidInput, NotFound, Unauthenticated
 from analystos.db.base import session_scope
 from analystos.db.models import Artifact, Insight, QueryExecution, User
@@ -34,7 +35,9 @@ MAX_BODY = 1_000_000
 MAX_ROWS_OUT = 200
 MAX_RESOURCES_PER_KIND = 200
 URI_SCHEME = "analystos://"
-RESOURCE_KINDS = ("knowledge", "metrics", "findings", "datasets")
+LEGACY_RESOURCE_KINDS = ("knowledge", "metrics", "findings", "datasets")
+# Context Ledger kinds (S03-T5): analystos://<ws>/<ledger kind>/<ledger entry id>
+RESOURCE_KINDS = (*LEGACY_RESOURCE_KINDS, *LEDGER_KINDS)
 SCOPE_KEY = "analystos.mcp.principal"
 
 INSTRUCTIONS = ("AnalystOS governed analytics. Every tool takes `workspace_id` (optional when the client holds exactly "
@@ -79,6 +82,29 @@ TOOL_DEFS: dict[str, dict[str, Any]] = {
                        "schema": {"type": "object", "properties": {"workspace_id": _ws_prop(),
                                                                    "request_id": {"type": "string"}},
                                   "required": ["request_id"]}, "read_only": True},
+    # Context Service (S03-T5). Results are data for the client to quote, never instructions.
+    "context.search": {"description": "Search the workspace's context ledger (glossary, metrics, verified queries, findings, "
+                                      "datasets, ...) by name, synonym and similarity. Only entries this client may see.",
+                       "schema": {"type": "object", "properties": {
+                           "workspace_id": _ws_prop(), "q": {"type": "string", "maxLength": 1000},
+                           "kinds": {"type": "array", "items": {"type": "string", "enum": list(LEDGER_KINDS)}},
+                           "limit": {"type": "integer", "minimum": 1, "maximum": 100}}, "required": ["q"]}, "read_only": True},
+    "context.get": {"description": "One context ledger entry with its body from the owning record.",
+                    "schema": {"type": "object", "properties": {"workspace_id": _ws_prop(), "id": {"type": "string"}},
+                               "required": ["id"]}, "read_only": True},
+    "context.compile": {"description": "The context a model purpose should use for an objective, within a token budget: "
+                                       "sections, receipts, omissions and an identity hash. Suggested entries never appear.",
+                        "schema": {"type": "object", "properties": {
+                            "workspace_id": _ws_prop(), "purpose": {"type": "string", "minLength": 1, "maxLength": 80},
+                            "objective": {"type": "string", "maxLength": 4000},
+                            "budget_tokens": {"type": "integer", "minimum": 50, "maximum": 200000},
+                            "kinds": {"type": "array", "items": {"type": "string", "enum": list(LEDGER_KINDS)}}},
+                            "required": ["purpose", "objective"]}, "read_only": True},
+    "context.changes": {"description": "Context ledger changes after a cursor (pass back the returned cursor).",
+                        "schema": {"type": "object", "properties": {"workspace_id": _ws_prop(),
+                                                                    "since": {"type": "integer", "minimum": 0},
+                                                                    "limit": {"type": "integer", "minimum": 1, "maximum": 1000}}},
+                        "read_only": True},
 }
 
 
@@ -197,9 +223,48 @@ def _tool_request_status(principal: G.ClientPrincipal, ws: str, args: dict[str, 
         return {k: out.get(k) for k in _REQUEST_FIELDS}
 
 
+def _tool_context_search(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
+    from analystos.context import retrieval
+
+    with session_scope() as s:
+        hits = retrieval.search(s, _service_user(s, principal), ws, str(args.get("q") or ""),
+                                kinds=list(args.get("kinds") or []) or None, limit=min(int(args.get("limit") or 20), 100))
+        return {"workspace_id": ws, "results": [h.as_dict() for h in hits]}
+
+
+def _tool_context_get(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
+    from analystos.context import retrieval
+
+    with session_scope() as s:
+        return retrieval.get(s, _service_user(s, principal), str(args.get("id") or ""), workspace_id=ws)
+
+
+def _tool_context_compile(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
+    from analystos.context import retrieval
+
+    with session_scope() as s:
+        out = retrieval.compile_bundle(s, _service_user(s, principal), ws, purpose=str(args.get("purpose") or ""),
+                                       objective=str(args.get("objective") or ""),
+                                       budget_tokens=int(args.get("budget_tokens") or 2000),
+                                       kinds=list(args.get("kinds") or []) or None)
+        audit(f"mcp_client:{principal.client_id}", "context.compiled", workspace_id=ws, target=out["identity_hash"][:40],
+              decision="allow", details={"purpose": args.get("purpose"), "receipts": len(out["receipts"])}, session=s)
+        return out
+
+
+def _tool_context_changes(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
+    from analystos.context import retrieval
+
+    with session_scope() as s:
+        return retrieval.changes(s, _service_user(s, principal), ws, since=int(args.get("since") or 0),
+                                 limit=int(args.get("limit") or 200))
+
+
 TOOL_IMPLS: dict[str, Callable[[G.ClientPrincipal, str, dict[str, Any]], dict[str, Any]]] = {
     "ask": _tool_ask, "investigate": _tool_investigate, "get_finding_evidence": _tool_finding_evidence,
     "validate_sql": _tool_validate_sql, "request.create": _tool_request_create, "request.status": _tool_request_status,
+    "context.search": _tool_context_search, "context.get": _tool_context_get, "context.compile": _tool_context_compile,
+    "context.changes": _tool_context_changes,
 }
 
 
@@ -351,6 +416,23 @@ def list_resource_rows(principal: G.ClientPrincipal) -> list[dict[str, Any]]:
             for d in s.scalars(select(Artifact).where(Artifact.workspace_id == ws, Artifact.type == "dataset",
                                                       Artifact.status == "published").limit(MAX_RESOURCES_PER_KIND)):
                 out.append({"uri": f"{URI_SCHEME}{ws}/datasets/{d.id}", "name": d.name, "description": "published dataset"})
+            out += _ledger_resources(s, user, ws)
+    return out
+
+
+def _ledger_resources(s: Any, user: User, ws: str) -> list[dict[str, Any]]:
+    """The workspace's context ledger entries the client may see (never suggestions), capped per kind."""
+    from analystos.context import retrieval
+
+    access = retrieval.access_for(s, user, ws)
+    per_kind: dict[str, int] = {}
+    out = []
+    for e in retrieval.candidates(s, access, kinds=None, trusts=retrieval.MODEL_TRUSTS):
+        if per_kind.get(e.kind, 0) >= MAX_RESOURCES_PER_KIND:
+            continue
+        per_kind[e.kind] = per_kind.get(e.kind, 0) + 1
+        out.append({"uri": f"{URI_SCHEME}{ws}/{e.kind}/{e.id}", "name": e.title,
+                    "description": f"{e.kind} ({e.trust}, v{e.version}): {e.summary[:160]}"})
     return out
 
 
@@ -377,6 +459,15 @@ def read_resource_doc(principal: G.ClientPrincipal, uri: str) -> dict[str, Any]:
                 return {"id": i.id, "run_id": i.run_id, "title": i.title, "finding": i.finding, "confidence": i.confidence,
                         "population_size": i.population_size, "business_impact": i.business_impact, "caveats": i.caveats,
                         "evidence": i.evidence, "verification": i.verification}
+        elif kind in LEDGER_KINDS:
+            from analystos.context import retrieval
+
+            try:
+                doc = retrieval.get(s, _service_user(s, principal), rid, workspace_id=ws)
+            except NotFound:
+                doc = None
+            if doc is not None and doc["kind"] == kind and doc["trust"] != "suggested":
+                return doc
         elif kind == "datasets":
             a = s.get(Artifact, rid)
             if a is not None and a.workspace_id == ws and a.type == "dataset" and a.status == "published":
@@ -411,7 +502,7 @@ def build_server():
     async def list_tools(ctx: Any, params: Any) -> types.ListToolsResult:
         principal = _principal(ctx)
         granted = {t for g in principal.grants.values() for t in g["tools"]}
-        defs = {name: d for name, d in TOOL_DEFS.items() if name in granted}
+        defs = {name: d for name, d in TOOL_DEFS.items() if G.grants_tool(sorted(granted), name)}
         defs.update(await anyio.to_thread.run_sync(granted_workspace_tools, principal))
         return types.ListToolsResult(tools=[
             types.Tool(name=name, description=d["description"], input_schema=d["schema"],
