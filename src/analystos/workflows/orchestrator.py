@@ -400,6 +400,11 @@ class LocalRuntime:
                 self._drain(inflight)
                 engine.finish_run(run_id, "COMPLETED")
                 return "COMPLETED"
+            if state.get("limited"):  # a budget counter is used up (S06 §3.4)
+                self._drain(inflight)
+                outcome = "EXPIRED" if state.get("expired") else "COMPLETED_WITH_LIMITATIONS"
+                engine.finish_run(run_id, outcome, state["limited"])
+                return outcome
             for key in [k for k, f in inflight.items() if f.done()]:
                 del inflight[key]
             if park and waiting and not inflight:

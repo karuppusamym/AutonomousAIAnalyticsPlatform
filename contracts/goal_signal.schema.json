@@ -1,0 +1,26 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "enum": [
+        "pause",
+        "resume",
+        "cancel",
+        "redirect",
+        "approve_step"
+      ],
+      "title": "Type",
+      "type": "string"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+    }
+  },
+  "required": [
+    "type"
+  ],
+  "title": "SignalIn",
+  "type": "object"
+}

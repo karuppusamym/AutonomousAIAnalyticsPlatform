@@ -1,0 +1,248 @@
+{
+  "$defs": {
+    "ApprovalPolicy": {
+      "additionalProperties": false,
+      "description": "Side effects always need a hash-bound approval; the API cannot waive one (CLAUDE.md rule 6).",
+      "properties": {
+        "publish": {
+          "const": "required",
+          "default": "required",
+          "title": "Publish",
+          "type": "string"
+        },
+        "notify": {
+          "const": "required",
+          "default": "required",
+          "title": "Notify",
+          "type": "string"
+        }
+      },
+      "title": "ApprovalPolicy",
+      "type": "object"
+    },
+    "DataScope": {
+      "additionalProperties": false,
+      "properties": {
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "filters": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Filters",
+          "type": "array"
+        }
+      },
+      "title": "DataScope",
+      "type": "object"
+    },
+    "RunLimits": {
+      "additionalProperties": false,
+      "description": "Budget counters a run may not exceed. None = not limited by the goal (policy caps still hold).",
+      "properties": {
+        "max_steps": {
+          "anyOf": [
+            {
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Steps"
+        },
+        "max_duration_s": {
+          "anyOf": [
+            {
+              "maximum": 604800,
+              "minimum": 10,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Duration S"
+        },
+        "max_scan_bytes": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Scan Bytes"
+        },
+        "max_cost_usd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Cost Usd"
+        },
+        "max_replans": {
+          "anyOf": [
+            {
+              "maximum": 20,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Replans"
+        },
+        "max_rows": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Rows"
+        },
+        "max_retries": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Retries"
+        }
+      },
+      "title": "RunLimits",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "workspace_id": {
+      "title": "Workspace Id",
+      "type": "string"
+    },
+    "question": {
+      "maxLength": 4000,
+      "minLength": 10,
+      "title": "Question",
+      "type": "string"
+    },
+    "data_scope": {
+      "$ref": "#/$defs/DataScope"
+    },
+    "mode": {
+      "default": "goal_supervised",
+      "enum": [
+        "goal_autonomous",
+        "goal_supervised"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "playbook": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Playbook"
+    },
+    "requested_outputs": {
+      "items": {
+        "enum": [
+          "investigation",
+          "dashboard_draft",
+          "report"
+        ],
+        "type": "string"
+      },
+      "title": "Requested Outputs",
+      "type": "array"
+    },
+    "limits": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RunLimits"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "approval_policy": {
+      "$ref": "#/$defs/ApprovalPolicy"
+    },
+    "tier": {
+      "anyOf": [
+        {
+          "enum": [
+            "low",
+            "medium",
+            "complex"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tier"
+    },
+    "request_id": {
+      "anyOf": [
+        {
+          "maxLength": 80,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Request Id"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "question"
+  ],
+  "title": "GoalIn",
+  "type": "object"
+}

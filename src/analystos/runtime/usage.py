@@ -281,6 +281,12 @@ class DbUsageSink:
                 usage = self._run_usage(s, ctx.run_id)
                 if usage is not None:
                     tokens, usd = usage
+                    from analystos.autonomy.budget import run_limits
+
+                    goal_cap = run_limits(s, ctx.run_id).get("max_cost_usd")  # a goal may only tighten (S06 §3.4)
+                    if goal_cap is not None and usd >= float(goal_cap) and float(goal_cap) < policy.run_cost_budget_usd:
+                        raise BudgetExceeded(f"run cost budget ${float(goal_cap):.2f} exhausted (goal limit)",
+                                             details={"cap": "max_cost_usd", "used": usd, "limit": goal_cap})
                     if usd >= policy.run_cost_budget_usd:
                         raise BudgetExceeded(f"run cost budget ${policy.run_cost_budget_usd:.2f} exhausted")
                     if tokens >= policy.run_token_budget:

@@ -491,6 +491,9 @@ class AnalysisRun(Base):
     capabilities: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
     # Data-version manifest (P4-03): the version of every analysed asset the run read (evidence.manifest).
     data_manifest: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    # Goal limits (S06 §3.4, contracts.goals.RunLimits): steps, wall clock, scan bytes, LLM USD, rows,
+    # replans and retries. Empty for runs started without a goal (only the workspace policy caps apply).
+    limits: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
     created_at: Mapped[datetime] = _ts()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -2307,6 +2310,7 @@ class GroundingEvaluation(Base):
     created_at: Mapped[datetime] = _ts()
 
 
+from analystos.autonomy.models import Goal, RunPlanVersion  # noqa: E402,F401  (autonomy engine, S06)
 from analystos.db import column_presence  # noqa: E402,F401  (registers the absent-column filter, P7-20)
 from analystos.desk.models import ClassBaseline, Request, RequestEvent  # noqa: E402,F401  (Request Desk, S13)
 from analystos.tenancy.schema import attach_tenant_columns  # noqa: E402

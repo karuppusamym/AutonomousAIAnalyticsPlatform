@@ -64,3 +64,49 @@ AT-03, AT-04, AT-09, AT-11, AT-12; `test_tier_cannot_be_lowered`; `test_replan_i
 | S06-T4 | Replan reason codes + approval invalidation tests | 1d |
 | S06-T5 | Template packs (6 playbooks) with fixtures | 5d |
 | S06-T6 | (P2) Playbook editor + simulator + signing | 5d |
+
+## 7. As built (2026-10-27, T1–T5)
+
+Code: `src/analystos/autonomy/` (`goals.py`, `complexity.py`, `budget.py`, `replan.py`, `models.py`),
+`api/routers/goals_v2.py`, engine hooks in `runtime/engine.py`, loops in `workflows/analysis_workflow.py` and
+`workflows/orchestrator.py`, templates in `capabilities/builtin/playbooks/`, migration `0061_goals`. Contract:
+[`docs/20-contracts/05-goal-api-v2.md`](../20-contracts/05-goal-api-v2.md). Deviations from §3:
+
+* **T1.** `GET /v2/runs/{id}` etc. are not under a workspace path; the run is authorized in its own workspace
+  (`get_run_for`). The goal is a new table (`goal`) next to the run; `analysis_run.origin = {"type": "goal",
+  "goal_id", "mode", "requested_outputs", "publish"}`. `approval_policy` accepts only `required` (approvals are
+  never waived through the API). `approve_step` needs approval rights, the other signals analyst rights.
+  `redirect` goes through run feedback (rule/LLM interpretation into filters), not straight to `replan`.
+* **T2.** The decision rung is `clarify_needed` only (through the DecisionService when a router is
+  configured, else its rule); `ask_route` is not consulted at goal intake, because the Ask path owns the
+  verified-query match it needs. "Never below what policy requires": the floor is the policy tier (masked,
+  sensitive or restricted columns; unattended publication) plus any `clarify_needed` escalation; a request
+  below the rules tier but at or above the floor is honoured. A template that matches raises the tier to its
+  lowest tier; a template that is disabled in the workspace or not certified for an autonomous run falls back
+  to `playbook.investigate` with the reason recorded.
+* **T3.** Budgets are enforced in `get_state`, the activity both orchestrators call every iteration (so the
+  same counters hold under Temporal and the local runner), plus at the call: the router's per-run cost check
+  is tightened by `max_cost_usd`, and `RunContext.check_query_budget` refuses a statement once `max_scan_bytes`
+  is used. Temporal's wait timer is capped by the remaining wall clock (`workflow.patched("budget-deadline")`).
+  Steps, replans and retries are allowances (no further step/replan/retry once used); duration, cost, scan
+  and rows stop the run when reached. A step refused by a budget (`budget_exceeded`) is a stop, not a failure.
+  Scan bytes count only what `autonomy.budget.record_scan` is told: the gateway does not report estimates or
+  actuals yet (S02 §3.5 owns that), so `max_scan_bytes` is wired but inert until S02 calls it. `EXPIRED` is
+  used when the wall clock runs out while the run waits for a person; a local-runtime run parked
+  `WAITING_USER` is re-checked only when it is re-driven (signal, sweep, restart).
+* **§3.3 state machine** is not renamed to architecture §5.2's states: only `COMPLETED_WITH_LIMITATIONS` and
+  `EXPIRED` were added to the existing run states; transitions keep their `run.status` events (the new goal and replan events carry an actor;
+  `run.status` events do not yet carry `policy_decision`, `correlation_id` or `trace_id`).
+* **T4.** Superseded plans are copied to `run_plan_version` before a replan changes anything. A plan
+  approval gate that is still waiting when the run is replanned requests a new approval for the new hash
+  (before this change it would have been skipped, letting the plan run unapproved). A replan after the plan
+  was approved does not re-ask for plan approval; side-effect approvals downstream are re-requested by their
+  gates. `max_replans` refuses further replans (429).
+* **T5.** Six templates beside `investigate.v1`: `kpi_review.v1`, `variance.v1`, `funnel.v1`, `cohort.v1`,
+  `dq_review.v1`, `dashboard_build.v1`. They reuse the certified agents; what differs is the step set, the
+  investigator's `params.prefer_methods` (ranked first, nothing dropped), declared inputs/outputs, default
+  limits, approval gates and replan boundaries. They are `tested`, not certified, and off until a workspace
+  enables them (like `data_dictionary.v1`): an autonomous goal never runs them. Golden fixtures:
+  `tests/fixtures/playbooks/templates.yaml`.
+* **Not built:** §3.6 parallel branches bounded by a source semaphore (`test_parallel_respects_source_semaphore`),
+  T6 (P2).
