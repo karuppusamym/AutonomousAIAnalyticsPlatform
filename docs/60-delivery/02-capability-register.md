@@ -1,5 +1,23 @@
 # Capability register (evidence)
 
+## 2026-10-27 — S10 Tool, agent and data-product registry; MCP server and client (T1–T5 backend)
+
+New package `src/analystos/toolreg/` and API `/v2/tools`: certified metrics, verified queries, published datasets and
+playbooks are published as typed, signed tools (`ToolManifestV2`, migration `0061_tool_registry`) and invoked through
+one path for REST, MCP and agents: grant or role, version pin (`@4`), ed25519 signature check, JSON-Schema arguments,
+hash-bound approval for side effects, then exactly one deterministic execution path (semantic compiler, verified-query
+template with typed literals, a SELECT tree over the dataset, `create_run`, or the MCP client), all SQL through
+`QueryGateway`. MCP clients see and call registry tools within their grants (exact ids, families, `tool_patterns`,
+per-minute rate, daily quota, expiry); every call is a `tool_invocation` row. External MCP tools are admitted
+quarantined (`write_external`), refused when screening flags them, re-screened into a new quarantined version when the
+server changes a definition, and certified only by an owner's classification. Evidence:
+`tests/unit/test_tool_registry.py` (17) and `tests/integration/test_tool_registry.py` (8) on Postgres 16 with strict
+tenancy and RLS, 2026-10-27 (Windows dev host; the MCP protocol and admission tests ran with the `mcp` 2.3 extra):
+migration up/down; REST publish and invoke through the real gateway over staged ServiceNow data equal to reference
+queries; AT-22 over the official MCP SDK client; grants, rate and usage; single-use hash-bound approval; tenant
+isolation of rows and keys; quarantine, classification and re-screen against the SDK test double (a double, not a
+certification). Not built: registry UI, built-in tools/agents as registry rows, a real third-party MCP server.
+
 ## 2026-10-27 — S13 Analyst Request Desk (T1–T4, T6 backend)
 
 New package `src/analystos/desk/`: requests from the UI/API (`POST /api/requests`) and MCP (`request.create`) are

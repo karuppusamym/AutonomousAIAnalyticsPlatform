@@ -1,0 +1,240 @@
+{
+  "$defs": {
+    "ToolExecutionSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "via": {
+          "enum": [
+            "semantic_compiler",
+            "verified_query",
+            "dataset",
+            "playbook",
+            "mcp",
+            "builtin"
+          ],
+          "title": "Via",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "ref": {
+          "additionalProperties": true,
+          "title": "Ref",
+          "type": "object"
+        }
+      },
+      "required": [
+        "via"
+      ],
+      "title": "ToolExecutionSpec",
+      "type": "object"
+    },
+    "ToolExposure": {
+      "additionalProperties": false,
+      "properties": {
+        "rest": {
+          "default": true,
+          "title": "Rest",
+          "type": "boolean"
+        },
+        "mcp": {
+          "default": true,
+          "title": "Mcp",
+          "type": "boolean"
+        },
+        "grants_required": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Grants Required",
+          "type": "array"
+        }
+      },
+      "title": "ToolExposure",
+      "type": "object"
+    },
+    "ToolLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "timeout_s": {
+          "default": 30,
+          "maximum": 600,
+          "minimum": 1,
+          "title": "Timeout S",
+          "type": "integer"
+        },
+        "max_rows": {
+          "default": 5000,
+          "maximum": 50000,
+          "minimum": 1,
+          "title": "Max Rows",
+          "type": "integer"
+        },
+        "rate_per_min": {
+          "default": 60,
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Rate Per Min",
+          "type": "integer"
+        }
+      },
+      "title": "ToolLimits",
+      "type": "object"
+    },
+    "ToolSignature": {
+      "additionalProperties": false,
+      "properties": {
+        "alg": {
+          "const": "ed25519",
+          "default": "ed25519",
+          "title": "Alg",
+          "type": "string"
+        },
+        "key_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Key Id",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 200,
+          "minLength": 16,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key_id",
+        "value"
+      ],
+      "title": "ToolSignature",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "analystos/tool.v2",
+      "default": "analystos/tool.v2",
+      "title": "Apiversion",
+      "type": "string"
+    },
+    "tool_id": {
+      "maxLength": 200,
+      "title": "Tool Id",
+      "type": "string"
+    },
+    "version": {
+      "title": "Version",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "builtin",
+        "agent",
+        "playbook",
+        "external_mcp",
+        "data_product"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "owner": {
+      "maxLength": 120,
+      "minLength": 1,
+      "title": "Owner",
+      "type": "string"
+    },
+    "title": {
+      "default": "",
+      "maxLength": 300,
+      "title": "Title",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Description",
+      "type": "string"
+    },
+    "input_schema": {
+      "additionalProperties": true,
+      "title": "Input Schema",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": true,
+      "title": "Output Schema",
+      "type": "object"
+    },
+    "side_effect": {
+      "default": "write_external",
+      "enum": [
+        "none",
+        "write_internal",
+        "write_external"
+      ],
+      "title": "Side Effect",
+      "type": "string"
+    },
+    "permissions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Permissions",
+      "type": "array"
+    },
+    "data_classification_max": {
+      "default": "internal",
+      "enum": [
+        "public",
+        "internal",
+        "internal_aggregate",
+        "confidential",
+        "restricted"
+      ],
+      "title": "Data Classification Max",
+      "type": "string"
+    },
+    "execution": {
+      "$ref": "#/$defs/ToolExecutionSpec"
+    },
+    "limits": {
+      "$ref": "#/$defs/ToolLimits"
+    },
+    "exposure": {
+      "$ref": "#/$defs/ToolExposure"
+    },
+    "signature": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolSignature"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "tool_id",
+    "version",
+    "kind",
+    "owner",
+    "input_schema",
+    "execution"
+  ],
+  "title": "ToolManifestV2",
+  "type": "object"
+}

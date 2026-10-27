@@ -1386,22 +1386,104 @@ class McpGrant(Base):
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(20), default="viewer")  # viewer | analyst
     tools: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # S10-T3: registry/workspace tool families by pattern (`metric.*`), a per-minute rate across the grant
+    # and an expiry after which the grant covers nothing
+    tool_patterns: Mapped[list[str]] = mapped_column(JSON, default=list)
+    rate_per_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     quotas: Mapped[dict[str, int]] = mapped_column(JSON, default=dict)  # tool -> calls per UTC day
     created_by: Mapped[str] = mapped_column(String(40))
     created_at: Mapped[datetime] = _ts()
 
 
 class McpUsage(Base):
-    """Per-day call counters for quota enforcement (incremented atomically before a call runs)."""
+    """Per-day call counters for quota enforcement (incremented atomically before a call runs), and the
+    per-minute grant rate counter (`tool` = `__rate__`, `day` = YYYY-MM-DDTHH:MM)."""
 
     __tablename__ = "mcp_usage"
     __table_args__ = (UniqueConstraint("client_id", "workspace_id", "tool", "day"),)
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     client_id: Mapped[str] = mapped_column(ForeignKey("mcp_client.id", ondelete="CASCADE"), index=True)
     workspace_id: Mapped[str] = mapped_column(String(40))
-    tool: Mapped[str] = mapped_column(String(80))
-    day: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD (UTC)
+    tool: Mapped[str] = mapped_column(String(200))
+    day: Mapped[str] = mapped_column(String(16))  # YYYY-MM-DD (UTC), or YYYY-MM-DDTHH:MM for the rate counter
     count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+# ------------------------------------------------------------------------------ tool registry (S10)
+class RegisteredTool(Base):
+    """One signed version of a v2 tool manifest in a workspace (S10, ADR-007): a data product published
+    from a certified metric / verified query / dataset, a playbook, or an admitted external MCP tool.
+    `manifest` is the full `ToolManifestV2` including its signature; `manifest_hash` covers everything
+    but the signature. A version is immutable except for `status` (certified -> deprecated -> retired;
+    an external tool starts quarantined until an owner classifies it, or refused if screening failed)."""
+
+    __tablename__ = "registered_tool"
+    __table_args__ = (UniqueConstraint("workspace_id", "tool_id", "version", name="uq_registered_tool_version"),
+                      Index("ix_registered_tool_ws_tool", "workspace_id", "tool_id"))
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    tool_id: Mapped[str] = mapped_column(String(200))
+    version: Mapped[str] = mapped_column(String(40))
+    major: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(20))
+    owner: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(20))  # certified | quarantined | refused | deprecated | retired
+    side_effect: Mapped[str] = mapped_column(String(20))
+    manifest: Mapped[dict[str, Any]] = mapped_column(JSON)
+    manifest_hash: Mapped[str] = mapped_column(String(64))
+    source: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # {type, id, name, version, content_hash}
+    description_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)  # external: the screened definition
+    screening: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # {flags, screened_at, classified_by, ...}
+    created_by: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = _ts()
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status_by: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+
+class ToolInvocation(Base):
+    """One invocation of a registry tool (S10-T3): who, through which channel, which exact version,
+    outcome, latency, rows and cost. MCP clients are also counted in `mcp_usage` for their quotas."""
+
+    __tablename__ = "tool_invocation"
+    __table_args__ = (Index("ix_tool_invocation_ws_tool_at", "workspace_id", "tool_id", "created_at"),)
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    tool_id: Mapped[str] = mapped_column(String(200))
+    version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    caller: Mapped[str] = mapped_column(String(120))  # user:<id> | mcp_client:<id> | agent:<id>
+    client_id: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    channel: Mapped[str] = mapped_column(String(10))  # rest | mcp | agent
+    run_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    status: Mapped[str] = mapped_column(String(20))  # ok | denied | error | approval_required
+    reason: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    query_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    approval_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = _ts()
+
+
+class ToolSigningKey(Base):
+    """A tenant's manifest signing key (S10-T5). Only the public key is stored: the private key is derived
+    on demand from the platform signing secret, the tenant and the key id, so no private key is at rest.
+    Verification also re-derives the public key, so a swapped row cannot make a forged manifest valid."""
+
+    __tablename__ = "tool_signing_key"
+    __table_args__ = (UniqueConstraint("tenant_id", "key_id", name="uq_tool_signing_key"),)
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    tenant_id: Mapped[str | None] = _tenant_column()
+    key_id: Mapped[str] = mapped_column(String(80))
+    alg: Mapped[str] = mapped_column(String(20), default="ed25519")
+    public_key: Mapped[str] = mapped_column(String(100))  # base64url, 32 bytes
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active | retired (verifies) | revoked (never)
+    created_by: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = _ts()
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 # ------------------------------------------------------------------------------ registries (P4-T05)

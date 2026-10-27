@@ -295,6 +295,8 @@ def call_workspace_tool(principal: G.ClientPrincipal, ws: str, name: str, args: 
 
 
 def _call_named(name: str, principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
+    if G.is_registry_tool(name):
+        return call_registry_tool(principal, ws, name, args)
     return call_workspace_tool(principal, ws, name, args)
 
 
@@ -308,6 +310,64 @@ def granted_workspace_tools(principal: G.ClientPrincipal) -> dict[str, dict[str,
             for name, d in workspace_tools(s, ws).items():
                 if G.grants_tool(grant["tools"], name):
                     out.setdefault(name, d)
+    return out
+
+
+# ------------------------------------------------------------------------------------ registry tools (S10)
+def registry_tools(session: Any, ws: str) -> dict[str, dict[str, Any]]:
+    """Registry tools offered over MCP here: the latest certified version of each tool id whose manifest is
+    exposed over MCP and verifies now. Descriptions are data (screened at publish/admission), never instructions."""
+    from analystos.toolreg import signing, store
+
+    out: dict[str, dict[str, Any]] = {}
+    for row in store.current_rows(session, ws):
+        try:
+            m = store.verified(session, row)
+        except signing.ManifestRefused:
+            continue  # an unsigned or tampered manifest is not offered at all
+        if not m.exposure.mcp:
+            continue
+        props = {"workspace_id": _ws_prop(),
+                 "version": {"type": "string", "description": "Optional version pin (4, 4.1 or 4.1.0)."},
+                 **({"approval_id": {"type": "string", "description": "An approved approval for this exact call."}}
+                    if m.side_effect != "none" else {}),
+                 **(m.input_schema.get("properties") or {})}
+        out[m.tool_id] = {"description": m.description or m.title or m.tool_id,
+                          "schema": {**m.input_schema, "properties": props}, "read_only": m.side_effect == "none",
+                          "family": "registry", "ref": m.ref}
+    return out
+
+
+def granted_registry_tools(principal: G.ClientPrincipal) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    with session_scope() as s:
+        for ws, grant in sorted(principal.grants.items()):
+            if G.expired(grant):
+                continue
+            for name, d in registry_tools(s, ws).items():
+                if G.grants_tool(grant["tools"], name, grant.get("tool_patterns") or ()):
+                    out.setdefault(name, d)
+    return out
+
+
+def call_registry_tool(principal: G.ClientPrincipal, ws: str, name: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Through the registry's one invoke path (grant, version, signature, schema, approval, compiler/gateway)."""
+    from analystos.toolreg.invoke import Caller, invoke
+
+    with session_scope() as s:
+        user = _service_user(s, principal)
+        s.expunge(user)
+    pin = args.get("version")
+    if pin is not None and not isinstance(pin, str | int):
+        raise InvalidInput("version must be a string such as 4 or 4.1.0")
+    ref = f"{name}@{pin}" if pin not in (None, "") else name
+    caller = Caller(user=user, actor=f"mcp_client:{principal.client_id}", channel="mcp", principal=principal,
+                    quota_consumed=True)  # the gate counted this call already
+    out = invoke(caller, ws, ref, {k: v for k, v in args.items() if k not in ("workspace_id", "version", "approval_id")},
+                 approval_id=args.get("approval_id") if isinstance(args.get("approval_id"), str) else None)
+    result = out.get("result")
+    if isinstance(result, dict) and isinstance(result.get("rows"), list):
+        out["result"] = {**result, "rows": result["rows"][:MAX_ROWS_OUT]}
     return out
 
 
@@ -413,6 +473,7 @@ def build_server():
         granted = {t for g in principal.grants.values() for t in g["tools"]}
         defs = {name: d for name, d in TOOL_DEFS.items() if name in granted}
         defs.update(await anyio.to_thread.run_sync(granted_workspace_tools, principal))
+        defs.update(await anyio.to_thread.run_sync(granted_registry_tools, principal))
         return types.ListToolsResult(tools=[
             types.Tool(name=name, description=d["description"], input_schema=d["schema"],
                        annotations=types.ToolAnnotations(read_only_hint=d["read_only"], destructive_hint=False))
@@ -421,7 +482,7 @@ def build_server():
     async def call_tool(ctx: Any, params: Any) -> types.CallToolResult:
         principal = _principal(ctx)
         name, args = params.name, dict(params.arguments or {})
-        if name not in TOOL_IMPLS and not G.is_workspace_tool(name):
+        if name not in TOOL_IMPLS and not G.is_workspace_tool(name) and not G.is_registry_tool(name):
             raise MCPError(code=types.INVALID_PARAMS, message=f"unknown tool {name}")
         ws = G.resolve_workspace(principal, args.get("workspace_id"))
         G.check_grant(principal, ws, name)  # the gate already did; a handler never trusts that alone
@@ -478,7 +539,8 @@ def _authenticate(token: str | None) -> G.ClientPrincipal:
             return G.authenticate(s, token)
     except Unauthenticated:
         client_id = (token or "").partition(".")[0][:40] or "unknown"
-        audit(f"mcp_client:{client_id}", "mcp.auth_failed", decision="deny", reasons=["invalid_client_credentials"])
+        with system_scope():  # no tenant is known for a failed credential: a platform-private row, like a failed login
+            audit(f"mcp_client:{client_id}", "mcp.auth_failed", decision="deny", reasons=["invalid_client_credentials"])
         raise
 
 

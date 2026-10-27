@@ -128,6 +128,7 @@ def export_contracts(out_dir: str | None = None) -> None:
         scenario,
         semantic,
         step,
+        tool_manifest,
         work,
         worker,
     )
@@ -149,7 +150,8 @@ def export_contracts(out_dir: str | None = None) -> None:
               "readiness_assessment": brief.ReadinessAssessmentDoc, "job_kind": brief.JobKindAvailability,
               "step": step.Step, "branch": step.Branch,
               "pipeline": work.PipelineSpec, "task_envelope": worker.TaskEnvelope,
-              "task_dispatch": worker.TaskDispatch, "task_result": worker.TaskResult, "artifact_ref": worker.ArtifactRef}
+              "task_dispatch": worker.TaskDispatch, "task_result": worker.TaskResult, "artifact_ref": worker.ArtifactRef,
+              "tool_manifest": tool_manifest.ToolManifestV2}
     for name, model in models.items():
         (out / f"{name}.schema.json").write_text(json.dumps(model.model_json_schema(), indent=2) + "\n", encoding="utf-8")
     from analystos.contracts.events import EVENT_TYPES

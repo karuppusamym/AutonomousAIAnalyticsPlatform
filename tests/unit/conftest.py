@@ -42,7 +42,8 @@ def sqlite_db(monkeypatch):
         # P7-03 / P4-06: a run binding reads semantic versions; definitions, pins, outbox, idempotency, work orders
         "semantic_model", "semantic_metric", "definition", "schedule", "schedule_run", "dispatch_outbox",
         "idempotency_record", "work_order",
-        "model_config_override")]  # S05-T3: the router reads a workspace's model layers
+        "model_config_override",  # S05-T3: the router reads a workspace's model layers
+        "verified_query", "mcp_server", "mcp_client", "mcp_grant", "registered_tool", "tool_invocation", "tool_signing_key")]  # S10 registry
     models.Base.metadata.create_all(engine, tables=tables)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     monkeypatch.setattr(base, "SessionLocal", lambda: factory())
