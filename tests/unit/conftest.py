@@ -43,6 +43,7 @@ def sqlite_db(monkeypatch):
         "semantic_model", "semantic_metric", "definition", "schedule", "schedule_run", "dispatch_outbox",
         "idempotency_record", "work_order",
         "model_config_override",  # S05-T3: the router reads a workspace's model layers
+        "model_evaluation",  # S05-T5: model-switch gate scores
         "context_ledger_entry", "context_ledger_change",  # S03-T1: owner writes project into the ledger on commit
         "goal", "run_plan_version",  # S06: goals and superseded plan versions
         "verified_query", "mcp_server", "mcp_client", "mcp_grant", "registered_tool", "tool_invocation", "tool_signing_key")]  # S10 registry

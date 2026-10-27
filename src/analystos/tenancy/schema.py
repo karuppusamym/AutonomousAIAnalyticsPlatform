@@ -19,6 +19,7 @@ GLOBAL_TABLES: dict[str, str] = {
     "skill_definition": "platform capability catalogue",
     "tool_definition": "platform capability catalogue",
     "platform_setting": "platform administrator settings (admin-only API)",
+    "model_evaluation": "golden-suite scores per model and purpose (platform suites, prompts and grades only)",
     "decision_calibration": "per-purpose model calibration statistics, no tenant data",
     "knowledge_index_state": "index bookkeeping keys, no tenant data",
     "model_payload": "content-addressed redacted payloads, reachable only through tenant-scoped model_call rows",

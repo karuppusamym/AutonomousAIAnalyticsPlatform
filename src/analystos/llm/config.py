@@ -11,13 +11,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from analystos.core.config import get_settings
 
-ProviderType = Literal["openrouter", "openai_compatible", "azure_openai", "anthropic", "bedrock"]
+ProviderType = Literal["openrouter", "openai_compatible", "openai", "azure_openai", "gemini", "anthropic", "bedrock"]
 Egress = Literal["internet", "internal"]
 # Provider types that are an outbound call to a public cloud endpoint. Azure OpenAI can be reached over a
 # private endpoint, but only an explicit `private_link: true` acknowledges that and allows `egress: internal`.
-_PUBLIC_ONLY = ("openrouter", "anthropic", "bedrock", "azure_openai")
+_PUBLIC_ONLY = ("openrouter", "openai", "gemini", "anthropic", "bedrock", "azure_openai")
 _PRIVATE_LINK_TYPES = ("azure_openai",)
-_HTTP_TYPES = ("openrouter", "openai_compatible", "azure_openai", "anthropic")  # need a base URL (bedrock: boto3)
+_HTTP_TYPES = ("openrouter", "openai_compatible", "openai", "azure_openai", "gemini", "anthropic")  # need a base URL (bedrock: boto3)
 
 
 class ModelCapabilities(BaseModel):

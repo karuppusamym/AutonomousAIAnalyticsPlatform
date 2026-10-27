@@ -26,7 +26,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from analystos.contracts.platform import MODEL_RUNGS, Rung
-from analystos.llm.config import ModelsConfig
+from analystos.llm.config import ModelsConfig, family
 from analystos.llm.router import ladder_for_mode, mode_of, platform_ladder
 
 LayerName = Literal["file", "platform", "tenant", "workspace"]
@@ -117,9 +117,11 @@ class EffectiveModels:
     excluded: dict[str, dict[str, str]] = field(default_factory=dict)
     violations: list[dict[str, str]] = field(default_factory=list)
     layers: list[dict[str, Any]] = field(default_factory=list)
+    blocked_families: list[str] = field(default_factory=list)
 
     def view(self) -> dict[str, Any]:
-        return {"allowlist": self.allowlist, "residency": self.regions, "budgets": self.budgets,
+        return {"allowlist": self.allowlist, "blocked_families": self.blocked_families, "residency": self.regions,
+                "budgets": self.budgets,
                 "purposes": self.purposes, "profile_models": self.profile_models, "sources": self.sources,
                 "excluded_models": self.excluded, "violations": self.violations, "layers": self.layers}
 
@@ -154,9 +156,12 @@ def resolve(cfg: ModelsConfig, platform: Any, layers: list[tuple[LayerName, int,
     violations: list[dict[str, str]] = []
 
     disabled = set(llm.disabled_models)
-    allowlist = [m for m in cfg.allowlist if m not in disabled]
+    blocked = set(cfg.blocked_families)
+    allowlist = [m for m in cfg.allowlist if m not in disabled and family(m) not in blocked]
     for m in cfg.allowlist:
-        if m in disabled:
+        if family(m) in blocked:
+            excluded[m] = {"layer": "file", "reason": f"family {family(m)} is blocked on this platform"}
+        elif m in disabled:
             excluded[m] = {"layer": "platform", "reason": "disabled by the platform administrator"}
     sources["allowlist"] = "platform" if disabled & set(cfg.allowlist) else "file"
     regions: list[str] | None = None
@@ -284,7 +289,7 @@ def resolve(cfg: ModelsConfig, platform: Any, layers: list[tuple[LayerName, int,
     return EffectiveModels(allowlist=allowlist, regions=regions, budgets=budgets, purposes=purposes, ladders=layer_ladders,
                            routing=layer_routing, profile_models=layer_profiles, layer_allowlist=layer_allowlist,
                            sources=sources, excluded=excluded,
-                           violations=violations, layers=applied)
+                           violations=violations, layers=applied, blocked_families=sorted(blocked))
 
 
 __all__ = ["BUDGET_KEYS", "Budgets", "EffectiveModels", "ModelOverride", "PurposeOverride", "narrow_ladder",

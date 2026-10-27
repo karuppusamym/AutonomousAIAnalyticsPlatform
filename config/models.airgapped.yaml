@@ -17,6 +17,17 @@ providers:
     model_map:                             # allowlisted id -> the name the server serves the model under
       qwen/qwen3-32b: qwen3-32b
       meta-llama/llama-3.3-70b-instruct: llama-3.3-70b-instruct
+    # A local server cannot be asked what it supports (S05-T1). vLLM with guided decoding accepts
+    # response_format json_object; Ollama's OpenAI endpoint does too. Set context_window to the server's
+    # --max-model-len (vLLM) or num_ctx (Ollama): prompts are fitted to it before anything is sent.
+    capabilities:
+      json_mode: true
+      tools: false
+      context_window: 32768
+  # Ollama instead of vLLM (docs/30-runbooks/08-local-models.md):
+  #   base_url: http://ollama.analystos.svc:11434/v1
+  #   model_map: {qwen/qwen3-32b: "qwen3:32b", meta-llama/llama-3.3-70b-instruct: "llama3.3:70b"}
+  #   capabilities: {json_mode: true, tools: false, context_window: 8192}
 
 allowlist:
   - qwen/qwen3-32b

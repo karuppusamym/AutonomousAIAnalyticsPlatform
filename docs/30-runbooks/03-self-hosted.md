@@ -98,11 +98,13 @@ Acceptance still open: the §62 scenario on an air-gapped install with a real lo
 |---|---|---|
 | `openrouter` (default) | chat completions + Decisions API | `api_key_env` |
 | `openai_compatible` | `<base_url>/chat/completions` (vLLM, Ollama, LM Studio, llama.cpp server, TGI, Groq, Together, Fireworks, a LiteLLM proxy) | optional `api_key_env` |
+| `openai` | Responses API (`<base_url>/responses`): system turns as `instructions`, JSON mode as `text.format`, no temperature (reasoning models) | Bearer from `api_key_env` |
 | `azure_openai` | `<base_url>/openai/deployments/<deployment>/chat/completions?api-version=` | `api-key` header from `api_key_env` |
+| `gemini` | `generateContent` (`<base_url>/models/<model>:generateContent`); assistant turns as role `model`, thinking tokens billed as output. **`google/*` is blocked on this platform** (`blocked_families`), kept for completeness | `x-goog-api-key` from `api_key_env` |
 | `anthropic` | Messages API (`/v1/messages`), system blocks with cache breakpoints, usage incl. cache reads | `x-api-key` from `api_key_env` |
 | `bedrock` | Converse via boto3 (AWS credential chain); without boto3 a clear `bedrock_unavailable` error; the boto3 endpoint host must pass the same egress allowlist | none in config |
 
-`openrouter`, `anthropic`, `bedrock` and `azure_openai` are public endpoints and cannot be declared
+`openrouter`, `openai`, `gemini`, `anthropic`, `bedrock` and `azure_openai` are public endpoints and cannot be declared
 `egress: internal`; an Azure OpenAI resource behind a private endpoint may, with an explicit `private_link: true`.
 
 A literal `api_key:` in a models file fails validation. Budgets, allowlists, redaction, caching and call records are the same for every provider.
@@ -136,6 +138,8 @@ Recipes (all `type: openai_compatible`): vLLM `http://vllm:8000/v1`; Ollama `htt
 (no key); LM Studio `http://<host>:1234/v1`; Groq `https://api.groq.com/openai/v1`; Together
 `https://api.together.xyz/v1`; a LiteLLM proxy `http://litellm:4000` with its master or virtual key in
 `api_key_env`. Hosted ones stay `egress: internet` and need a `region` to pass a residency rule.
+
+Local servers (vLLM, Ollama) and the air-gapped preset: [`08-local-models.md`](08-local-models.md).
 
 ### 4.2 Layered model configuration (S05-T3)
 

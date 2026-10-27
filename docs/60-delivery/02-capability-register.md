@@ -1,5 +1,33 @@
 # Capability register (evidence)
 
+## 2026-10-27 — S05 Model gateway: providers, layered configuration, switch gate, air-gap, Admin › Models
+
+Providers (`llm/providers.py`, `llm/config.py`): `openai_compatible` with declared capabilities (json_mode, tools,
+context_window; requests are fitted to them), and the Atlas ports `openai` (Responses API), `azure_openai`
+(quoted deployment and api-version) and `gemini` (generateContent). Claude and Gemini stay blocked
+(`blocked_families`); the effective view and the UI show them as blocked. Layered configuration (`llm/layers.py`,
+`services/model_config.py`): file ⊕ platform ⊕ tenant ⊕ workspace, each lower layer only narrowing (allowlist ∩,
+residency subset with unknown regions excluded, budgets min, no added or earlier model rung, profile kind fixed so JEV
+is never wired in or out); versions in `model_config_override` with tenant RLS, If-Match, re-checked rollback, audit;
+the router applies a workspace's layers on every call and fails closed when they cannot be read. Model-switch gate
+(`services/model_switch.py`, `config/model_switch_gate.yaml`): a changed primary model is scored on the purpose's
+golden suite (deterministic grading) against the current model; a regression beyond 0.10, a score below 0.5 or an
+unevaluable model answers 409 with both scores unless a platform admin gives a reason (audited). Air-gap posture
+(`services/airgap.py`, `GET /api/admin/models/airgap`) and runbook `docs/30-runbooks/08-local-models.md`. Admin ›
+Models (`web/src/pages/AdminModels.tsx`) inside Platform settings: purposes, providers (health, test), profiles,
+budgets and overrides with source layers, presets, spend, evaluations, air-gap.
+
+Tests: `tests/unit/test_openai_compatible.py` (round trip over a local HTTP stub), `test_model_adapters.py`,
+`test_model_layers.py` (`test_layer_can_only_narrow`, AT-15 residency, `test_jev_never_grants`, versions, API),
+`test_model_switch_gate.py`, `web/src/test/adminModels.test.tsx`; integration `tests/integration/test_model_gateway_db.py`
+on Postgres 16 under strict tenancy (cross-tenant 404, 409 keeps the scores, override, worker lookup without a bound
+tenant). Migration `0059_model_config_layers` checked upgrade/downgrade/re-upgrade and RLS on Postgres 16.
+
+Not built or not evidenced: per-run/day/user budgets are resolved and shown but are not hard caps yet; decision
+purposes have no typed golden suite (the gate needs an override); no live provider test, no live suite run, no
+browser walkthrough (no billable calls; live stack untouched); the §62 scenario on an air-gapped install (S05-T8
+fine-tuning not started).
+
 ## 2026-10-27 — S01-T6 ABAC on every call + OPA adapter, S01-T7 tenant-scoped cache keys
 
 ABAC (`governance/abac.py`): the policy decision input carries `{classification, purpose, region,

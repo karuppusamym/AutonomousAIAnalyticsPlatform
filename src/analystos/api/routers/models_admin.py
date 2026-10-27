@@ -26,12 +26,19 @@ Scope = Literal["tenant", "workspace"]
 class ModelConfigOverrideIn(BaseModel):
     document: dict[str, Any]
     note: str = ""
+    switch_override_reason: str | None = None  # S05-T5: platform admin only
 
 
 class ModelConfigRollbackIn(BaseModel):
     version: int
     scope: Scope = "tenant"
     workspace: str | None = None
+    switch_override_reason: str | None = None
+
+
+class ModelEvaluationRunIn(BaseModel):
+    purpose: str
+    model: str | None = None  # default: the purpose's current primary model
 
 
 def _tenant_for(session: Session, user: User, scope: str, workspace: str | None) -> tuple[str, str | None]:
@@ -86,7 +93,7 @@ def put_override(body: ModelConfigOverrideIn, response: Response, scope: Scope =
     tenant, ws = _tenant_for(session, user, scope, workspace)
     out = model_config.put(session, session.merge(user), scope=scope, tenant_id=tenant, workspace_id=ws,
                            document=body.document, expected_version=expected_revision(if_match, required=True),
-                           note=body.note)
+                           note=body.note, switch_override=body.switch_override_reason)
     set_etag(response, out["version"])
     return out
 
@@ -96,7 +103,7 @@ def rollback(body: ModelConfigRollbackIn, response: Response, user: User = Depen
              session: Session = Depends(db, scope="function")):
     tenant, ws = _tenant_for(session, user, body.scope, body.workspace)
     out = model_config.rollback(session, session.merge(user), scope=body.scope, tenant_id=tenant, workspace_id=ws,
-                                version=body.version)
+                                version=body.version, switch_override=body.switch_override_reason)
     set_etag(response, out["version"])
     return out
 
@@ -118,3 +125,45 @@ def test_provider(provider_id: str, _: User = Depends(admin_user)):
     from analystos.services.model_health import test_provider as run_test
 
     return run_test(provider_id)
+
+
+@router.get("/evaluations")
+def evaluations(purpose: str | None = None, model: str | None = None, _: User = Depends(admin_user),
+                session: Session = Depends(db, scope="function")):
+    """Golden-suite scores per purpose and model (model-switch gate, S05-T5), newest first, with the gate's
+    tolerance and the suite each purpose uses."""
+    from analystos.services import model_switch
+
+    gate = model_switch.load_gate()
+    return {"suite_version": gate.version, "tolerance": gate.tolerance, "min_score": gate.min_score,
+            "suites": {name: len(suite.cases) for name, suite in gate.suites.items()},
+            "purpose_suites": gate.purpose_suites, "default_suite": gate.default_suite,
+            "items": model_switch.history(session, purpose=purpose, model=model)}
+
+
+@router.post("/evaluations/run")
+def run_evaluation(body: ModelEvaluationRunIn, user: User = Depends(admin_user),
+                   session: Session = Depends(db, scope="function")):
+    """Score one model on a purpose's golden suite now (billable: one call per case through the router)."""
+    from analystos.services import model_switch
+
+    resolved = model_config.effective_without_overrides()
+    entry = resolved.purposes.get(body.purpose)
+    if entry is None:
+        raise InvalidInput(f"unknown model purpose {body.purpose}")
+    model = body.model or (entry["models"] or [None])[0]
+    if model is None:
+        raise InvalidInput(f"purpose {body.purpose} has no allowed model to evaluate")
+    if model not in resolved.allowlist:
+        raise InvalidInput(f"{model} is not an allowed model on this platform")
+    return model_switch.evaluate(session, purpose=body.purpose, profile=entry["profile"], model=model, actor=user.id,
+                                 reuse=False)
+
+
+@router.get("/airgap")
+def airgap(_: User = Depends(admin_user)):
+    """Air-gapped posture (S05-T7): deployment flag, local provider and its declared capabilities, the
+    air_gapped preset, JEV off, which purposes a local model answers and which fall back to rules."""
+    from analystos.services.airgap import posture
+
+    return posture()

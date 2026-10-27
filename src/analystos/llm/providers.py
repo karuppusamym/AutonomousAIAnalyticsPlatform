@@ -10,7 +10,14 @@ routing, budgets, redaction, caching and the call record are the same whichever 
                      none for a local endpoint. Such a server cannot be asked what it supports, so the
                      provider declares `capabilities` (json_mode, tools, context_window): a request is
                      shaped to fit them instead of being rejected by the server
+  openai             the Responses API (`<base_url>/responses`): system turns become `instructions`, JSON mode
+                     becomes `text.format`, usage (incl. cached input) mapped back. No temperature: OpenAI's
+                     reasoning models reject it (ported from the Atlas adapter, S05-T2)
   azure_openai       `<base_url>/openai/deployments/<deployment>/chat/completions?api-version=...`, `api-key` header
+                     (deployment and api-version URL-quoted; a `length` stop is reported as such)
+  gemini             generateContent (`<base_url>/models/<model>:generateContent`, `x-goog-api-key` header):
+                     system turns become `system_instruction`, assistant turns role `model`, JSON mode becomes
+                     `responseMimeType`, thinking tokens counted as output (ported from Atlas, S05-T2)
   anthropic          the Messages API (`<base_url>/v1/messages`): system turns lifted into `system`,
                      cache_control blocks kept, usage mapped back (cache reads included)
   bedrock            the Converse API through boto3 (AWS credentials from the standard chain, never
@@ -22,7 +29,7 @@ HTTP adapter goes through `transport.post`, so the transport's egress guard sees
 from __future__ import annotations
 
 from typing import Any, Protocol
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from analystos.core.errors import EgressBlocked, ModelRouteUnavailable
 from analystos.llm.config import ModelCapabilities, ProviderConfig
@@ -105,12 +112,99 @@ class OpenAICompatibleAdapter:
 class AzureOpenAIAdapter:
     def chat(self, transport: Any, provider: ProviderConfig, api_key: str | None, payload: dict, timeout: float) -> dict:
         model = payload["model"]
-        deployment = provider.deployments.get(model) or provider.wire_model(model)
-        url = f"{provider.url()}/openai/deployments/{deployment}/chat/completions?api-version={provider.api_version}"
+        deployment = quote(provider.deployments.get(model) or provider.wire_model(model), safe="-_.")
+        version = quote(provider.api_version or "", safe="-_.")
+        url = f"{provider.url()}/openai/deployments/{deployment}/chat/completions?api-version={version}"
         body = _openai_body(payload, provider, model)
         body.pop("model", None)  # the deployment names the model
         out = _poster(transport, provider).post(url, headers={"api-key": api_key or ""}, payload=body, timeout=timeout)
         return _as_logical(out, model)
+
+
+def _count(value: Any) -> int:
+    """A provider-reported token count, 0 for anything that is not one."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def _turns(payload: dict) -> tuple[str, list[tuple[str, str]]]:
+    """(system text, [(role, text)]) from an OpenAI-shaped chat payload."""
+    system = "\n\n".join(_text(m.get("content")) for m in payload["messages"] if m["role"] == "system")
+    return system, [(m["role"], _text(m.get("content"))) for m in payload["messages"] if m["role"] != "system"]
+
+
+def openai_responses_request(payload: dict, provider: ProviderConfig, caps: ModelCapabilities | None = None) -> dict:
+    """OpenAI-shaped chat payload -> Responses API body."""
+    system, turns = _turns(payload)
+    body: dict[str, Any] = {"model": provider.wire_model(payload["model"]),
+                            "input": [{"role": role, "content": text} for role, text in turns] or
+                            [{"role": "user", "content": "Proceed."}],
+                            "max_output_tokens": int(payload.get("max_tokens") or 1024)}
+    if system:
+        body["instructions"] = system
+    if payload.get("response_format") and (caps is None or caps.json_mode is not False):
+        body["text"] = {"format": {"type": "json_object"}}
+    return body
+
+
+def openai_responses_response(body: dict, logical_model: str) -> dict:
+    text = "".join(c.get("text") or "" for o in body.get("output") or [] if isinstance(o, dict)
+                   for c in o.get("content") or [] if isinstance(c, dict) and c.get("type") == "output_text")
+    usage = body.get("usage") or {}
+    details = usage.get("input_tokens_details") if isinstance(usage.get("input_tokens_details"), dict) else {}
+    cut = body.get("status") == "incomplete" and (body.get("incomplete_details") or {}).get("reason") == "max_output_tokens"
+    return {"model": logical_model, "choices": [{"message": {"content": text}, "finish_reason": "length" if cut else "stop"}],
+            "usage": {"prompt_tokens": _count(usage.get("input_tokens")), "completion_tokens": _count(usage.get("output_tokens")),
+                      "prompt_tokens_details": {"cached_tokens": _count(details.get("cached_tokens"))}}}
+
+
+class OpenAIResponsesAdapter:
+    def chat(self, transport: Any, provider: ProviderConfig, api_key: str | None, payload: dict, timeout: float,
+             capabilities: ModelCapabilities | None = None) -> dict:
+        body = _poster(transport, provider).post(f"{provider.url()}/responses",
+                                                 headers={"Authorization": f"Bearer {api_key or ''}"},
+                                                 payload=openai_responses_request(payload, provider, capabilities),
+                                                 timeout=timeout)
+        return openai_responses_response(body, payload["model"])
+
+
+def gemini_request(payload: dict, provider: ProviderConfig, caps: ModelCapabilities | None = None) -> dict:
+    """OpenAI-shaped chat payload -> Gemini generateContent body."""
+    system, turns = _turns(payload)
+    config: dict[str, Any] = {"maxOutputTokens": int(payload.get("max_tokens") or 1024)}
+    if payload.get("temperature") is not None:
+        config["temperature"] = payload["temperature"]
+    if payload.get("response_format") and (caps is None or caps.json_mode is not False):
+        config["responseMimeType"] = "application/json"
+    body: dict[str, Any] = {"contents": [{"role": "model" if role == "assistant" else "user", "parts": [{"text": text}]}
+                                         for role, text in turns] or [{"role": "user", "parts": [{"text": "Proceed."}]}],
+                            "generationConfig": config}
+    if system:
+        body["system_instruction"] = {"parts": [{"text": system}]}
+    return body
+
+
+def gemini_response(body: dict, logical_model: str) -> dict:
+    candidate = (body.get("candidates") or [{}])[0] or {}
+    parts = (candidate.get("content") or {}).get("parts") or []
+    text = "".join(p.get("text") or "" for p in parts if isinstance(p, dict) and not p.get("thought"))
+    usage = body.get("usageMetadata") or {}
+    # Thinking tokens are billed as output but reported apart from candidatesTokenCount.
+    out = _count(usage.get("candidatesTokenCount")) + _count(usage.get("thoughtsTokenCount"))
+    return {"model": logical_model,
+            "choices": [{"message": {"content": text},
+                         "finish_reason": "length" if candidate.get("finishReason") == "MAX_TOKENS" else "stop"}],
+            "usage": {"prompt_tokens": _count(usage.get("promptTokenCount")), "completion_tokens": out,
+                      "prompt_tokens_details": {"cached_tokens": _count(usage.get("cachedContentTokenCount"))}}}
+
+
+class GeminiAdapter:
+    def chat(self, transport: Any, provider: ProviderConfig, api_key: str | None, payload: dict, timeout: float,
+             capabilities: ModelCapabilities | None = None) -> dict:
+        model = quote(provider.wire_model(payload["model"]).removeprefix("models/"), safe="-_.")
+        body = _poster(transport, provider).post(f"{provider.url()}/models/{model}:generateContent",
+                                                 headers={"x-goog-api-key": api_key or ""},
+                                                 payload=gemini_request(payload, provider, capabilities), timeout=timeout)
+        return gemini_response(body, payload["model"])
 
 
 def anthropic_request(payload: dict, provider: ProviderConfig) -> dict:
@@ -210,8 +304,10 @@ class BedrockUnavailable(ModelRouteUnavailable):
     code, retryable = "bedrock_unavailable", False
 
 
-ADAPTERS: dict[str, Any] = {"openai_compatible": OpenAICompatibleAdapter(), "azure_openai": AzureOpenAIAdapter(),
+ADAPTERS: dict[str, Any] = {"openai_compatible": OpenAICompatibleAdapter(), "openai": OpenAIResponsesAdapter(),
+                            "azure_openai": AzureOpenAIAdapter(), "gemini": GeminiAdapter(),
                             "anthropic": AnthropicAdapter(), "bedrock": BedrockAdapter()}
+CAPABILITY_AWARE = ("openai_compatible", "openai", "gemini")  # adapters that take the resolved capabilities
 
 
 def adapter_for(provider: ProviderConfig) -> Any:
@@ -226,6 +322,7 @@ def needs_key(provider: ProviderConfig) -> bool:
     return provider.api_key_env is not None
 
 
-__all__ = ["ADAPTERS", "AnthropicAdapter", "AzureOpenAIAdapter", "BedrockAdapter", "BedrockUnavailable",
-           "OpenAICompatibleAdapter", "adapter_for", "anthropic_request", "anthropic_response", "fit_capabilities",
-           "needs_key"]
+__all__ = ["ADAPTERS", "CAPABILITY_AWARE", "AnthropicAdapter", "AzureOpenAIAdapter", "BedrockAdapter",
+           "BedrockUnavailable", "GeminiAdapter", "OpenAICompatibleAdapter", "OpenAIResponsesAdapter", "adapter_for",
+           "anthropic_request", "anthropic_response", "fit_capabilities", "gemini_request", "gemini_response",
+           "needs_key", "openai_responses_request", "openai_responses_response"]

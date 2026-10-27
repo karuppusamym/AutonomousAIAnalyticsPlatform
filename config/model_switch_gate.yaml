@@ -1,0 +1,67 @@
+# Model-switch evaluation gate (spec S05 §7.5, FR-055, task S05-T5).
+#
+# Saving a model configuration (platform settings, a tenant or a workspace override) that changes the primary
+# model of a purpose runs that purpose's golden suite on the current and on the new model. A new model that
+# scores more than `tolerance` below the current one, or that cannot be evaluated (no key, no route, a decision
+# purpose without a typed suite), blocks the save unless a platform administrator overrides it with a reason
+# (audited as models.switch_gate.overridden). Scores are stored per (suite, model) and reused for `reuse_hours`.
+#
+# Grading is deterministic: a case passes when the answer satisfies every check in `expect`
+#   json_keys: [..]   the answer parses as a JSON object with these top-level keys
+#   contains: [..]    the answer contains each string (case-insensitive)
+#   not_contains: [..]
+#   regex: "..."      the answer matches (case-insensitive, dotall)
+# Change a suite or the tolerance only in a reviewed commit that bumps `version`.
+version: 1
+tolerance: 0.10          # largest allowed drop of the pass share (0.10 = 10 points)
+min_score: 0.5           # a new model below this never activates without an override, whatever the baseline
+reuse_hours: 168         # a stored score for the same suite version and model is reused this long
+max_tokens: 600          # per case
+
+default_suite: json_contract
+purpose_suites:
+  sql_generation: sql
+  sql_repair: sql
+  insight_narrative: narrative
+  summarization: narrative
+  analyst_synthesis: narrative
+
+suites:
+  json_contract:
+    cases:
+      - system: "You return strict JSON only."
+        user: 'Return a JSON object with keys "items" (a list of three short strings naming colours) and "count" (their number).'
+        json: true
+        expect: {json_keys: [items, count], regex: '"count"\s*:\s*3'}
+      - system: "You return strict JSON only."
+        user: 'Classify "The invoice was paid twice" into one of [billing, shipping, account]. Answer {"label": ..., "reason": ...}.'
+        json: true
+        expect: {json_keys: [label, reason], contains: [billing]}
+      - system: "You return strict JSON only."
+        user: 'Give three hypotheses why weekly incident volume rose. Answer {"hypotheses": [{"statement": ..., "metric": ...}]}.'
+        json: true
+        expect: {json_keys: [hypotheses]}
+  sql:
+    cases:
+      - system: "You write one PostgreSQL SELECT statement. Return JSON {\"sql\": ...}. Never modify data."
+        user: "Table sn.incident(number text, priority int, opened_at timestamptz, state text). Count incidents per priority."
+        json: true
+        expect: {json_keys: [sql], regex: 'select.+count.+from\s+sn\.incident.+group\s+by\s+priority', not_contains: [delete, update, insert, drop]}
+      - system: "You write one PostgreSQL SELECT statement. Return JSON {\"sql\": ...}. Never modify data."
+        user: "Table sales.orders(id int, region text, amount numeric, ordered_at date). Total amount by region for 2026, largest first."
+        json: true
+        expect: {json_keys: [sql], regex: 'sum\s*\(\s*amount\s*\).+group\s+by\s+region.+order\s+by', not_contains: [delete, update, insert, drop]}
+      - system: "You repair SQL. Return JSON {\"sql\": ...} with one corrected PostgreSQL SELECT statement."
+        user: "Error: column \"prio\" does not exist. SQL: SELECT prio, count(*) FROM sn.incident GROUP BY prio. Columns: number, priority, state."
+        json: true
+        expect: {json_keys: [sql], regex: 'select\s+priority.+group\s+by\s+priority'}
+  narrative:
+    cases:
+      - system: "You explain computed results in two sentences. Use only the numbers given."
+        user: "Facts: P1 incidents rose from 40 to 52 week over week (+30%). P2 incidents were flat at 120."
+        json: false
+        expect: {contains: ["52", "30%"], not_contains: ["60%"]}
+      - system: "You explain computed results in two sentences. Use only the numbers given."
+        user: "Facts: refund rate in EU 4.1%, in US 2.0%; difference 2.1 points, p=0.003."
+        json: false
+        expect: {contains: ["4.1", "2.0"]}
