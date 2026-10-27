@@ -2,6 +2,33 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "api-standard",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "analystos.api.app:app", "--port", "8000"],
+      "env": {
+        "ANALYSTOS_PROFILE": "standard",
+        "ANALYSTOS_ORCHESTRATOR": "temporal",
+        "ANALYSTOS_REDIS_URL": "redis://localhost:6379/1",
+        "ANALYSTOS_SUPERSET_URL": "http://localhost:8088",
+        "ANALYSTOS_SERVICENOW_MOCK_URL": "http://localhost:8091",
+        "ANALYSTOS_RUN_INPROCESS_SCHEDULER": "false",
+        "SERVICENOW_PASSWORD": "admin"
+      },
+      "port": 8000
+    },
+    {
+      "name": "servicenow-mock",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "analystos.connectors.servicenow_mock:app", "--port", "8091"],
+      "port": 8091
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "web", "run", "dev", "--", "--port", "5173", "--strictPort"],
+      "port": 5173
+    },
+    {
       "name": "web-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "web", "run", "dev", "--", "--port", "5179", "--strictPort"],

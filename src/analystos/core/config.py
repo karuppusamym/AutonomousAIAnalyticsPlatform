@@ -361,8 +361,44 @@ def get_settings() -> Settings:
     return Settings()
 
 
-def openrouter_api_key() -> str | None:
+def secret_env(name: str) -> str | None:
+    """A provider key named by `api_key_env`: the process environment first, else the same `.env` file the
+    settings read (a laptop that keeps its key there, not exported). Never logged; the file is re-read only
+    when it changes."""
     import os
 
-    value = os.getenv("OPENROUTER_API_KEY", "").strip()
-    return value or None
+    value = (os.getenv(name) or "").strip()
+    return value or _env_file_values().get(name)
+
+
+def _env_file_values() -> dict[str, str]:
+    path = Path(str(Settings.model_config.get("env_file") or ".env"))
+    try:
+        stamp = path.stat().st_mtime_ns
+    except OSError:
+        return {}
+    cached = _ENV_FILE_CACHE.get(str(path))
+    if cached and cached[0] == stamp:
+        return cached[1]
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.removeprefix("export ").split("=", 1)
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        elif " #" in value:
+            value = value.split(" #", 1)[0].strip()
+        if value:
+            values[key.strip()] = value
+    _ENV_FILE_CACHE[str(path)] = (stamp, values)
+    return values
+
+
+_ENV_FILE_CACHE: dict[str, tuple[int, dict[str, str]]] = {}
+
+
+def openrouter_api_key() -> str | None:
+    return secret_env("OPENROUTER_API_KEY")

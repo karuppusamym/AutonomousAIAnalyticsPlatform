@@ -7,7 +7,6 @@ platform spend cap is used. `probe=True` sends one tiny billable request (purpos
 through the router: allowlists, spend reservation and the call record all apply) to verify credits."""
 from __future__ import annotations
 
-import os
 import time
 from datetime import timedelta
 from typing import Any
@@ -15,6 +14,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from analystos.core.config import secret_env
 from analystos.core.errors import AnalystOSError
 from analystos.db.models import ModelCall
 from analystos.llm import router as router_module
@@ -78,7 +78,7 @@ def health(session: Session, *, probe: bool = False, router: ModelRouter | None 
                                        .group_by(ModelCall.provider)).all())
     providers = []
     for name, p in cfg.providers.items():
-        key_present = p.api_key_env is None or bool((os.getenv(p.api_key_env) or "").strip())
+        key_present = p.api_key_env is None or bool(secret_env(p.api_key_env))
         last_error = session.execute(select(ModelCall.created_at, ModelCall.model, ModelCall.error)
                                      .where(ModelCall.created_at >= since, ModelCall.provider == name,
                                             ModelCall.status == "error")

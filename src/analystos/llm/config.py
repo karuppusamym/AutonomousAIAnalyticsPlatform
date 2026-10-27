@@ -144,6 +144,8 @@ class EscalationConfig(BaseModel):
 class ModelsConfig(BaseModel):
     providers: dict[str, ProviderConfig]
     allowlist: list[str]
+    # Families no route may use (cost or compliance): checked on every candidate list, after every layer.
+    blocked_families: list[str] = Field(default_factory=list)
     profiles: dict[str, ProfileConfig]
     routing: dict[str, str]
     models: dict[str, ModelMeta] = Field(default_factory=dict)
@@ -236,6 +238,7 @@ class ModelsConfig(BaseModel):
     def public_view(self) -> dict[str, Any]:
         return {
             "allowlist": self.allowlist,
+            "blocked_families": self.blocked_families,
             "profiles": {k: v.model_dump() for k, v in self.profiles.items()},
             "routing": self.routing,
             "providers": {k: {"kind": v.kind, "type": v.type, "base_url": v.url(), "egress": v.egress, "region": v.region,

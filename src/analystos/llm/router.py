@@ -17,7 +17,6 @@ reconstructed and re-executed offline with `analystos.llm.replay.ReplayTransport
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from collections.abc import Callable
@@ -28,6 +27,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from analystos.contracts.platform import MODEL_RUNGS
+from analystos.core.config import secret_env
 from analystos.core.errors import (
     ApprovalRequired,
     BudgetExceeded,
@@ -408,7 +408,7 @@ class ModelRouter:
         self.air_gapped = _air_gapped() if air_gapped is None else air_gapped
         # Egress guard: only configured provider hosts, and only internal ones on an air-gapped install.
         self.transport = transport or HttpTransport(allowed_hosts=self.config.egress_hosts(internal_only=self.air_gapped))
-        self.api_key_lookup = api_key_lookup or (lambda env: (os.getenv(env) or "").strip() or None)
+        self.api_key_lookup = api_key_lookup or secret_env
         self.max_retries = max_retries
         self.settings_provider = settings_provider or _default_settings
         # Tenant/workspace model layers (S05-T3). The control-plane default goes with the default settings
@@ -541,7 +541,7 @@ class ModelRouter:
         narrowing = self._narrowing(ctx)
         if narrowing is not None and narrowing.layer_allowlist is not None:
             allowed &= set(narrowing.layer_allowlist)
-        excluded = set(profile.exclude_families) | set(ctx.exclude_families)
+        excluded = set(profile.exclude_families) | set(ctx.exclude_families) | set(self.config.blocked_families)
         models = [m for m in candidates if m in allowed and family(m) not in excluded]
         if self._policy_block(profile, ctx):
             return []
