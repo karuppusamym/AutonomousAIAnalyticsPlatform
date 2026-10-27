@@ -31,6 +31,7 @@ dependencies = [
   "croniter>=3.0",
   "python-multipart>=0.0.9",
   "jsonschema>=4.20",  # capability input schemas (the generic agent runtime validates every action)
+  "cryptography>=42",  # ed25519 tool-manifest signatures (S10-T5)
 ]
 
 [project.optional-dependencies]

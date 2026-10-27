@@ -157,7 +157,9 @@ def test_unauthenticated_and_revoked_clients_get_401(api, world):
         G.revoke_client(s, s.get(User, world["admin"]), world["client"])
     r = _rpc(api, world["token"], "tools/list")
     assert r.status_code == 401
-    with session_scope() as s:
+    from analystos.tenancy import system_scope
+
+    with system_scope(), session_scope() as s:  # a failed credential has no tenant: platform-private rows
         fails = s.scalars(select(AuditEvent).where(AuditEvent.action == "mcp.auth_failed",
                                                    AuditEvent.actor == f"mcp_client:{world['client']}")).all()
     assert len(fails) >= 2

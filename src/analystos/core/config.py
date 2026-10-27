@@ -152,6 +152,9 @@ class Settings(BaseSettings):
     # HMAC key of scoped worker task tokens; None = derived from jwt_secret (domain-separated). Only the
     # control plane and the artifact store (the API) hold it; never give it to a worker.
     worker_token_secret: str | None = None
+    # S10-T5: the platform secret tenant manifest-signing keys (ed25519) are derived from; None = derived from
+    # jwt_secret (domain-separated). Only public keys are stored; rotating this secret invalidates every signature.
+    tool_signing_secret: str | None = None
     # The artifact store as isolated workers reach it (the API's base URL on their network).
     worker_artifact_url: str = "http://localhost:8000"
     # temporal | local. local runs the same engine in-process (lite profile, tests, laptops); lite's default.

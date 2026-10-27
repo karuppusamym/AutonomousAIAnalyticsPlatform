@@ -98,3 +98,6 @@ RUN_TERMINAL = {"COMPLETED", "FAILED", "REJECTED", "CANCELLED", "COMPLETED_WITH_
 RUN_STATUSES = ["NEW", "PLANNING", "READY", "RUNNING", "WAITING_TOOL", "WAITING_USER", "PAUSED",
                 "EVALUATING", "VERIFYING", *sorted(RUN_TERMINAL)]
 TASK_STATUSES = ["NEW", "READY", "RUNNING", "WAITING_USER", "COMPLETED", "FAILED", "SKIPPED", "CANCELLED", "INVALIDATED"]
+# Tool, agent and data-product registry (S10): signed versions published, quarantined at admission, status changes,
+# invocations
+EVENT_TYPES |= {"tool.published", "tool.quarantined", "tool.deprecated", "tool.status_changed", "tool.invoked"}

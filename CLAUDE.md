@@ -78,6 +78,7 @@ Seeded users (dev only): `admin@analystos.local`, `analyst@…`, `approver@…` 
 | `src/analystos/services/{schedules,monitors,reports,changes,notifications}.py`, `src/analystos/reports/` | Phase 3: scheduling, monitoring, reports |
 | `config/agents/*.yaml` | agent manifests (kind Agent); every field is enforced (`capabilities/agents.py`). `entry: builtin:generic` = a YAML-only agent |
 | `src/analystos/capabilities/` | registry (discovery, validation, reload), `builtin/playbooks/*.yaml` (`investigate.v1` = the v1 plan), bindings (run keeps its versions; refs in the plan hash), per-workspace enablement + certification gate; API `/api/capabilities`, `POST /api/admin/capabilities/reload` |
+| `src/analystos/toolreg/` | S10 tool/data-product registry: signed v2 manifests (`contracts/tool_manifest.py`), publish-as-tool, one invoke path (REST `/v2/tools`, MCP, agents), external MCP admission + quarantine, tenant signing keys |
 | `migrations/` | Alembic; regenerate with `alembic revision --autogenerate` after model changes |
 | `docs/` | intent (spec v2, spec v3, spec v4), architecture + ADRs, runbooks, delivery tracker/register/readiness, dated reviews (`70-reviews/`) |
 

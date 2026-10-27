@@ -58,7 +58,7 @@ CHILD_PARENTS: dict[str, tuple[str, str]] = {
     "audit_chain": ("audit_event", "event_id"),
 }
 ROOTS = ("workspace", "app_user")  # carry tenant_id as a mapped column; created in system scope -> default tenant
-DIRECT = ("tenant_member",)  # tenant_id is part of the row's identity, always given explicitly
+DIRECT = ("tenant_member", "tool_signing_key")  # tenant-level rows: the tenant is part of the row's identity
 
 
 def tenant_sources(metadata: MetaData) -> dict[str, TenantSource]:
