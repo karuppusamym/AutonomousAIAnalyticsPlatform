@@ -191,11 +191,11 @@ def test_migration_0038_up_down_up(control_db):
         cols = {c["name"] for c in inspect(engine).get_columns("worker_task")}
         from analystos.db.models import WorkerTask
 
-        assert cols == {c.name for c in WorkerTask.__table__.columns}
+        assert cols == {c.name for c in WorkerTask.__table__.columns} - {"tenant_id"}  # tenant_id arrives with 0057
         ecols = {c["name"] for c in inspect(engine).get_columns("worker_task_event")}
         from analystos.db.models import WorkerTaskEvent
 
-        assert ecols == {c.name for c in WorkerTaskEvent.__table__.columns}
+        assert ecols == {c.name for c in WorkerTaskEvent.__table__.columns} - {"tenant_id"}
     finally:
         engine.dispose()
         with admin.connect() as c:

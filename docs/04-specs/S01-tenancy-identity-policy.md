@@ -25,8 +25,23 @@ and make the audit log physically append-only.
   runs `SET LOCAL ROLE analystos_app` plus `set_config('app.tenant_id', …, true)`, so it is safe under PgBouncer
   transaction pooling. The login (owner) identity is the deliberate **system** identity, used only inside
   `system_scope()`, so tables use `ENABLE` (not `FORCE`) row-level security.
-* Modes (`ANALYSTOS_TENANCY_MODE`): `bound` (default today) restricts every transaction with a bound tenant (API and MCP);
-  `strict` also restricts unbound transactions (fail closed); `off` skips the switch. T4 moves the default to `strict`.
+* Modes (`ANALYSTOS_TENANCY_MODE`): `strict` (default since T4) restricts every transaction outside `system_scope`, and an
+  unbound one sees nothing (fail closed); `bound` restricts only transactions with a bound tenant (upgrade aid); `off`.
+* **T4, background work** (`tenancy/background.py`, `workflows/tenant_propagation.py`):
+  * Platform loops (scheduler claims, dispatch relay and reconcile, stale-work sweep, delivery and freshness scans,
+    nightly jobs, the local orchestrator's resume/sweep) are marked `@platform_loop` and run in `system_scope`.
+  * Tenant work is marked `@owned_by(table, param)`: engine `plan_run`/`get_state`/`execute_task`/`finish_run`,
+    `schedules.execute`, `complete_from_run`, `dispatch.dispatch`, `deliveries.attempt`, `crawler.run_crawl`,
+    `worker_tasks.record_events`. It runs as the row's tenant; with another tenant bound it raises `TenantMismatch`.
+    Row owners are cached (bounded, 50k; a row never changes tenant).
+  * Temporal: a client interceptor stamps header `analystos-tenant`; the workflow interceptor copies it to activities
+    and child workflows; the activity interceptor wraps the function in a picklable `TenantBound`, so the scope is
+    entered in the thread or compute-pool process that runs it. The orchestrator's client loop thread receives the
+    caller's tenant through `_submit`.
+  * Sign-in (password, OIDC) looks users up in a system session, then binds the session to the user's tenant.
+    Isolated-worker callbacks act for the tenant of the token's workspace. CLI maintenance commands run in system scope.
+  * The spec's invariant "never inferred from the data" is met in this form: the tenant travels explicitly (header,
+    request, token) where the caller has it; where a platform loop picks an item, the item's own row is the authority.
 * The request tenant is bound by `TenantMiddleware` (token → home tenant, or `X-Tenant-Id` if the user is a member,
   else 403) before any route code runs, and it reaches every session the request opens.
 * Platform rows (NULL tenant) are readable by tenants only for shared catalogs (knowledge packs). They stay private for

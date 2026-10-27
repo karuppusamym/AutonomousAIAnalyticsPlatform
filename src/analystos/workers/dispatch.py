@@ -333,12 +333,11 @@ class TemporalTransport:
         return TaskResult.model_validate(await handle.result())
 
     def run(self, dispatch: TaskDispatch, on_event: Callable[[TaskEvent], None]) -> TaskResult:
-        import asyncio
         from concurrent.futures import Future
 
-        from analystos.workflows.orchestrator import _event_loop
+        from analystos.workflows.orchestrator import _submit
 
-        fut: Future = asyncio.run_coroutine_threadsafe(self.run_async(dispatch), _event_loop())
+        fut: Future = _submit(self.run_async(dispatch))  # the workflow header carries the caller's tenant
         try:
             return fut.result(timeout=dispatch.envelope.budget.wall_seconds * MAX_ATTEMPTS + 300)
         except TimeoutError:

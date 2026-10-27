@@ -2,11 +2,11 @@
 
 Modes (``ANALYSTOS_TENANCY_MODE``):
 * ``off``    — no role switch (single-tenant installs that have not run the tenancy migration);
-* ``bound``  — a transaction with a bound tenant runs as the restricted role; an unbound one (workers,
-               scheduler, CLI) runs as the owner, as before. The default while worker propagation
-               (S01-T4) is completed;
-* ``strict`` — every transaction outside ``system_scope`` runs as the restricted role; an unbound one
-               sees no tenant rows and cannot insert any (fail closed).
+* ``bound``  — a transaction with a bound tenant runs as the restricted role; an unbound one runs as
+               the owner. For upgrades: code that is not yet tenant-aware keeps working;
+* ``strict`` — the default. Every transaction outside ``system_scope`` runs as the restricted role; an
+               unbound one sees no tenant rows and cannot insert any (fail closed). Background work
+               binds its tenant (``tenancy/background.py``).
 """
 from __future__ import annotations
 
@@ -43,6 +43,16 @@ def on_after_begin(session: Session, transaction: Any, connection: Any) -> None:
     if tenant is None and mode == "bound":
         return
     _restrict(connection, tenant, settings.tenancy_app_role)
+
+
+def system_session(session: Session) -> Session:
+    """Mark a session that has not begun yet as deliberate cross-tenant work: a sign-in looks the user
+    up before anyone knows their tenant. Call ``bind_session`` once the tenant is known."""
+    if session.in_transaction():
+        raise RuntimeError("system_session must be called before the session's first statement")
+    session.info["system"] = True
+    session.info.pop("tenant_id", None)
+    return session
 
 
 def bind_session(session: Session, tenant_id: str) -> None:

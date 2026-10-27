@@ -53,6 +53,7 @@ from analystos.governance.audit import audit
 from analystos.governance.policy import load_in_workspace, require_role, resolve_scope, scoped_loader
 from analystos.pipelines import spec as pipeline_spec
 from analystos.pipelines.writer import DEFAULT_ENGINE
+from analystos.tenancy.background import platform_loop
 
 ACTION = "pipeline_materialize"
 RUN_MODES = ("auto", "full", "reconcile", "replay", "backfill")
@@ -773,6 +774,7 @@ def rollback(user: User, materialization_id: str, workspace_id: str | None = Non
 
 
 # ------------------------------------------------------------------------------------ freshness alerts
+@platform_loop
 def check_freshness(now: datetime | None = None) -> list[dict[str, Any]]:
     """A published pipeline's destination whose good version is older than `freshness.max_age_hours` raises
     one alert per version (event + notification), from the scheduler's housekeeping."""

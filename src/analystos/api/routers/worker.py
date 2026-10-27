@@ -32,11 +32,19 @@ def worker_secret() -> bytes:
     return secret_from_settings(get_settings())
 
 
-def worker_claims(authorization: str | None = Header(default=None), secret: bytes = Depends(worker_secret)) -> TokenClaims:
-    """The task token from `Authorization: Bearer <token>`. A session JWT is not a task token."""
+async def worker_claims(authorization: str | None = Header(default=None), secret: bytes = Depends(worker_secret)) -> TokenClaims:
+    """The task token from `Authorization: Bearer <token>`. A session JWT is not a task token. The request
+    then acts for the tenant of the token's workspace (S01-T4); async so the binding reaches the route."""
     if not authorization or not authorization.lower().startswith("bearer "):
         raise Unauthenticated("a worker task token is required")
-    return verify(secret, authorization.split(" ", 1)[1].strip())
+    claims = verify(secret, authorization.split(" ", 1)[1].strip())
+    from analystos.tenancy import set_current_tenant
+    from analystos.tenancy.background import workspace_tenant
+
+    tenant = await run_in_threadpool(workspace_tenant, claims.workspace_id)
+    if tenant:
+        set_current_tenant(tenant)
+    return claims
 
 
 def model_router():  # noqa: ANN201 - overridable in tests; the control plane's router with its usage sink

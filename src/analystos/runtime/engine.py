@@ -25,6 +25,7 @@ from analystos.events.bus import emit
 from analystos.governance.approvals import invalidate_run_approvals
 from analystos.runtime.context import RunContext, Services, default_services
 from analystos.runtime.plan import dep_satisfied, plan_hash
+from analystos.tenancy.background import owned_by, platform_loop
 
 log = get_logger(__name__)
 CLAIM_TTL_SECONDS = 30 * 60  # equals the Temporal start_to_close timeout for execute_task
@@ -88,6 +89,7 @@ def _workspace_disabled(s, workspace_id: str) -> bool:
     return ws is not None and (ws.status != "active" or ws.deleted_at is not None)
 
 
+@owned_by("analysis_run", "run_id")
 def plan_run(run_id: str, services: Services | None = None) -> dict:
     """Activity 1: bind the playbook and its capabilities, the supervisor frames the plan (idempotent).
     A binding failure (a required step's capability disabled, deprecated or not certified for an
@@ -158,6 +160,7 @@ class _NeedsLock(Exception):
     """Raised by an unlocked `get_state` pass that reached a state change."""
 
 
+@owned_by("analysis_run", "run_id")
 def get_state(run_id: str) -> dict:
     """Activity: what should the orchestrator do next?
 
@@ -299,6 +302,7 @@ def _claim(s, run_id: str, key: str) -> dict:
     return {"claim": claim, "plan_version": row.plan_version}
 
 
+@owned_by("analysis_run", "run_id")
 def execute_task(run_id: str, key: str, services: Services | None = None) -> dict:
     """Activity: run one task. Idempotent by (run_id, key, plan_version)."""
     from analystos.agents.dispatch import dispatch
@@ -383,6 +387,7 @@ def _reset(run_id: str, key: str, error: str, claim: int) -> None:
                   .values(status="NEW", error=error))
 
 
+@platform_loop
 def nonterminal_runs() -> list[str]:
     """Runs a local orchestrator should be driving (oldest first)."""
     with session_scope() as s:
@@ -390,6 +395,7 @@ def nonterminal_runs() -> list[str]:
                               .order_by(AnalysisRun.created_at)))
 
 
+@platform_loop
 def release_orphaned_claims(run_ids: list[str] | None = None) -> list[str]:
     """Local orchestrator restart (ADR-0025): the process that held these RUNNING claims is gone, so
     each goes back to NEW under a new claim version (a late result of the old attempt, should one ever
@@ -410,6 +416,7 @@ def release_orphaned_claims(run_ids: list[str] | None = None) -> list[str]:
     return run_ids
 
 
+@owned_by("analysis_run", "run_id")
 def finish_run(run_id: str, outcome: str, error: str | None = None) -> None:
     with session_scope() as s:
         run = s.get(AnalysisRun, run_id, with_for_update=True)

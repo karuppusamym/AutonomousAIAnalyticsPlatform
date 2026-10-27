@@ -227,8 +227,11 @@ def test_push_to_a_remote_needs_a_verified_single_use_approval(two_workspaces, t
 
 def test_reembed_changes_dimension_and_rebuilds_the_hnsw_index(two_workspaces):
     a, _ = two_workspaces
+    from analystos.tenancy import system_scope
+
     with session_scope() as s:
         before = index.signature(index.retrieve(s, a, "SLA breach"))
+    with system_scope(), session_scope() as s:  # a platform operation (`analystos knowledge reembed`)
         rep = index.reembed(s, HashingProvider(dim=128))
         assert rep["to"]["dim"] == 128 and rep["sections"] > 0
     with session_scope() as s:
@@ -240,6 +243,7 @@ def test_reembed_changes_dimension_and_rebuilds_the_hnsw_index(two_workspaces):
         assert s.scalar(text(f"SELECT count(DISTINCT {_dims_sql()}) FROM knowledge_section")) == 1
         store.commit(s, store.workspace_pack(s, a, create=False), {}, deletes=("glossary/late-closure.md",), merge=True,
                      author="human:test", reason="undo", origin="user")
+    with system_scope(), session_scope() as s:
         index.reembed(s, HashingProvider(dim=256))
     with session_scope() as s:
         assert index.signature(index.retrieve(s, a, "SLA breach")) == before  # same provider, same results

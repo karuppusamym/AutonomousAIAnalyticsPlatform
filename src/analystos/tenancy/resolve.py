@@ -28,7 +28,7 @@ def user_tenants(user_id: str) -> tuple[str | None, frozenset[str]]:
     with system_scope(), session_scope() as s:
         home = s.scalar(select(User.tenant_id).where(User.id == user_id))
         extra = set(s.scalars(select(TenantMember.tenant_id).where(TenantMember.user_id == user_id)))
-    allowed = frozenset({home, *extra} - {None})
+    allowed = frozenset(t for t in (home, *extra) if t)
     with _lock:
         if len(_cache) >= _MAX_ENTRIES:
             _cache.clear()  # bounded (ADR-014); a refill is one indexed query per user

@@ -26,6 +26,7 @@ from analystos.core.logging import get_logger
 from analystos.db.base import session_scope
 from analystos.db.models import AnalysisRun, DispatchOutbox
 from analystos.events.bus import emit
+from analystos.tenancy.background import owned_by, platform_loop
 
 log = get_logger(__name__)
 MAX_BACKOFF = timedelta(minutes=5)
@@ -44,6 +45,7 @@ def _backoff(attempts: int) -> timedelta:
     return min(timedelta(seconds=2 ** min(attempts, 9)), MAX_BACKOFF)
 
 
+@owned_by("dispatch_outbox", "outbox_id")
 def dispatch(outbox_id: str) -> str:
     """Deliver one row: 'dispatched' | 'cancelled' | 'pending' (failed, will retry) | 'skipped'."""
     from analystos.services import runs  # start_run is looked up at call time (tests drive the engine themselves)
@@ -80,6 +82,7 @@ def dispatch(outbox_id: str) -> str:
     return "cancelled"
 
 
+@platform_loop
 def relay(limit: int = 20, now: Any = None) -> dict[str, int]:
     """Deliver due pending rows (the scheduler loop calls this every iteration)."""
     now = now or utcnow()
@@ -93,6 +96,7 @@ def relay(limit: int = 20, now: Any = None) -> dict[str, int]:
     return counts
 
 
+@platform_loop
 def reconcile(now: Any = None) -> dict[str, int]:
     """Give an outbox row to NEW runs that have none and no workflow (created before the outbox, or by a
     path that crashed between its own commit and dispatch), then relay."""

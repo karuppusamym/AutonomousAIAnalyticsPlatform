@@ -56,6 +56,7 @@ from analystos.db.models import Alert, Approval, Artifact, Delivery, DeliveryDes
 from analystos.events.bus import emit
 from analystos.governance.audit import audit
 from analystos.governance.policy import get_workspace, require_role
+from analystos.tenancy.background import owned_by, platform_loop
 
 log = get_logger(__name__)
 APPROVAL_ACTION = "delivery_destination.authorize"
@@ -646,6 +647,7 @@ def _permanent(exc: AnalystOSError) -> bool:
                                                            and status not in _RETRYABLE_HTTP)
 
 
+@owned_by("delivery", "delivery_id")
 def attempt(delivery_id: str, *, transports: dict[str, Transport] | None = None, now: datetime | None = None) -> str | None:
     """One send attempt. Returns the new status, or None when another sender holds the row. Never raises."""
     now = now or utcnow()
@@ -712,6 +714,7 @@ def _close(session: Session, d: Delivery, status: str, error: str) -> None:
            body=error, link={"type": "delivery", "id": d.id})
 
 
+@platform_loop
 def process_due(*, limit: int = 20, transports: dict[str, Transport] | None = None,
                 now: datetime | None = None) -> dict[str, int]:
     """Every scheduler iteration: attempt what is due (and what a crashed sender left leased)."""

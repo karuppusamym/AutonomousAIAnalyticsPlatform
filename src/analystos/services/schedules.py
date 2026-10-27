@@ -28,6 +28,7 @@ from analystos.governance.audit import audit
 from analystos.governance.policy import require_role
 from analystos.services import pins as pins_svc
 from analystos.services.notifications import deliver, notify
+from analystos.tenancy.background import owned_by, platform_loop
 
 log = get_logger(__name__)
 KINDS = {"reanalysis": "analyst", "dataset_refresh": "editor", "report": "analyst", "monitor": "analyst", "crawl": "editor"}
@@ -173,6 +174,7 @@ def _claim(session: Session, sch: Schedule, scheduled_for: datetime, trigger: st
     return inserted
 
 
+@platform_loop
 def claim_due(now: datetime | None = None, limit: int = 10) -> list[str]:
     now = now or utcnow()
     claimed = []
@@ -222,6 +224,7 @@ def _finish(srun_id: str, status: str, result: dict | None = None, error: str | 
             srun.result = {**(srun.result or {}), "deliveries": queued}
 
 
+@owned_by("schedule_run", "srun_id")
 def execute(srun_id: str) -> None:
     """Run one claimed firing. Never raises: failures are recorded on the schedule_run."""
     with session_scope() as s:
@@ -419,6 +422,7 @@ def _monitors(owner: User, workspace_id: str, schedule_id: str, srun_id: str, co
     return {"monitors": results, "alerts": sum(1 for r in results.values() if r.get("alert"))}
 
 
+@owned_by("analysis_run", "run_id")
 def complete_from_run(run_id: str) -> None:
     """Called when a scheduled run reaches a terminal state."""
     with session_scope() as s:
@@ -512,6 +516,7 @@ def disable_demo(session: Session, *, include_all: bool = False, workspace_id: s
     return {"dry_run": dry_run, "include_all": include_all, **out}
 
 
+@platform_loop
 def housekeeping() -> dict[str, Any]:
     """Every scheduler iteration (P4-06): relay pending run dispatches, give orphaned NEW runs an outbox
     row, and drop idempotency records past retention. Failures are logged, never fatal to the loop."""
@@ -542,6 +547,7 @@ def housekeeping() -> dict[str, Any]:
     return out
 
 
+@platform_loop
 def nightly_calibration() -> None:
     """Decision calibration (P4-T09) once a day, whichever scheduler process gets the advisory lock."""
     from analystos.decisions.calibration import maybe_run_nightly
@@ -553,6 +559,7 @@ def nightly_calibration() -> None:
         log.exception("decision calibration failed")
 
 
+@platform_loop
 def nightly_verification_sweep() -> None:
     """P7-01 sweep once a day: re-check every live verdict's dependencies; late voids are logged defects."""
     from analystos.evidence.verification import maybe_sweep_nightly
@@ -564,6 +571,7 @@ def nightly_verification_sweep() -> None:
         log.exception("verification sweep failed")
 
 
+@platform_loop
 def run_scheduler(poll_seconds: float = 15.0, *, once: bool = False, stop: threading.Event | None = None,
                   configure: bool = True) -> None:
     """The schedule/monitor loop: `analystos scheduler`, or a thread of the API process in the lite

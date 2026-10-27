@@ -3,6 +3,8 @@ tenant-owned table, the fill trigger derives tenant_id from the parent row, a te
 another tenant's workspace, the API answers 404 across tenants, and audit_event is append-only."""
 from __future__ import annotations
 
+import contextvars
+
 import pytest
 from sqlalchemy import select, text
 
@@ -103,8 +105,12 @@ def test_strict_mode_unbound_session_sees_nothing(two_tenants, monkeypatch):
     from analystos.db.models import Workspace
 
     monkeypatch.setattr(get_settings(), "tenancy_mode", "strict")
-    with session_scope() as s:
-        assert list(s.scalars(select(Workspace.id))) == []
+
+    def unbound() -> list[str]:
+        with session_scope() as s:
+            return list(s.scalars(select(Workspace.id)))
+
+    assert contextvars.Context().run(unbound) == []  # a fresh context: no tenant, not system
 
 
 def test_api_is_isolated_across_tenants(two_tenants):
@@ -140,3 +146,30 @@ def test_audit_event_is_append_only(control_db):
                  "DELETE FROM audit_event WHERE action = 'tenancy.audit_probe'"):
         with pytest.raises(DBAPIError, match="append-only"), system_scope(), session_scope() as s:
             s.execute(text(stmt))
+
+
+def test_background_work_runs_as_the_runs_tenant(two_tenants):
+    """S01-T4: an engine activity that starts with no tenant (a Temporal worker without the header, a local
+    driver thread) runs as the run's owner under strict mode, and a platform loop sees every tenant's runs."""
+    from analystos.runtime import engine
+
+    state = contextvars.Context().run(engine.get_state, two_tenants["run_b"])
+    assert isinstance(state, dict) and not state.get("fail")
+    assert two_tenants["run_b"] in contextvars.Context().run(engine.nonterminal_runs)
+
+
+def test_background_work_refuses_another_tenants_run(two_tenants):
+    from analystos.runtime import engine
+    from analystos.tenancy import DEFAULT_TENANT_ID, tenant_scope
+    from analystos.tenancy.background import TenantMismatch
+
+    with tenant_scope(DEFAULT_TENANT_ID), pytest.raises(TenantMismatch):
+        engine.get_state(two_tenants["run_b"])
+
+
+def test_worker_task_token_acts_for_the_workspace_tenant(two_tenants):
+    from analystos.tenancy import current_tenant
+    from analystos.tenancy.background import workspace_tenant
+
+    assert workspace_tenant(two_tenants["ws_b"]) == two_tenants["tenant_b"]
+    assert workspace_tenant("ws_missing") is None and current_tenant() is not None

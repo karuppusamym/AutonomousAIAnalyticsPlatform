@@ -54,7 +54,9 @@ def _race(n: int, action) -> tuple[list[object], list[Exception]]:  # noqa: ANN0
         except Exception as exc:  # recorded, asserted by the caller
             errors.append(exc)
 
-    threads = [threading.Thread(target=run, args=(i,)) for i in range(n)]
+    from analystos.tenancy.background import carry_context  # racers act for the test's tenant
+
+    threads = [threading.Thread(target=carry_context(run), args=(i,)) for i in range(n)]
     for t in threads:
         t.start()
     for t in threads:

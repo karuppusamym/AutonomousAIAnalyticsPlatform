@@ -338,6 +338,15 @@ def preview(session: Session, groups: list[str], mapping: Mapping | None = None)
             "unresolved": sorted(k for k in ident.roles if k not in resolved), "reason": None}
 
 
+def _act_for(session: Session, user: User) -> None:
+    """The callback looks the identity up across tenants (ADR-009); everything after that acts for the
+    user's own tenant, so an IdP group can only map to workspaces of that tenant."""
+    from analystos.tenancy.session import bind_session
+
+    if user.tenant_id:
+        bind_session(session, user.tenant_id)
+
+
 def provision(session: Session, claims: dict[str, Any], *, issuer: str, mapping: Mapping | None = None) -> User:
     """Find or create the local user for this identity and bring its IdP-managed state up to date:
     attributes from claims, platform admin from groups (SSO-created users only), and the workspace
@@ -360,9 +369,11 @@ def provision(session: Session, claims: dict[str, Any], *, issuer: str, mapping:
                         is_admin=False, attributes={"sso_managed": True})
             session.add(user)
             session.flush()
+            _act_for(session, user)
             audit(f"user:{user.id}", "auth.sso_user_created", target=ident.email, decision="allow", session=session)
         link = UserIdentity(user_id=user.id, issuer=issuer, subject=ident.subject, groups=[], managed_memberships={})
         session.add(link)
+    _act_for(session, user)  # group -> workspace mapping and audits stay inside the user's tenant
     if not user.active:
         raise Unauthenticated("user inactive")
     attrs = dict(user.attributes or {})

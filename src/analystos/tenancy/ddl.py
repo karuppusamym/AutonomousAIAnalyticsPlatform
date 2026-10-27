@@ -40,7 +40,7 @@ def _fill_function(src: TenantSource) -> str:
 
 def _fill_function_sql(src: TenantSource) -> str:
     lookup = ""
-    if src.parent:
+    if src.parent and src.fk:
         lookup = (f"  IF NEW.tenant_id IS NULL AND NEW.{_q(src.fk)} IS NOT NULL THEN\n"
                   f"    SELECT p.tenant_id INTO NEW.tenant_id FROM {_q(src.parent)} p WHERE p.id = NEW.{_q(src.fk)};\n"
                   f"  END IF;\n")
@@ -95,7 +95,7 @@ def install(conn: Connection, sources: Mapping[str, TenantSource], role: str = "
         conn.execute(text(f"ALTER TABLE {t} ADD COLUMN IF NOT EXISTS tenant_id varchar(40)"))
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS {_q(f'ix_{table}_tenant_id')} ON {t} (tenant_id)"))
         if backfill:
-            if src.parent:
+            if src.parent and src.fk:
                 conn.execute(text(f"UPDATE {t} c SET tenant_id = p.tenant_id FROM {_q(src.parent)} p "
                                   f"WHERE c.tenant_id IS NULL AND p.id = c.{_q(src.fk)}"))
             elif src.default_tenant:

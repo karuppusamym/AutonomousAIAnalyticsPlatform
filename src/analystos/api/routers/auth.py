@@ -39,12 +39,13 @@ class NewUser(BaseModel):
 def login(body: Login, session: Session = Depends(db, scope="function")):
     if not get_settings().password_login:
         raise Forbidden("password sign-in is turned off; use single sign-on")
+    from analystos.tenancy.session import bind_session, system_session
+
+    system_session(session)  # the user's tenant is not known until the user is found
     user = session.scalar(select(User).where(User.email == body.email.lower()))
     if user is None or not user.active or not verify_password(body.password, user.password_hash):
         audit(f"anon:{body.email[:80]}", "auth.login_failed", decision="deny", session=session)
         raise Unauthenticated("invalid email or password")
-    from analystos.tenancy.session import bind_session
-
     bind_session(session, user.tenant_id)  # the login is the user's tenant's event (ADR-009)
     audit(f"user:{user.id}", "auth.login", decision="allow", session=session)
     return {"access_token": issue_token(user.id, user.email), "token_type": "bearer",
@@ -103,8 +104,11 @@ def oidc_callback(request: Request, code: str | None = None, state: str | None =
     """Validate the transaction, exchange the code with the verifier, validate the ID token and
     provision the user. The browser returns to the web app with the AnalystOS token in the URL
     fragment (never sent to a server); `Accept: application/json` gets the login response instead."""
+    from analystos.tenancy.session import bind_session, system_session
+
     wants_json = "application/json" in (request.headers.get("accept") or "")
     web = get_settings().web_url.rstrip("/")
+    system_session(session)  # identity lookup and provisioning happen before the tenant is known
     try:
         if error:
             raise Unauthenticated(f"identity provider returned {error}")
@@ -115,6 +119,7 @@ def oidc_callback(request: Request, code: str | None = None, state: str | None =
         tokens = idp.exchange(code, tx["verifier"])
         claims = idp.validate_id_token(tokens["id_token"], nonce=tx["nonce"])
         user = oidc.provision(session, claims, issuer=idp.issuer)
+        bind_session(session, user.tenant_id)
     except AnalystOSError as exc:
         audit("anon:sso", "auth.sso_login_failed", decision="deny", details={"error": exc.message[:300]}, session=session)
         session.commit()

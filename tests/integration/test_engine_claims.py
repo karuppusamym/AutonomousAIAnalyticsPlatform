@@ -78,7 +78,9 @@ def _race(fn, n: int = CLAIMERS) -> list:
 
     event.listen(Engine, "before_cursor_execute", hold)
     try:
-        threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
+        from analystos.tenancy.background import carry_context  # racers act for the test's tenant
+
+        threads = [threading.Thread(target=carry_context(worker), args=(i,)) for i in range(n)]
         for t in threads:
             t.start()
         for t in threads:

@@ -116,10 +116,10 @@ class Settings(BaseSettings):
     # The control/analytics/loader URLs go through a transaction-mode pooler (PgBouncer): no
     # server-side prepared statements. The builder URL must stay direct or session-pooled.
     db_transaction_pooler: bool = False
-    # Tenant isolation (ADR-009, analystos.tenancy): `bound` restricts every transaction that has a
-    # bound tenant (API and MCP requests) to that tenant through Postgres RLS; `strict` also restricts
-    # unbound transactions outside system_scope (fail closed); `off` skips the role switch.
-    tenancy_mode: Literal["off", "bound", "strict"] = "bound"
+    # Tenant isolation (ADR-009, analystos.tenancy): `strict` (default) restricts every transaction
+    # outside system_scope to its bound tenant through Postgres RLS, and an unbound one sees nothing
+    # (fail closed); `bound` restricts only transactions with a bound tenant (upgrade aid); `off` skips it.
+    tenancy_mode: Literal["off", "bound", "strict"] = "strict"
     tenancy_app_role: str = Field(default="analystos_app", pattern=r"^[a-z_][a-z0-9_]{0,62}$")
     redis_url: str = "redis://localhost:6379/0"
     # Neo4j is an optional projection of the Postgres lineage/relationship tables (spec v3 §8), off

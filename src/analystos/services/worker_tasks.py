@@ -16,6 +16,7 @@ from analystos.contracts.worker import TaskDispatch, TaskEvent, TaskResult
 from analystos.core.ids import utcnow
 from analystos.db.base import session_scope
 from analystos.db.models import WorkerTask, WorkerTaskEvent
+from analystos.tenancy.background import owned_by
 
 STATUS_FOR = {"task.started": "running", "task.completed": "completed", "task.failed": "failed"}
 
@@ -41,6 +42,7 @@ def record_dispatch(dispatch: TaskDispatch) -> None:
                  run_id=env.run_id)
 
 
+@owned_by("worker_task", "task_id")
 def record_events(task_id: str, events: list[dict[str, Any]] | list[TaskEvent]) -> int:
     from analystos.events.bus import emit
 

@@ -49,6 +49,7 @@ from analystos.governance.policy import require_role
 from analystos.services.platform_settings import get as platform
 from analystos.skills import catalog as cat
 from analystos.skills.profiling import column_is_sensitive
+from analystos.tenancy.background import owned_by
 
 log = logging.getLogger(__name__)
 
@@ -320,6 +321,7 @@ def start_crawl(session: Session, user: User, source_id: str, *, mode: str | Non
     return run
 
 
+@owned_by("crawl_run", "crawl_id")
 def run_crawl(crawl_id: str, user_id: str) -> dict[str, Any]:
     """Execute a started crawl. Never leaves the crawl_run in `running`."""
     with session_scope() as s:

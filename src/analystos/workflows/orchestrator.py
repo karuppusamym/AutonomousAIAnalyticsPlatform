@@ -28,9 +28,27 @@ def _event_loop() -> asyncio.AbstractEventLoop:
     return _loop
 
 
+def _submit(coro) -> Future:
+    """Run `coro` on the client loop thread as the caller's tenant (S01-T4): a task created there would
+    otherwise start from that thread's empty context, and the workflow header would carry no tenant."""
+    from analystos.tenancy import current_tenant, is_system, system_scope, tenant_scope
+
+    tenant, system = current_tenant(), is_system()
+
+    async def bound():
+        if tenant:
+            with tenant_scope(tenant):
+                return await coro
+        if system:
+            with system_scope():
+                return await coro
+        return await coro
+
+    return asyncio.run_coroutine_threadsafe(bound(), _event_loop())
+
+
 def _run(coro) -> object:
-    fut: Future = asyncio.run_coroutine_threadsafe(coro, _event_loop())
-    return fut.result(timeout=30)
+    return _submit(coro).result(timeout=30)
 
 
 async def _temporal_client():
@@ -39,7 +57,9 @@ async def _temporal_client():
         from temporalio.client import Client
 
         s = get_settings()
-        _client = await Client.connect(s.temporal_address, namespace=s.temporal_namespace)
+        from analystos.workflows.tenant_propagation import INTERCEPTORS
+
+        _client = await Client.connect(s.temporal_address, namespace=s.temporal_namespace, interceptors=INTERCEPTORS)
     return _client
 
 
@@ -98,8 +118,7 @@ def worker_status(*, timeout: float = 3.0, cache_seconds: float = 10.0) -> dict:
 
 
 def _run_with_timeout(coro, timeout: float) -> object:
-    fut: Future = asyncio.run_coroutine_threadsafe(coro, _event_loop())
-    return fut.result(timeout=timeout)
+    return _submit(coro).result(timeout=timeout)
 
 
 def workflow_id(run_id: str) -> str:
@@ -122,7 +141,10 @@ def start_run(run_id: str) -> str:
                                             task_queue=queue_name(settings.temporal_queue_prefix, "analysis"))
             except WorkflowAlreadyStartedError:  # idempotent: the loop is alive, just wake it
                 await client.get_workflow_handle(workflow_id(run_id)).signal("nudge")
-        _run(go())
+        from analystos.tenancy.background import as_owner_of
+
+        with as_owner_of("analysis_run", run_id):  # the workflow header carries the run's tenant
+            _run(go())
         return workflow_id(run_id)
     local_runtime().submit(run_id)
     return f"local-{run_id}"
@@ -147,6 +169,8 @@ def signal_run(run_id: str) -> None:
 def start_crawl_job(crawl_id: str, user_id: str) -> str | None:
     """Run a started crawl on the Temporal `crawl` pool. None when the orchestrator is local or Temporal
     cannot take it; the caller then runs the crawl in-process as before."""
+    from analystos.tenancy.background import as_owner_of
+
     settings = get_settings()
     if settings.orchestrator != "temporal":
         return None
@@ -158,7 +182,8 @@ def start_crawl_job(crawl_id: str, user_id: str) -> str | None:
         await client.start_workflow("CrawlWorkflow", args=[crawl_id, user_id, workflow_options()], id=f"crawl-{crawl_id}",
                                     task_queue=queue_name(settings.temporal_queue_prefix, "crawl"))
     try:
-        _run(go())
+        with as_owner_of("crawl_run", crawl_id):
+            _run(go())
     except Exception as exc:
         log.warning("crawl %s not handed to Temporal (%s); running it in-process", crawl_id, exc)
         return None
@@ -190,7 +215,7 @@ def run_recipe_compute(job: dict) -> dict:
                                              id=new_id("recipe-compute"),
                                              task_queue=queue_name(settings.temporal_queue_prefix, "analysis"))
     try:
-        fut: Future = asyncio.run_coroutine_threadsafe(go(), _event_loop())
+        fut: Future = _submit(go())
         return fut.result(timeout=900)
     except Exception as exc:
         log.warning("recipe compute not handed to Temporal (%s); running it in-process", exc)
@@ -228,7 +253,7 @@ def run_ml_compute(job: dict) -> dict:
             raise
         return await handle.result()
 
-    fut: Future = asyncio.run_coroutine_threadsafe(go(), _event_loop())
+    fut: Future = _submit(go())
     try:
         return fut.result(timeout=max(900, int(settings.ml_max_seconds) + 300))
     except Exception as exc:

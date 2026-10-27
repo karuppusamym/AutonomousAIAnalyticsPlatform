@@ -17,6 +17,7 @@ from temporalio import activity
 
 from analystos.core.logging import get_logger
 from analystos.runtime import engine
+from analystos.tenancy.background import owned_by
 
 log = get_logger(__name__)
 
@@ -56,6 +57,7 @@ def heartbeating(fn: Callable[..., Any], *args: Any) -> Any:
         return fn(*args)
 
 
+@owned_by("analysis_run", "run_id")
 def release_timed_out_claim(run_id: str, key: str, attempt: int) -> bool:
     """A retry of `execute_task` means Temporal declared the previous attempt dead (heartbeat or
     start_to_close timeout): a retryable failure resets the task to NEW itself. Release that attempt's

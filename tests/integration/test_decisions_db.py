@@ -226,7 +226,8 @@ def test_migration_0013_applies_and_reverts(control_db):
         from analystos.db import models
 
         for table in ("decision", "decision_outcome", "decision_calibration"):
-            assert {c["name"] for c in insp.get_columns(table)} == set(models.Base.metadata.tables[table].columns.keys())
+            # tenant_id arrives with 0057 (ADR-009); the 0013 schema predates it
+            assert {c["name"] for c in insp.get_columns(table)} == set(models.Base.metadata.tables[table].columns.keys()) - {"tenant_id"}
         command.downgrade(cfg, "-1")
         assert "decision" not in inspect(engine).get_table_names()
     finally:

@@ -65,7 +65,10 @@ async def _main(workloads: list[str]) -> None:
     from temporalio.client import Client
 
     settings = get_settings()
-    client = await Client.connect(settings.temporal_address, namespace=settings.temporal_namespace)
+    from analystos.workflows.tenant_propagation import INTERCEPTORS
+
+    client = await Client.connect(settings.temporal_address, namespace=settings.temporal_namespace,
+                                  interceptors=INTERCEPTORS)  # S01-T4: activities run as the run's tenant
     with contextlib.ExitStack() as stack:
         workers = build_workers(client, workloads, prefix=settings.temporal_queue_prefix, stack=stack)
         await _serve_until_terminated(workers)

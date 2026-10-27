@@ -130,3 +130,16 @@ event and notification. Without Redis, reservations fail closed (`spend_counters
   belong to via the `X-Tenant-Id` header.
 * `audit_event` is append-only. A retention job sets `app.audit_maintenance = 'on'` in its own transaction, runs as the
   owner identity, and audits itself.
+* Mode `ANALYSTOS_TENANCY_MODE=strict` is the default (S01-T4): a transaction with no bound tenant, outside system scope,
+  sees no tenant rows. Who binds what:
+  * API and MCP requests: the caller's tenant (token, `X-Tenant-Id`). Isolated-worker callbacks: the tenant of the
+    task token's workspace.
+  * Temporal: the client stamps the `analystos-tenant` header on each workflow it starts; the workflow copies it to its
+    activities and children; the worker runs each activity as that tenant. Engine activities also check that the
+    tenant owns the run, which covers workflows started before the header existed.
+  * Scheduler and sweeps: claims, relays and sweeps are platform loops (system scope); each claimed item (schedule
+    run, delivery, dispatch, crawl, run step) runs as its owner.
+  * CLI maintenance commands (`migrate`, `seed`, `calibrate`, `knowledge`, `bi-sync`, ...) run in system scope.
+* Rolling upgrade from `bound`: deploy the new code everywhere first (workers last is fine: engine activities bind the
+  run's tenant without the header), then remove any `ANALYSTOS_TENANCY_MODE=bound` override. A symptom of a missed
+  binding is "not found" or an empty list from background work; set `bound` to restore service while you fix it.

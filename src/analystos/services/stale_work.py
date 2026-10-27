@@ -19,6 +19,7 @@ from analystos.core.logging import get_logger
 from analystos.db.base import session_scope
 from analystos.db.models import AskTurn, MLExperiment
 from analystos.events.bus import emit
+from analystos.tenancy.background import platform_loop
 
 log = get_logger(__name__)
 ASK_TURN_BOUND = timedelta(minutes=30)
@@ -30,6 +31,7 @@ def ml_bound() -> timedelta:
     return timedelta(seconds=max(3600, 2 * int(get_settings().ml_max_seconds) + 900))
 
 
+@platform_loop
 def sweep(now: datetime | None = None, *, ask_after: timedelta = ASK_TURN_BOUND, ml_after: timedelta | None = None) -> dict[str, Any]:
     """Mark stale running Ask turns (refused, kind `failed`) and ML experiments (failed); returns their ids."""
     from analystos.services.ask import refusal

@@ -22,7 +22,9 @@ and DataPilot are donors: port behaviour and tests, never runtime calls (ADR-001
 4. **One gateway.** Every SQL statement from every path goes through `QueryGateway.execute`. Never open a source
    connection elsewhere; never use the loader or control-plane identity for queries.
 5. **Tenant bound or nothing (ADR-009).** Every control-plane transaction runs with `app.tenant_id` set; cross-tenant
-   work only inside `system_scope()`. A new table with `workspace_id` or `tenant_id` gets RLS and is covered by
+   work only inside `system_scope()`. Mode `strict` (default) fails closed. New background code says what it is
+   (`tenancy/background.py`): a platform loop (`@platform_loop`) or tenant work on a row (`@owned_by(table, param)`);
+   a new thread or pool gets the caller's tenant through `carry_context`. A new table with `workspace_id` or `tenant_id` gets RLS and is covered by
    `tests/unit/test_tenancy_rls_coverage.py`.
 6. **Side effects are approvals bound to hashes.** Publish, schedule, export, notify and external tools with side effects
    use `governance/approvals.py` and call `verify_for_execution` immediately before acting.

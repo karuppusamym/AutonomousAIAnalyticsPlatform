@@ -82,10 +82,11 @@ def seed() -> None:
     from analystos.db.models import User
     from analystos.knowledge.platform import sync_from_domain_packs
     from analystos.security.auth import hash_password
+    from analystos.tenancy import system_scope
     from analystos.tools.registry import seed_registries
 
     settings = get_settings()
-    with session_scope() as s:
+    with system_scope(), session_scope() as s:  # platform rows; bootstrap users join the default tenant
         users = [(settings.bootstrap_admin_email, "Platform Admin", settings.bootstrap_admin_password, True, {"pii_clearance": False})]
         if settings.env == "dev":  # demo accounts with a known password never exist outside development (Helm sets production)
             users += [("analyst@analystos.local", "Ada Analyst", "ChangeMe123!", False, {}),
@@ -225,8 +226,24 @@ def bi_sync(workspace_ids: list[str] | None = None) -> dict:
         publisher.close()
 
 
+# Long-running servers bind tenants per request, per run and per claimed item; demo-seed goes through the API.
+_SELF_BINDING = ("worker", "scheduler", "api", "demo-seed")
+
+
 def main(argv: list[str] | None = None) -> int:
+    """Operator commands (migrate, seed, calibrate, knowledge, bi-sync, ...) are cross-tenant platform
+    maintenance run with the owner's credentials: they run in ``system_scope`` (S01-T4)."""
     argv = list(sys.argv[1:] if argv is None else argv)
+    command = next((a for a in argv if not a.startswith("-")), None)
+    if command in _SELF_BINDING:
+        return _main(argv)
+    from analystos.tenancy import system_scope
+
+    with system_scope():
+        return _main(argv)
+
+
+def _main(argv: list[str]) -> int:
     if argv[:1] == ["knowledge"]:
         from analystos.knowledge.cli import main as knowledge_main
 
