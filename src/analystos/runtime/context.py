@@ -61,6 +61,8 @@ def workspace_call_ctx(workspace_id: str, **kwargs: Any) -> CallContext:
     with session_scope() as s:
         workspace = s.get(Workspace, workspace_id)
         policy = load_policy(s, workspace) if workspace else WorkspacePolicyDoc()
+        kwargs.setdefault("tenant_id", getattr(workspace, "tenant_id", None))
+        kwargs.setdefault("policy_version", getattr(workspace, "policy_version", None))
     if "knowledge_version" not in kwargs:
         from analystos.context.version import workspace_knowledge_version
 
@@ -183,7 +185,9 @@ class RunContext:
         `agents.common.llm_json` replaces it with `<prompt name>@<text hash>` for the prompt it sends."""
         return CallContext.for_policy(self.policy, workspace_id=self.workspace.id, run_id=self.run.id, task_id=self.task.id,
                                       agent_id=self.agent.id, prompt_version=f"{self.agent.id}.{self.agent.prompt_version}",
-                                      exclude_families=exclude_families or [], knowledge_version=self.knowledge_version)
+                                      exclude_families=exclude_families or [], knowledge_version=self.knowledge_version,
+                                      tenant_id=self.workspace.tenant_id, scope_hash=self.scope.scope_hash(),
+                                      policy_version=self.scope.policy_version)
 
     @property
     def knowledge_version(self) -> str | None:
@@ -211,7 +215,7 @@ class RunContext:
         return self.services.decisions
 
     def tools(self) -> ToolRuntime:
-        return ToolRuntime(user=self.user, identity=self.identity, agent=self.agent)
+        return ToolRuntime(user=self.user, identity=self.identity, agent=self.agent, scope=self.scope)
 
     def authorize_tool(self, tool_id: str) -> None:
         """Implicit tool gate (spec v2 §6) for paths that act as a tool without invoking it by name.

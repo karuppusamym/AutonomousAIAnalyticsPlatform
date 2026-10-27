@@ -7,13 +7,14 @@ from typing import Any
 
 from analystos.contracts.analysis import Filter
 from analystos.contracts.policy import ExecutionIdentity
-from analystos.core.errors import Conflict, ContextOverBudget, InvalidInput, NotFound, PolicyDenied
+from analystos.core.errors import Conflict, ContextOverBudget, InvalidInput, NotFound
 from analystos.core.ids import new_id, utcnow
 from analystos.db.base import session_scope
 from analystos.db.models import AnalysisRun, Feedback, Hypothesis, Insight, User
 from analystos.events.bus import emit
 from analystos.governance.audit import audit
 from analystos.governance.policy import (
+    denied,
     evaluate,
     get_workspace,
     load_in_workspace,
@@ -115,7 +116,7 @@ def start_run_request(user: User, workspace_id: str, *, objective: str | None, s
         identity = ExecutionIdentity(user_id=user.id, workspace_id=workspace_id, purpose="analysis")
         decision = evaluate(s, s.merge(user), identity, "run_analysis", autonomy_level=level)
         if decision.decision == "deny":
-            raise PolicyDenied("analysis run denied: " + ", ".join(decision.reasons))
+            raise denied(decision, "analysis run denied: " + ", ".join(decision.reasons))
         origin = origin or {"type": "user"}
         caps = _capabilities(s, workspace_id, playbook=playbook, definition=definition, pins=pins,
                              trigger=str(origin.get("type") or "api"))
@@ -123,7 +124,7 @@ def start_run_request(user: User, workspace_id: str, *, objective: str | None, s
             caps["analysis_context"] = context_snapshot
         run = AnalysisRun(id=new_id("run"), workspace_id=workspace_id, objective=objective, status="NEW", autonomy_level=level,
                           policy_version=ws.policy_version, requested_by=user.id,
-                          scope={**scope.model_dump(), "hash": scope.scope_hash()}, instructions=[], constraints={},
+                          scope={**scope.model_dump(exclude={"abac"}), "hash": scope.scope_hash()}, instructions=[], constraints={},
                           origin=origin, capabilities=caps)
         s.add(run)
         s.flush()

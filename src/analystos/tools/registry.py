@@ -12,7 +12,7 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from analystos.contracts.policy import ExecutionIdentity, PolicyDecision
+from analystos.contracts.policy import DataScope, ExecutionIdentity, PolicyDecision
 from analystos.contracts.registry import AgentSpec, ToolSpec
 from analystos.core.config import get_settings
 from analystos.core.errors import AnalystOSError, ApprovalRequired, NotFound, PolicyDenied
@@ -152,10 +152,13 @@ def _summarize(value: Any, limit: int = 2000) -> Any:
 class ToolRuntime:
     """Per-step tool gate for one agent."""
 
-    def __init__(self, *, user: User, identity: ExecutionIdentity, agent: AgentSpec) -> None:
+    def __init__(self, *, user: User, identity: ExecutionIdentity, agent: AgentSpec,
+                 scope: DataScope | None = None) -> None:
         self.user = user
         self.identity = identity
         self.agent = agent
+        # The step's DataScope: what the tool can read, for the ABAC decision (S01-T6).
+        self.scope = scope if isinstance(scope, DataScope) else None
 
     def authorize(self, tool_id: str, inputs: dict[str, Any] | None = None, *, bound: bool = True) -> PolicyDecision | None:
         """Policy-check a tool use without running it; a denial is recorded and raised.
@@ -184,15 +187,25 @@ class ToolRuntime:
                 identity = self.identity.model_copy(update={"tool_id": tool_id, "agent_id": self.agent.id})
                 action = "publish" if tool.side_effects == "external_write" else "tool"
                 decision = evaluate(session, session.merge(self.user), identity, action, tool=tool,
-                                    destination=tool_id.split(".")[0] if action == "publish" else None)
+                                    destination=tool_id.split(".")[0] if action == "publish" else None,
+                                    scope=self.scope)
                 if decision.decision == "deny":
                     reasons += decision.reasons
+            abac = (decision.details.get("abac") if decision is not None else None) or {}
+            denied_by = abac if abac.get("allow") is False else None
             if reasons:
-                session.add(_execution(self, tool_id, "denied", inputs, {}, {"decision": "deny", "reasons": reasons}, 0, None))
-                emit(self.identity.workspace_id, "policy.denied", {"tool": tool_id, "agent": self.agent.id, "reasons": reasons},
+                session.add(_execution(self, tool_id, "denied", inputs, {},
+                                       {"decision": "deny", "reasons": reasons,
+                                        **({"abac": denied_by} if denied_by else {})}, 0, None))
+                emit(self.identity.workspace_id, "policy.denied",
+                     {"tool": tool_id, "agent": self.agent.id, "reasons": reasons,
+                      **({"rule": denied_by.get("rule")} if denied_by else {})},
                      run_id=self.identity.run_id, session=session)
         if reasons:
-            raise PolicyDenied(f"tool {tool_id} denied for agent {self.agent.id}: {', '.join(reasons)}")
+            message = f"tool {tool_id} denied for agent {self.agent.id}: {', '.join(reasons)}"
+            if denied_by:  # 403 policy_denied {rule, reason, remedy}
+                raise PolicyDenied(message, details={k: denied_by.get(k) for k in ("rule", "reason", "remedy", "engine")})
+            raise PolicyDenied(message)
         if decision is not None and decision.decision == "approval_required" and not inputs.get("_approval_verified"):
             raise ApprovalRequired(f"tool {tool_id} requires an approved proposal")
         return decision

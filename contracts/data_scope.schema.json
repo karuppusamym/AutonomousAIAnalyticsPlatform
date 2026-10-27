@@ -1,4 +1,149 @@
 {
+  "$defs": {
+    "AbacCondition": {
+      "description": "One test on an attribute. `in`/`not_in` compare values (a region value also matches its sub-regions:\n`eu` matches `eu-west-1`; a purpose value also matches the purpose's class). `at_least`/`at_most` compare\nclassifications by order. An unknown region is never `in` a list and always `not_in` it (fail closed).",
+      "properties": {
+        "attribute": {
+          "enum": [
+            "classification",
+            "purpose",
+            "region",
+            "aggregation_grain",
+            "audience"
+          ],
+          "title": "Attribute",
+          "type": "string"
+        },
+        "op": {
+          "default": "in",
+          "enum": [
+            "in",
+            "not_in",
+            "at_least",
+            "at_most"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Values",
+          "type": "array"
+        }
+      },
+      "required": [
+        "attribute",
+        "values"
+      ],
+      "title": "AbacCondition",
+      "type": "object"
+    },
+    "AbacRule": {
+      "description": "A workspace ABAC rule (S01-T6). Rules only deny: a call is refused when every condition in `when` holds.\n`reason` and `remedy` are returned to the caller as `403 policy_denied {rule, reason, remedy}`.",
+      "properties": {
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "when": {
+          "items": {
+            "$ref": "#/$defs/AbacCondition"
+          },
+          "minItems": 1,
+          "title": "When",
+          "type": "array"
+        },
+        "applies_to": {
+          "items": {
+            "enum": [
+              "tool",
+              "query",
+              "action"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Applies To",
+          "type": "array"
+        },
+        "reason": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Reason",
+          "type": "string"
+        },
+        "remedy": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Remedy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "when"
+      ],
+      "title": "AbacRule",
+      "type": "object"
+    },
+    "AbacScope": {
+      "description": "ABAC facts resolved with a DataScope, so the gateway can decide every query without another read:\nthe caller's region, the data residency (workspace policy, else the tenant), the classification of each\nreadable column that is not `internal`, and the workspace's ABAC rules at the scope's policy version.\nNever part of the scope hash: these are inputs to a decision made on every call, not part of what the\nscope authorizes.",
+      "properties": {
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region"
+        },
+        "residency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Residency"
+        },
+        "column_classes": {
+          "additionalProperties": {
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "restricted"
+            ],
+            "type": "string"
+          },
+          "title": "Column Classes",
+          "type": "object"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/AbacRule"
+          },
+          "title": "Rules",
+          "type": "array"
+        }
+      },
+      "title": "AbacScope",
+      "type": "object"
+    }
+  },
   "description": "The resolved, server-side authorized scope carried through a run (\u00a712.2 invariants).\n\nassets: fully qualified \"schema.table\" names the caller may reference.\ndenied_columns: \"schema.table.column\" never readable (restricted + PII without clearance).",
   "properties": {
     "workspace_id": {
@@ -89,6 +234,17 @@
       },
       "title": "Withheld Assets",
       "type": "object"
+    },
+    "abac": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AbacScope"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [

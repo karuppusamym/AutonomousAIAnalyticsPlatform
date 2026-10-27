@@ -1,9 +1,11 @@
 """Redis result cache for the query gateway.
 
-Key = sha256(fingerprint, scope hash, source version, max_rows): a result is only reused for the
-same normalized SQL, the same authorized scope (so a narrower scope never reads a wider one's
-cached rows), the same source data version and the same row cap. Values are JSON. Any Redis
-failure behaves as a miss and is logged as a warning; the cache never fails a query.
+Key = `analystos:qcache:tenant:{t}:scope:{scope hash}:policy:{policy version}:` + sha256(fingerprint, scope
+hash, source version, max_rows) (S01-T7, `tenancy/cache_keys.py`): a result is only reused by the same tenant,
+for the same normalized SQL, the same authorized scope (so a narrower scope never reads a wider one's cached
+rows), the same policy version, the same source data version and the same row cap. A key of None (the bound
+tenant is not the workspace's) is never read or written. Values are JSON. Any Redis failure behaves as a miss
+and is logged as a warning; the cache never fails a query.
 """
 from __future__ import annotations
 
@@ -12,15 +14,21 @@ import json
 from typing import Any
 
 from analystos.core.logging import get_logger
+from analystos.tenancy.cache_keys import scoped_prefix
 
 KEY_PREFIX = "analystos:qcache:"
 
 _log = get_logger(__name__)
 
 
-def cache_key(fingerprint: str, scope_hash: str, source_version: str, max_rows: int) -> str:
+def cache_key(fingerprint: str, scope_hash: str, source_version: str, max_rows: int, *,
+              tenant: str | None = None, policy_version: int | None = None) -> str | None:
+    """`tenant` is the owner (workspace) tenant; the bound tenant, when there is one, must equal it."""
+    head = scoped_prefix(owner_tenant=tenant, scope_hash=scope_hash, policy_version=policy_version)
+    if head is None:
+        return None
     material = "\x1f".join([fingerprint, scope_hash, source_version, str(int(max_rows))])
-    return KEY_PREFIX + hashlib.sha256(material.encode()).hexdigest()
+    return f"{KEY_PREFIX}{head}:{hashlib.sha256(material.encode()).hexdigest()}"
 
 
 class QueryCache:
@@ -39,16 +47,18 @@ class QueryCache:
         return self._client
 
     @staticmethod
-    def key(fingerprint: str, scope_hash: str, source_version: str, max_rows: int) -> str:
-        return cache_key(fingerprint, scope_hash, source_version, max_rows)
+    def key(fingerprint: str, scope_hash: str, source_version: str, max_rows: int, *,
+            tenant: str | None = None, policy_version: int | None = None) -> str | None:
+        return cache_key(fingerprint, scope_hash, source_version, max_rows, tenant=tenant,
+                         policy_version=policy_version)
 
     @property
     def enabled(self) -> bool:
         """No Redis URL (lite) = no shared query cache: every lookup is a quiet miss."""
         return self._client is not None or bool(self._url)
 
-    def get(self, key: str) -> dict[str, Any] | None:
-        if not self.enabled:
+    def get(self, key: str | None) -> dict[str, Any] | None:
+        if not self.enabled or key is None:
             return None
         try:
             raw = self._redis().get(key)
@@ -64,8 +74,8 @@ class QueryCache:
             return None
         return value if isinstance(value, dict) else None
 
-    def set(self, key: str, value: dict[str, Any]) -> bool:
-        if self.ttl_seconds <= 0 or not self.enabled:
+    def set(self, key: str | None, value: dict[str, Any]) -> bool:
+        if self.ttl_seconds <= 0 or not self.enabled or key is None:
             return False
         try:
             payload = json.dumps(value, separators=(",", ":"), default=str)
@@ -75,8 +85,8 @@ class QueryCache:
             return False
         return True
 
-    def delete(self, key: str) -> None:
-        if not self.enabled:
+    def delete(self, key: str | None) -> None:
+        if not self.enabled or key is None:
             return
         try:
             self._redis().delete(key)

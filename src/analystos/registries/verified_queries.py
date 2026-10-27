@@ -239,7 +239,16 @@ class Semantics:
     tables: tuple[str, ...]
 
 
+# A pure function of the template text (no tenant data, no authorization), so not tenant-prefixed (S01-T7);
+# bounded (ADR-014): cleared when full, a refill is one parse per template.
+_SEMANTICS_MAX = 4096
 _semantics_cache: dict[tuple[str, str], Semantics | None] = {}
+
+
+def _remember(key: tuple[str, str], value: Semantics | None) -> None:
+    if len(_semantics_cache) >= _SEMANTICS_MAX:
+        _semantics_cache.clear()
+    _semantics_cache[key] = value
 
 
 def _column_tokens(names: list[str]) -> frozenset[str]:
@@ -255,7 +264,7 @@ def semantics(template: str, dialect: str = "postgres") -> Semantics | None:
     try:
         tree = sqlglot.parse_one(sql, read=dialect)
     except (sqlglot.errors.ParseError, sqlglot.errors.TokenError, ValueError):
-        _semantics_cache[key] = None
+        _remember(key, None)
         return None
     aggs: set[str] = set()
     for node in tree.walk():
@@ -296,7 +305,7 @@ def semantics(template: str, dialect: str = "postgres") -> Semantics | None:
             literals.append((column.name, value))
     tables = tuple(".".join(p for p in (t.db, t.name) if p) for t in tree.find_all(exp.Table))
     out = Semantics(frozenset(aggs), tuple(dims), tuple(literals), tables)
-    _semantics_cache[key] = out
+    _remember(key, out)
     return out
 
 

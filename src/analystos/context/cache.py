@@ -4,8 +4,9 @@ for the same thing.
 
 Same store as the L0 response cache (`llm.cache.ResponseCache`): Redis when configured, so a retried
 Temporal activity or another worker reuses the entry, else an in-process LRU that honours the TTL.
-Every key carries what makes the entry valid: workspace, knowledge version, catalog version, scope
-hash, purpose profile and query (callers build the material). Hits and misses are counted per kind
+Every key starts `aos:ctx:tenant:{t}:scope:{scope hash}:policy:{v}:<workspace>:<kind>:` (S01-T7) and its digest
+carries what makes the entry valid: knowledge version, catalog version, purpose profile and query (callers build
+the material). Hits and misses are counted per kind
 and purpose for the token-savings view; a context hit saves compile and retrieval work, never
 provider tokens, so it is never recorded as `tokens_saved`."""
 from __future__ import annotations
@@ -18,6 +19,7 @@ from typing import Any
 from analystos.core.ids import stable_hash
 from analystos.core.logging import get_logger
 from analystos.llm.cache import ResponseCache
+from analystos.tenancy.cache_keys import PREFIX_PARTS, parse, scoped_prefix
 
 log = get_logger(__name__)
 
@@ -45,18 +47,48 @@ def use(new: ResponseCache | None) -> None:
     _STORE = new
 
 
-def entry_key(kind: str, workspace_id: str | None, digest: str) -> str:
-    """Every entry lives under `aos:ctx:<workspace>:<kind>:`, so one workspace's entries can be counted and cleared."""
-    return f"aos:ctx:{workspace_id or '-'}:{kind}:{digest}"
+def entry_key(kind: str, workspace_id: str | None, digest: str, *, tenant: str | None = None,
+              scope_hash: str | None = None, policy_version: int | None = None) -> str | None:
+    """`aos:ctx:tenant:{t}:scope:{s}:policy:{v}:<workspace>:<kind>:<digest>` (S01-T7): an entry is found only by
+    the same tenant, caller scope and policy version, and one workspace's entries can still be counted and
+    cleared. None (the bound tenant is not `tenant`, the workspace's) means: do not use the cache."""
+    head = scoped_prefix(owner_tenant=tenant, scope_hash=scope_hash, policy_version=policy_version)
+    if head is None:
+        return None
+    return f"aos:ctx:{head}:{workspace_id or '-'}:{kind}:{digest}"
 
 
-def key(kind: str, workspace_id: str | None, material: Any) -> str:
-    return entry_key(kind, workspace_id, stable_hash(material))
+def key(kind: str, workspace_id: str | None, material: Any, *, tenant: str | None = None,
+        scope_hash: str | None = None, policy_version: int | None = None) -> str | None:
+    return entry_key(kind, workspace_id, stable_hash(material), tenant=tenant, scope_hash=scope_hash,
+                     policy_version=policy_version)
 
 
-def workspace_of(cache_key: str) -> str | None:
+def scope_of(ctx: Any) -> dict[str, Any]:
+    """Key prefix inputs of a run step or Ask context: its workspace's tenant, its DataScope hash and the policy
+    version the scope was resolved under."""
+    scope = getattr(ctx, "scope", None)
+    workspace = getattr(ctx, "workspace", None)
+    version = getattr(scope, "policy_version", None)
+    return {"tenant": getattr(workspace, "tenant_id", None),
+            "scope_hash": scope.scope_hash() if hasattr(scope, "scope_hash") else None,
+            "policy_version": version if version is not None else getattr(workspace, "policy_version", None)}
+
+
+_ENTRY_PARTS = 2 + PREFIX_PARTS + 3  # aos, ctx, prefix, workspace, kind, digest
+
+
+def _split(cache_key: str) -> tuple[str, str] | None:
+    """(workspace, kind) of an entry key, else None."""
     parts = cache_key.split(":")
-    return parts[2] if len(parts) >= 5 and parts[:2] == ["aos", "ctx"] and parts[2] != "-" else None
+    if len(parts) < _ENTRY_PARTS or parts[:2] != ["aos", "ctx"] or parse(parts[2:2 + PREFIX_PARTS]) is None:
+        return None
+    return parts[2 + PREFIX_PARTS], parts[3 + PREFIX_PARTS]
+
+
+def workspace_of(cache_key: str | None) -> str | None:
+    split = _split(cache_key) if cache_key else None
+    return split[0] if split and split[0] != "-" else None
 
 
 _QUIET: ContextVar[bool] = ContextVar("aos_context_cache_quiet", default=False)
@@ -73,7 +105,9 @@ def unrecorded() -> Iterator[None]:
         _QUIET.reset(token)
 
 
-def get(kind: str, purpose: str, cache_key: str) -> Any | None:
+def get(kind: str, purpose: str, cache_key: str | None) -> Any | None:
+    if cache_key is None:
+        return None
     try:
         hit = store().get(cache_key)
     except Exception:
@@ -94,7 +128,9 @@ def peek(cache_key: str | None) -> bool:
         return False
 
 
-def put(cache_key: str, value: Any, *, chars: int = 0, ttl: int = TTL_SECONDS) -> None:
+def put(cache_key: str | None, value: Any, *, chars: int = 0, ttl: int = TTL_SECONDS) -> None:
+    if cache_key is None:
+        return
     try:
         store().set(cache_key, {"v": value, "chars": chars}, ttl)
     except Exception as exc:  # pragma: no cover
@@ -135,17 +171,20 @@ def stats() -> dict[str, dict[str, dict[str, int]]]:
 
 
 def _workspace_keys(s: ResponseCache, workspace_id: str) -> set[str]:
-    """Live entry keys of one workspace: Redis (SCAN, when shared) and this process's LRU (expired ones skipped)."""
-    prefix = f"aos:ctx:{workspace_id}:"
+    """Live entry keys of one workspace, under any tenant/scope/policy prefix: Redis (SCAN, when shared) and this
+    process's LRU (expired ones skipped). Workspace ids are unique across tenants, and the API route that calls
+    this has already checked the caller's role in the workspace."""
     found: set[str] = set()
     redis = getattr(s, "_redis", None)
     if redis is not None:
         with contextlib.suppress(Exception):
-            for k in redis.scan_iter(match=f"{prefix}*", count=500):
-                found.add(k.decode() if isinstance(k, bytes) else str(k))
+            for k in redis.scan_iter(match=f"aos:ctx:tenant:*:scope:*:policy:*:{workspace_id}:*", count=500):
+                k = k.decode() if isinstance(k, bytes) else str(k)
+                if workspace_of(k) == workspace_id:
+                    found.add(k)
     with s._lock:
         now = s._clock()
-        found.update(k for k, (expires, _) in s._local.items() if k.startswith(prefix) and expires > now)
+        found.update(k for k, (expires, _) in s._local.items() if expires > now and workspace_of(k) == workspace_id)
     return found
 
 
@@ -155,7 +194,7 @@ def workspace_stats(workspace_id: str) -> dict[str, Any]:
     s = store()
     entries: dict[str, int] = {}
     for k in _workspace_keys(s, workspace_id):
-        kind = k.split(":")[3] if len(k.split(":")) >= 5 else "other"
+        kind = (_split(k) or ("", "other"))[1]
         entries[kind] = entries.get(kind, 0) + 1
     by_kind = _by_kind(s.counters(_workspace_stats_key(workspace_id)))
     totals = {"hits": 0, "misses": 0, "chars_reused": 0}

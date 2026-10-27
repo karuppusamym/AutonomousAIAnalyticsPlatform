@@ -112,7 +112,7 @@ def test_cache_key_includes_the_knowledge_version():
     assert ResponseCache.key("planning", ["m"], {"x": 1}, "ws1", knowledge_version=None) == base  # unchanged without one
     v1 = ResponseCache.key("planning", ["m"], {"x": 1}, "ws1", knowledge_version="kv:1")
     v2 = ResponseCache.key("planning", ["m"], {"x": 1}, "ws1", knowledge_version="kv:2")
-    assert len({base, v1, v2}) == 3 and v1.startswith("aos:llm:ws1:planning:")
+    assert len({base, v1, v2}) == 3 and v1.startswith("aos:llm:tenant:-:scope:-:policy:-:ws1:planning:")
 
 
 def test_a_knowledge_edit_misses_the_response_cache():

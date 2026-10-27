@@ -234,7 +234,10 @@ class AdhocContext:
         from analystos.llm.router import CallContext
 
         return CallContext.for_policy(self.policy, workspace_id=self.workspace.id, task_id=self.turn_id, agent_id="sql",
-                                      prompt_version="sql.v1", exclude_families=exclude_families or [])
+                                      prompt_version="sql.v1", exclude_families=exclude_families or [],
+                                      tenant_id=getattr(self.workspace, "tenant_id", None),
+                                      scope_hash=self.scope.scope_hash() if hasattr(self.scope, "scope_hash") else None,
+                                      policy_version=getattr(self.scope, "policy_version", None))
 
     def say(self, *a, **k):
         return None
