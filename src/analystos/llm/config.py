@@ -17,6 +17,26 @@ Egress = Literal["internet", "internal"]
 # private endpoint, but only an explicit `private_link: true` acknowledges that and allows `egress: internal`.
 _PUBLIC_ONLY = ("openrouter", "anthropic", "bedrock", "azure_openai")
 _PRIVATE_LINK_TYPES = ("azure_openai",)
+_HTTP_TYPES = ("openrouter", "openai_compatible", "azure_openai", "anthropic")  # need a base URL (bedrock: boto3)
+
+
+class ModelCapabilities(BaseModel):
+    """What an endpoint can do. Hosted APIs are known; an OpenAI-compatible server (vLLM, Ollama, LM
+    Studio, TGI, a LiteLLM proxy) cannot be asked, so its capabilities are declared. None = not
+    declared: the adapter then sends the request unchanged and the router validates the answer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    json_mode: bool | None = None  # accepts response_format {"type": "json_object"}
+    tools: bool | None = None  # accepts tools / tool_choice
+    context_window: int | None = Field(None, ge=256, le=10_000_000)  # prompt + completion tokens
+    vision: bool | None = None
+    prompt_cache: bool | None = None
+
+    def merged(self, override: ModelCapabilities | None) -> ModelCapabilities:
+        if override is None:
+            return self
+        return ModelCapabilities(**{**self.model_dump(), **override.model_dump(exclude_none=True)})
 
 
 class ProviderConfig(BaseModel):
@@ -28,8 +48,8 @@ class ProviderConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")  # a literal `api_key:` in a models file fails loudly
 
-    kind: str
-    base_url: str
+    kind: str = "chat"
+    base_url: str = ""  # optional when base_url_env names where the deployment sets it
     api_key_env: str | None = None
     type: ProviderType = "openrouter"
     base_url_env: str | None = None  # when set and present in the environment, overrides base_url (Helm values)
@@ -41,6 +61,7 @@ class ProviderConfig(BaseModel):
     aws_region: str | None = None  # bedrock
     region: str | None = None  # where the provider processes requests; None = unknown (fails a residency policy)
     private_link: bool = False  # azure_openai: the endpoint is a private endpoint inside the network (allows internal)
+    capabilities: ModelCapabilities = Field(default_factory=ModelCapabilities)  # declared (openai_compatible)
 
     @model_validator(mode="after")
     def _check(self) -> ProviderConfig:
@@ -52,6 +73,8 @@ class ProviderConfig(BaseModel):
             raise ValueError(f"private_link applies to {', '.join(_PRIVATE_LINK_TYPES)} providers only")
         if self.type == "azure_openai" and not self.api_version:
             raise ValueError("azure_openai providers need api_version")
+        if self.type in _HTTP_TYPES and not self.base_url.strip() and not self.base_url_env:
+            raise ValueError(f"a provider of type {self.type} needs base_url or base_url_env")
         return self
 
     def url(self) -> str:
@@ -84,6 +107,7 @@ class ModelMeta(BaseModel):
     # Share of the input price a provider waives for prompt tokens served from its cache. None = the
     # family default in `cached_discount` (not stated in models.yaml today).
     cached_input_discount: float | None = Field(None, ge=0.0, le=1.0)
+    capabilities: ModelCapabilities | None = None  # per-model override of the provider's declared capabilities
 
 
 # Documented provider discounts on cache reads: Anthropic and DeepSeek bill a read at ~10% of input,
@@ -138,6 +162,13 @@ class ModelsConfig(BaseModel):
             return meta.region
         cfg = self.providers.get(provider)
         return cfg.region if cfg else None
+
+    def capabilities_of(self, model: str, provider: str) -> ModelCapabilities:
+        """The provider's declared capabilities with the model's own overrides on top."""
+        cfg = self.providers.get(provider)
+        base = cfg.capabilities if cfg else ModelCapabilities()
+        meta = self.models.get(model)
+        return base.merged(meta.capabilities if meta else None)
 
     def prompt_cache(self, model: str) -> bool:
         meta = self.models.get(model)
@@ -207,7 +238,8 @@ class ModelsConfig(BaseModel):
             "allowlist": self.allowlist,
             "profiles": {k: v.model_dump() for k, v in self.profiles.items()},
             "routing": self.routing,
-            "providers": {k: {"kind": v.kind, "type": v.type, "base_url": v.url(), "egress": v.egress, "region": v.region}
+            "providers": {k: {"kind": v.kind, "type": v.type, "base_url": v.url(), "egress": v.egress, "region": v.region,
+                              "capabilities": v.capabilities.model_dump(exclude_none=True)}
                           for k, v in self.providers.items()},
             "models": {k: v.model_dump() for k, v in self.models.items()},
             "prices_version": self.prices_version,

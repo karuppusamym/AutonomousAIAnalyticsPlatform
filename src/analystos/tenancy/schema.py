@@ -40,7 +40,8 @@ class TenantSource:
 # though workspace_id is optional. Other optional-workspace tables (knowledge packs shipped with the
 # product) share tenant-less rows read-only. A workspace_id without a foreign key may name a pseudo
 # workspace ("platform" budget events): those rows get no tenant and are visible only to system scope.
-PLATFORM_PRIVATE_TABLES = frozenset({"audit_event", "model_call", "decision", "decision_outcome"})
+# model_config_override: tenant-level rows have no workspace but always carry their tenant explicitly.
+PLATFORM_PRIVATE_TABLES = frozenset({"audit_event", "model_call", "decision", "decision_outcome", "model_config_override"})
 
 # Children whose tenant comes from a parent other than workspace.
 CHILD_PARENTS: dict[str, tuple[str, str]] = {
