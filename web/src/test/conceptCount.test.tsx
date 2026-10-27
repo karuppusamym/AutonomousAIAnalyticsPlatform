@@ -88,6 +88,8 @@ describe("first-login concept count (P7-18)", () => {
     expect(concepts.length).toBeLessThanOrEqual(CEILING[role]);
     // only the next step of the checklist offers an action; no counters, cost or autonomy on first login
     expect(concepts.filter((c) => /^control:(Connect data|Choose tables|Review the catalog|Save goal|Start work)$/.test(c))).toEqual(["control:Connect data"]);
-    expect(concepts.some((c) => /Autonomy|Tokens|Cost|Verified|Runs/.test(c))).toBe(false);
+    // The Autonomy Center nav entry (S11 §2, v2 spec) is a destination, not an autonomy setting: the
+    // autonomy level itself stays under Members & policy › Advanced.
+    expect(concepts.some((c) => /Autonomy(?! Center)|Tokens|Cost|Verified|Runs/.test(c))).toBe(false);
   });
 });

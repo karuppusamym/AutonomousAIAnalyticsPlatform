@@ -97,7 +97,7 @@ describe("one home per concept (route manifest)", () => {
       [/<(SettingsEditor|Models|ModelHealthPanel)\b/, ["pages/Admin.tsx"], "platform"], // model configuration: Settings only
       [/<DefinitionsPanel\b/, ["pages/Catalog.tsx"], "catalog"],
       [/<(PreparePanel|BuildPanel)\b/, ["pages/Runs.tsx"], "work"],
-      [/<SchedulePins\b/, ["pages/Schedules.tsx"], "schedules"],
+      [/<SchedulePins\b/, ["pages/Schedules.tsx"], "autonomy"], // a section of the Autonomy Center (S11-T5)
       [/autonomy_level:/, ["pages/Governance.tsx"], "policy"],
     ];
     for (const [re, files, screenId] of editors) {

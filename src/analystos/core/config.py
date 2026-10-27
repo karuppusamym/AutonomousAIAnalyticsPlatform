@@ -133,6 +133,9 @@ class Settings(BaseSettings):
     # by default: lineage and table neighbourhood are served from Postgres unless this is on.
     graph_enabled: bool = False
     budget_counter_prefix: str = "aos:budget:"  # run/workspace/purpose budget counters (P4-T07)
+    # Query steps of goal runs that may run at once against one source, across runs (S06 §3.6);
+    # a source's `config.max_concurrent_steps` overrides it.
+    source_max_concurrent_steps: int = 4
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "analystos-neo4j"

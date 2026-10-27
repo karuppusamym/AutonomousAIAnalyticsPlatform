@@ -16,7 +16,7 @@ export const AREAS: { id: Exclude<Area, "access">; label: string; description: s
   { id: "data", label: "Data", description: "Sources, the catalog and definitions: metrics, relationships and their review" },
   { id: "work", label: "Work", description: "Everything started with Start work: Ask, investigations and prepared data" },
   { id: "outputs", label: "Outputs", description: "One list, filtered by type: findings, dashboards, reports, datasets" },
-  { id: "operate", label: "Operate", description: "The approval inbox, monitors and alerts, schedules" },
+  { id: "operate", label: "Operate", description: "The approval inbox, and the Autonomy Center: goals, budgets, schedules, monitors and alerts" },
   { id: "settings", label: "Settings", description: "Members and policy; for administrators, the registry, platform settings and usage" },
 ];
 
@@ -30,7 +30,7 @@ export const CONCEPTS = [
   "relationship", "semantic-model", "definition", "question", "investigation", "recipe", "file-ingest", "dbt-build",
   "step", "branch", "notebook", "experiment", "pipeline",
   "finding", "dashboard", "report", "dataset", "chart", "model", "scoring-run", "materialization",
-  "approval", "monitor", "alert", "schedule", "policy",
+  "approval", "goal", "monitor", "alert", "schedule", "policy",
   "member", "autonomy", "audit", "capability", "platform-settings", "model-config", "usage",
 ] as const;
 export type Concept = (typeof CONCEPTS)[number];
@@ -47,7 +47,7 @@ export type ScreenId =
   | "sources" | "catalog"
   | "work" | "ask" | "investigation" | "investigation-console"
   | "outputs" | "finding"
-  | "approvals" | "monitoring" | "schedules"
+  | "approvals" | "autonomy"
   | "policy" | "registry" | "platform" | "usage";
 
 export interface Screen {
@@ -100,10 +100,10 @@ export const SCREENS: Screen[] = [
 
   { id: "approvals", area: "operate", path: "/w/:wsId/operate/approvals", title: "Approval inbox", nav: true, workspace: true,
     audience: "everyone", owns: ["approval"], keywords: "inbox publish approve reject" },
-  { id: "monitoring", area: "operate", path: "/w/:wsId/operate/monitoring", title: "Monitors & alerts", nav: true, workspace: true,
-    audience: "everyone", owns: ["monitor", "alert"], keywords: "failures void results alerts thresholds" },
-  { id: "schedules", area: "operate", path: "/w/:wsId/operate/schedules", title: "Schedules", nav: true, workspace: true,
-    audience: "everyone", owns: ["schedule"], keywords: "recurring pins upgrade available" },
+  // S11-T5: one screen for what runs on its own (merges the former Schedules and Monitors & alerts screens)
+  { id: "autonomy", area: "operate", path: "/w/:wsId/operate/autonomy", title: "Autonomy Center", nav: true, workspace: true,
+    audience: "everyone", owns: ["goal", "monitor", "alert", "schedule"],
+    keywords: "goals runs queues budgets exceptions limits schedules recurring pins upgrade available monitors alerts thresholds noise failures void results" },
 
   { id: "policy", area: "settings", path: "/w/:wsId/settings/policy", title: "Members & policy", nav: true, workspace: true,
     audience: "owner", owns: ["policy", "member", "autonomy", "audit"], keywords: "roles budget limits autonomy audit log" },
@@ -207,9 +207,11 @@ export const to = {
         : to.outputs(ws, { type: "dashboard", dashboard: q.dashboard }),
   reports: (ws: string, artifact?: string) => to.outputs(ws, { type: "report", artifact }),
   approvals: (ws: string) => P("approvals", { wsId: ws }),
-  monitoring: (ws: string, q: { tab?: string; alert?: string } = {}) =>
-    withQuery(P("monitoring", { wsId: ws }), { tab: q.tab, alert: q.alert }),
-  schedules: (ws: string, schedule?: string) => withQuery(P("schedules", { wsId: ws }), { schedule }),
+  /** The Autonomy Center; `view` picks its section (overview, goals, schedules, monitors). */
+  autonomy: (ws: string, view?: "overview" | "goals" | "schedules" | "monitors", q: Record<string, string | undefined> = {}) =>
+    withQuery(P("autonomy", { wsId: ws }), { view: view === "overview" ? undefined : view, ...q }),
+  monitoring: (ws: string, q: { tab?: string; alert?: string } = {}) => to.autonomy(ws, "monitors", { tab: q.tab, alert: q.alert }),
+  schedules: (ws: string, schedule?: string) => to.autonomy(ws, "schedules", { schedule }),
   governance: (ws: string) => P("policy", { wsId: ws }),
   registry: () => screen("registry").path,
   settings: () => screen("platform").path,
@@ -236,8 +238,8 @@ export const LEGACY_REDIRECTS: LegacyRedirect[] = [
   { from: "/w/:wsId/insights/:insightId", to: "/w/:wsId/outputs/findings/:insightId" },
   { from: "/w/:wsId/studio", to: "/w/:wsId/outputs" },
   { from: "/w/:wsId/reports", to: "/w/:wsId/outputs?type=report" },
-  { from: "/w/:wsId/schedules", to: "/w/:wsId/operate/schedules" },
-  { from: "/w/:wsId/monitoring", to: "/w/:wsId/operate/monitoring" },
+  { from: "/w/:wsId/schedules", to: "/w/:wsId/operate/autonomy?view=schedules" },
+  { from: "/w/:wsId/monitoring", to: "/w/:wsId/operate/autonomy?view=monitors" },
   { from: "/w/:wsId/governance", to: "/w/:wsId/settings/policy" },
   { from: "/w/:wsId/operate", to: "/w/:wsId/operate/approvals" },
   // increment-4 six-journey IA (spec v3 §9)
@@ -263,6 +265,9 @@ export const LEGACY_REDIRECTS: LegacyRedirect[] = [
   } },
   { from: "/w/:wsId/build/reports", to: "/w/:wsId/outputs?type=report" },
   { from: "/w/:wsId/operate/governance", to: "/w/:wsId/settings/policy" },
+  // S11-T5: Schedules and Monitors & alerts are sections of the Autonomy Center
+  { from: "/w/:wsId/operate/schedules", to: "/w/:wsId/operate/autonomy?view=schedules" },
+  { from: "/w/:wsId/operate/monitoring", to: "/w/:wsId/operate/autonomy?view=monitors" },
 ];
 
 /**

@@ -160,7 +160,7 @@ def create_goal(user: User, body: GoalIn, idempotency_key: str | None, *, servic
         return _goal_out(run.id), replayed
 
     decision, level = classify(user, body, services=services)
-    limits = RunLimits.model_validate(decision.limits).tightened(body.limits).as_dict()
+    limits = RunLimits.model_validate({**decision.limits, "max_parallel": _max_parallel(body.workspace_id)})         .tightened(body.limits).as_dict()
     playbook, version = parse_playbook(body.playbook) if body.playbook else (decision.playbook, None)
     goal_id = new_id("goal")
     origin = {"type": "goal", "goal_id": goal_id, "mode": body.mode, "requested_outputs": list(body.requested_outputs),
@@ -168,6 +168,7 @@ def create_goal(user: User, body: GoalIn, idempotency_key: str | None, *, servic
               **({"request_id": body.request_id} if body.request_id else {})}
 
     def on_created(s: Any, run: AnalysisRun, scope: Any) -> dict:
+        run.limits = {**limits, "source_slots": _source_slots(s, sorted(set(scope.asset_sources.values())))}
         filters = _check_filters(scope, body.data_scope.filters)
         if filters:
             run.constraints = {"filters": filters}
@@ -190,6 +191,26 @@ def create_goal(user: User, body: GoalIn, idempotency_key: str | None, *, servic
                                               source_ids=body.data_scope.source_ids or None, autonomy_level=level,
                                               origin=origin, idempotency=key, limits=limits, on_created=on_created, **kwargs)
     return _goal_out(run.id), replayed
+
+
+def _max_parallel(workspace_id: str) -> int:
+    from analystos.governance.policy import load_policy
+
+    with session_scope() as s:
+        return load_policy(s, get_workspace(s, workspace_id)).max_parallel_steps
+
+
+def _source_slots(s: Any, source_ids: list[str]) -> dict[str, int]:
+    """Each source's step slots, fixed for the run: `config.max_concurrent_steps`, else the platform default."""
+    from analystos.core.config import get_settings
+    from analystos.db.models import Source
+
+    default = get_settings().source_max_concurrent_steps
+    out = {}
+    for src in s.scalars(select(Source).where(Source.id.in_(source_ids))) if source_ids else []:
+        value = (src.config or {}).get("max_concurrent_steps")
+        out[src.id] = max(1, int(value)) if isinstance(value, int) and not isinstance(value, bool) else default
+    return out
 
 
 def _goal_out(run_id: str) -> dict:

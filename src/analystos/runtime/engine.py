@@ -296,6 +296,10 @@ def _decide_within_budget(s, run: AnalysisRun, tasks: dict, limits: dict, refuse
         return {"limited": "; ".join(stops), "expired": expired, "budget": snap}
     if ready and steps_left is not None:
         ready = ready[:max(steps_left, 0)]
+    wanted = list(ready)
+    ready = _within_parallel(run, ready, running, limits)
+    if wanted and not ready and not running:  # every ready step waits for a source slot another run holds
+        return {"throttled": wanted, "budget": snap}
     if ready:
         if run.status != "RUNNING":
             change()
@@ -311,13 +315,70 @@ def _decide_within_budget(s, run: AnalysisRun, tasks: dict, limits: dict, refuse
     return {"fail": "no runnable task (dependency deadlock)"}
 
 
+DEFAULT_PARALLEL = 4
+
+
+def _within_parallel(run: AnalysisRun, ready: list[str], running: list[str], limits: dict) -> list[str]:
+    """Parallel branches (S06 §3.6): at most `max_parallel` steps at once, and a step that queries a
+    source only while that source has a free slot (`limits.source_slots`, shared by every run)."""
+    from analystos.runtime import source_slots as ss
+
+    room = int(limits.get("max_parallel") or DEFAULT_PARALLEL) - len(running)
+    slots = ss.source_limits(run)
+    free = {src: lim - ss.default_slots().holders(src) for src, lim in slots.items()
+            if src in ss.run_sources(run)} if slots else {}
+    out = []
+    for key in ready:
+        if len(out) >= room:
+            break
+        if free and ss.queries_sources(run, key):
+            if any(n <= 0 for n in free.values()):
+                continue
+            free = {src: n - 1 for src, n in free.items()}
+        out.append(key)
+    return out
+
+
+def _acquire_source_slots(run_id: str, key: str, claim: int) -> list[str] | None:
+    """Take a slot on every limited source the step queries; None (and the claim handed back) when one
+    is full. Returns the sources held, released when the step ends."""
+    from analystos.runtime import source_slots as ss
+
+    with session_scope() as s:
+        run = s.get(AnalysisRun, run_id)
+        slots = ss.source_limits(run)
+        if not slots or not ss.queries_sources(run, key):
+            return []
+        wanted = [src for src in ss.run_sources(run) if src in slots]
+    held: list[str] = []
+    for src in wanted:
+        if not ss.default_slots().acquire(src, ss.holder(run_id, key), slots[src], CLAIM_TTL_SECONDS):
+            for h in held:
+                ss.default_slots().release(h, ss.holder(run_id, key))
+            with session_scope() as s:  # back to NEW under the same claim: the next poll dispatches it again
+                s.execute(update(RunTask).where(RunTask.run_id == run_id, RunTask.key == key, RunTask.claim_version == claim)
+                          .values(status="NEW", started_at=None, attempts=RunTask.attempts - 1,
+                                  error=f"waiting for a slot on source {src}"))
+            return None
+        held.append(src)
+    return held
+
+
+def _release_source_slots(run_id: str, key: str, held: list[str]) -> None:
+    from analystos.runtime import source_slots as ss
+
+    for src in held:
+        ss.default_slots().release(src, ss.holder(run_id, key))
+
+
 def _claim(s, run_id: str, key: str) -> dict:
     """Optimistic claim (P4-S02): read the task unlocked, then compare-and-set on the claim version,
     status and plan version it was read with. Of two concurrent claimers exactly one updates the row;
     the other reports `in_progress`. A RUNNING claim younger than CLAIM_TTL_SECONDS belongs to a live
     worker; an older one (or one released by `release_timed_out_claim`) is retaken."""
     row = s.execute(select(RunTask.id, RunTask.status, RunTask.started_at, RunTask.attempts, RunTask.plan_version,
-                           RunTask.claim_version, RunTask.agent_id, AnalysisRun.workspace_id, Workspace.status.label("workspace_status"),
+                           RunTask.claim_version, RunTask.agent_id, AnalysisRun.workspace_id, AnalysisRun.limits,
+                           Workspace.status.label("workspace_status"),
                            Workspace.deleted_at.label("workspace_deleted_at"))
                     .join(AnalysisRun, AnalysisRun.id == RunTask.run_id)
                     .outerjoin(Workspace, Workspace.id == AnalysisRun.workspace_id)
@@ -340,7 +401,7 @@ def _claim(s, run_id: str, key: str) -> dict:
         return {"status": "in_progress"}  # another claimer moved the row first
     emit(row.workspace_id, "agent.started", {"task": key, "agent": row.agent_id, "attempt": row.attempts + 1},
          run_id=run_id, session=s)
-    return {"claim": claim, "plan_version": row.plan_version}
+    return {"claim": claim, "plan_version": row.plan_version, "slotted": bool((row.limits or {}).get("source_slots"))}
 
 
 @owned_by("analysis_run", "run_id")
@@ -350,12 +411,16 @@ def execute_task(run_id: str, key: str, services: Services | None = None) -> dic
 
     services = services or default_services()
     token = run_id_var.set(run_id)
+    held: list[str] | None = []
     try:
         with session_scope() as s:
             claimed = _claim(s, run_id, key)
         if "claim" not in claimed:
             return claimed
         claim, version = claimed["claim"], claimed["plan_version"]
+        held = _acquire_source_slots(run_id, key, claim) if claimed.get("slotted") else []
+        if held is None:
+            return {"status": "throttled"}
         plan_token = producing_plan.set((run_id, version))
         try:
             ctx = RunContext.load(run_id, key, services)
@@ -411,6 +476,8 @@ def execute_task(run_id: str, key: str, services: Services | None = None) -> dic
                      session=s)
         return {"status": status, "error": error}
     finally:
+        if held:
+            _release_source_slots(run_id, key, held)
         run_id_var.reset(token)
 
 

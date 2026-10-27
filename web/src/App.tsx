@@ -6,14 +6,13 @@ import { Layout } from "./components/Layout";
 import { EmptyState, Loading, StateView } from "./components/ui";
 import { AdminPage } from "./pages/Admin";
 import { ApprovalsPage } from "./pages/Approvals";
+import { AutonomyCenterPage } from "./pages/AutonomyCenter";
 import { AskPage } from "./pages/Ask";
 import { ConsolePage } from "./pages/Console";
 import { GovernancePage } from "./pages/Governance";
 import { LoginPage } from "./pages/Login";
-import { MonitoringPage } from "./pages/Monitoring";
 import { WorkPage } from "./pages/Runs";
 import { RunViewPage } from "./pages/RunView";
-import { SchedulesPage } from "./pages/Schedules";
 import { SourcesPage } from "./pages/Sources";
 import { OutputsPage } from "./pages/Studio";
 import { WorkspaceHomePage } from "./pages/WorkspaceHome";
@@ -44,8 +43,7 @@ const ELEMENTS: Record<ScreenId, ReactElement> = {
   sources: <SourcesPage />,
   catalog: <Suspense fallback={<div className="page"><Loading /></div>}><CatalogPage /></Suspense>,
   approvals: <ApprovalsPage />,
-  monitoring: <MonitoringPage />,
-  schedules: <SchedulesPage />,
+  autonomy: <AutonomyCenterPage />,
   policy: <GovernancePage />,
   registry: <AdminPage key="registry" section="registry" />,
   platform: <AdminPage key="settings" section="settings" />,

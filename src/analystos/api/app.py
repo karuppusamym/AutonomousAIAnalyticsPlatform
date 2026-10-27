@@ -130,6 +130,7 @@ app.include_router(process_router.router)  # process and task mining over event 
 app.include_router(desk_router.router)  # Analyst Request Desk (S13)
 app.include_router(conversations_router.router)  # API v2 conversations and memory (S04)
 app.include_router(goals_v2_router.router)  # Goal API v2 (S06): goals, signals, run state, SSE, evidence, plans
+app.include_router(goals_v2_router.router, prefix="/api")  # the same, for the web client (/api/v2/...)
 app.include_router(deliveries_router.router)  # approved external email/webhook delivery (N-3)
 app.include_router(data_shape_router.router)  # what the selected tables are good for (patterns, next steps)
 app.include_router(index_advice_router.router)  # index / partitioning / clustering advice, never applied (N-11)

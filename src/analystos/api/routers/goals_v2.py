@@ -6,6 +6,11 @@
     GET  /v2/runs/{id}/events           Server-Sent Events (contract below)
     GET  /v2/runs/{id}/evidence         findings with verification standing, statement counts
     GET  /v2/runs/{id}/plan?version=    the current plan, or a superseded version (immutable)
+    GET  /v2/goals?workspace_id=        goals with their run's state, tier, playbook and budget use
+    GET  /v2/autonomy?workspace_id=     the Autonomy Center: queues, exceptions, budgets, schedules, alert noise
+
+The same routes are mounted under `/api` (`/api/v2/...`) for the web client, whose proxy and generated
+OpenAPI client cover `/api` only.
 
 SSE contract (`docs/20-contracts/05-goal-api-v2.md`): one frame per persisted `run_event`,
 `id: <event id>`, `event: <type>`, `data: {"v": 2, "id", "run_id", "type", "payload", "actor",
@@ -39,6 +44,26 @@ def create_goal(body: GoalIn, response: Response, user: User = Depends(current_u
         response.headers["Idempotent-Replayed"] = "true"
     response.headers["Location"] = f"/v2/runs/{out['run_id']}"
     return out
+
+
+@router.get("/goals")
+def list_goals(workspace_id: str, limit: int = 50, state: str | None = None, user: User = Depends(current_user),
+               session: Session = Depends(db, scope="function")):
+    from analystos.autonomy.center import list_goals as goals
+    from analystos.governance.policy import require_role
+
+    require_role(session, user, workspace_id, "viewer")
+    return goals(session, workspace_id, limit=limit, state=state)
+
+
+@router.get("/autonomy")
+def autonomy(workspace_id: str, days: int = 30, user: User = Depends(current_user),
+             session: Session = Depends(db, scope="function")):
+    from analystos.autonomy.center import summary
+    from analystos.governance.policy import require_role
+
+    require_role(session, user, workspace_id, "viewer")
+    return summary(session, workspace_id, days=max(1, min(days, 365)))
 
 
 @router.post("/runs/{run_id}/signals")

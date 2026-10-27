@@ -13,7 +13,8 @@ import {
   type ScheduleFormState,
 } from "../lib/schedules";
 
-export function SchedulesPage() {
+/** `embedded`: shown as a section of the Autonomy Center rather than as its own page. */
+export function SchedulesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { wsId = "" } = useParams();
   const [params] = useSearchParams();
   const focus = params.get("schedule");
@@ -24,8 +25,8 @@ export function SchedulesPage() {
   const [editing, setEditing] = useState<string | null>(null);
 
   return (
-    <div className="page">
-      <PageHeader title="Schedules"
+    <div className={embedded ? "embedded-page" : "page"}>
+      <PageHeader level={embedded ? 2 : 1} title="Schedules"
         subtitle="Recurring investigations, data refreshes, reports, monitor checks and catalog crawls. Each runs with its owner's current permissions and the versions it was set up with; publishing always needs an approval."
         actions={!creating && <button type="button" className="btn btn-primary" onClick={() => { setCreating(true); setEditing(null); }}>New schedule</button>} />
       {creating && (
