@@ -25,8 +25,9 @@ def test_pinned_reviewed_facts_reach_shared_model_input_with_receipts(monkeypatc
     settings.context.cache_enabled = False
     monkeypatch.setattr("analystos.services.platform_settings.get", lambda: settings)
     monkeypatch.setattr(common, "context_header", lambda ctx: {})
-    monkeypatch.setattr(common, "_compile", lambda ctx, purpose, profile, settings, *, required, **kw: (
-        CompiledContext(purpose=purpose, header={}, body=required), True))
+    monkeypatch.setattr(common, "_compile", lambda ctx, purpose, profile, settings, *, required, pinned=None,
+                        pinned_receipts=(), **kw: (CompiledContext(purpose=purpose, header={}, receipts=list(pinned_receipts),
+                                                                   body={**required, "reviewed_business_context": pinned}), True))
     ctx = SimpleNamespace(scope=scope, run=SimpleNamespace(objective="SLA", capabilities={}, origin={"reviewed_context": {
         "version": 7, "content_hash": "h", "facts": [{"key": "k", "subject": "SLA", "review_state": "reviewed", "value": "PINNED_FACT"}]}}))
     for purpose in ["planning", "hypothesis_generation", "semantic_modeling"]:

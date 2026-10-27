@@ -240,6 +240,32 @@ def audit_main(argv: list[str]) -> int:
     return 4 if broken else 0
 
 
+def context_main(argv: list[str]) -> int:
+    """`analystos context reconcile [--workspace W]...`: catch the Context Ledger up with its owner tables (S03-T1)
+    and print the consistency check. Exit 5 when a workspace is still inconsistent afterwards."""
+    parser = argparse.ArgumentParser(prog="analystos context")
+    parser.add_argument("command", choices=["reconcile"])
+    parser.add_argument("--workspace", action="append", help="only this workspace (repeatable; default: every workspace)")
+    args = parser.parse_args(argv)
+    from sqlalchemy import select
+
+    from analystos.context import ledger
+    from analystos.db.base import session_scope
+    from analystos.db.models import Workspace
+
+    with session_scope() as s:
+        ids = args.workspace or list(s.scalars(select(Workspace.id).where(Workspace.deleted_at.is_(None)).order_by(Workspace.id)))
+    out, bad = {}, False
+    for ws in ids:
+        with session_scope() as s:
+            counts = ledger.reconcile(s, ws)
+            problems = ledger.check_consistency(s, ws)
+        bad = bad or any(problems.values())
+        out[ws] = {"changes": counts, "problems": {k: len(v) for k, v in problems.items()}}
+    print(json.dumps(out, indent=2))
+    return 5 if bad else 0
+
+
 def bi_sync(workspace_ids: list[str] | None = None) -> dict:
     """Superset roles per workspace and users from workspace membership (P4-02)."""
     from analystos.db.base import session_scope
@@ -280,6 +306,8 @@ def _main(argv: list[str]) -> int:
         return schedules_main(argv[1:])
     if argv[:1] == ["audit"]:
         return audit_main(argv[1:])
+    if argv[:1] == ["context"]:
+        return context_main(argv[1:])
     if argv[:1] == ["demo-seed"]:  # a ready demo workspace through the running API (`analystos demo-seed --help`)
         from analystos.demo.seed import main as demo_seed
 
@@ -291,13 +319,14 @@ def _main(argv: list[str]) -> int:
         return check_semantics(rest, as_json="--json" in argv[1:])
     parser = argparse.ArgumentParser(prog="analystos")
     parser.add_argument("command", choices=["migrate", "provision-analytics-roles", "seed", "worker", "scheduler", "api",
-                                            "export-contracts", "replay-run", "packs", "calibrate", "knowledge", "schedules", "audit",
+                                            "export-contracts", "replay-run", "packs", "calibrate", "knowledge", "schedules", "audit", "context",
                                             "bi-sync", "sandbox-status", "check-semantics", "demo-seed"],
                         help="knowledge: `analystos knowledge --help` (reindex, reembed, import, export, ...); "
                              "demo-seed: `analystos demo-seed --help` (a ready demo workspace through the API); "
                              "check-semantics: `analystos check-semantics PATH... [--json]` (offline model validation); "
                              "schedules: `analystos schedules disable-demo [--all] [--workspace W] [--dry-run]`; "
-                             "audit: `analystos audit seal|verify|export [--tenant T | --platform] [--full] [--out DIR]`")
+                             "audit: `analystos audit seal|verify|export [--tenant T | --platform] [--full] [--out DIR]`; "
+                             "context: `analystos context reconcile [--workspace W]` (Context Ledger projection)")
     parser.add_argument("run_id", nargs="?", help="replay-run: the analysis run id")
     parser.add_argument("--check", action="store_true", help="replay-run: re-execute recorded calls offline and compare")
     parser.add_argument("--out", help="replay-run: write the JSON report to this file; export-contracts: the directory")

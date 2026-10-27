@@ -332,7 +332,7 @@ def compile_for(ctx: Any, purpose: str, required: dict[str, Any], *, objective: 
     Returns a CompiledContext for `llm_json`. When the mandatory part alone is over budget the
     context comes back `refused` (never cut): `llm_json` then records the refusal and the caller
     takes its deterministic path."""
-    from analystos.context.compiler import CompiledContext
+    from analystos.context.compiler import PINNED_SECTION, CompiledContext
     from analystos.contracts.platform import PurposeProfile
     from analystos.services.platform_settings import get as platform
 
@@ -343,15 +343,16 @@ def compile_for(ctx: Any, purpose: str, required: dict[str, Any], *, objective: 
     context = ((getattr(run, "capabilities", None) or {}).get("analysis_context") or {}) if run else {}
     from analystos.services.context_grounding import pinned_prompt_context
 
+    # The reviewed brief is the compiler's own mandatory section (S03-T3): receipted, hashed into the cache and
+    # identity, refused (never trimmed) when it does not fit.
     pinned, pinned_receipts = pinned_prompt_context(run, getattr(ctx, "scope", None))
     from analystos.core.ids import stable_hash
+    meaning_receipts: list[dict[str, Any]] = []
     for meaning in (required.get("resolved_meaning") or {}).get("resolutions", []):
         if meaning.get("state") == "resolved":
-            pinned_receipts.append({"id": meaning["id"], "section": "resolved_meaning", "source": meaning.get("by"),
+            meaning_receipts.append({"id": meaning["id"], "section": "resolved_meaning", "source": meaning.get("by"),
                                     "revision": meaning.get("revision"), "columns": meaning.get("columns", []),
                                     "sha256": stable_hash(meaning)})
-    if pinned:
-        required = {**required, "reviewed_business_context": pinned}
     if context:
         spec = context.get("spec") or {}
         # The reviewed, pinned business lens travels with every model purpose; it never changes
@@ -366,19 +367,22 @@ def compile_for(ctx: Any, purpose: str, required: dict[str, Any], *, objective: 
         catalog = (catalog_for_prompt(ctx, include_values=profile.catalog_detail == "profile", objective=objective, capped=False)
                    if "catalog" in profile.sections else None)
     if not settings.context.compiler_enabled:  # admin kill switch: the increment-3 payload, fit_payload only
-        return CompiledContext(purpose=purpose, header={}, body={**required, **({"catalog": catalog} if catalog else {})}, receipts=pinned_receipts)
+        return CompiledContext(purpose=purpose, header={}, body={**required, **({PINNED_SECTION: pinned} if pinned else {}),
+                                                                 **({"catalog": catalog} if catalog else {})},
+                               receipts=[*pinned_receipts, *meaning_receipts])
     header = context_header(ctx)
     limit = int(settings.llm.max_prompt_tokens * 3.6) - _SYSTEM_RESERVE_CHARS
     key = _context_key(ctx, purpose, profile, settings, objective=objective, required=required, catalog=catalog,
-                       reference_text=reference_text, header=header, limit=limit, knowledge_chars=knowledge_chars) \
-        if settings.context.cache_enabled else None
+                       reference_text=reference_text, header=header, limit=limit, knowledge_chars=knowledge_chars,
+                       pinned=pinned) if settings.context.cache_enabled else None
     workspace_id = getattr(getattr(ctx, "workspace", None), "id", None)
     reused = _COMPILED.get(key, purpose, workspace_id=workspace_id) if key else None
     if reused is not None:
         return reused
     compiled, complete = _compile(ctx, purpose, profile, settings, objective=objective, required=required, catalog=catalog,
-                                  reference_text=reference_text, header=header, limit=limit, knowledge_chars=knowledge_chars)
-    compiled.receipts.extend(pinned_receipts)
+                                  reference_text=reference_text, header=header, limit=limit, knowledge_chars=knowledge_chars,
+                                  pinned=pinned, pinned_receipts=pinned_receipts)
+    compiled.receipts.extend(meaning_receipts)
     if key and complete:  # a context compiled without its knowledge (load failed) is not kept
         _COMPILED.put(key, purpose, compiled, ttl=settings.context.cache_ttl_seconds, workspace_id=workspace_id)
     return compiled
@@ -404,8 +408,16 @@ def knowledge_scope(ctx: Any, profile: Any) -> tuple[Any, int | None]:
 
 def _compile(ctx: Any, purpose: str, profile: Any, settings: Any, *, objective: str, required: dict[str, Any], catalog: Any,
              reference_text: str | None, header: dict[str, Any], limit: int,
-             knowledge_chars: int | None = None) -> tuple[Any, bool]:
-    from analystos.context.compiler import KNOWLEDGE_SECTIONS, CompiledContext, compile_context, load_knowledge, terms
+             knowledge_chars: int | None = None, pinned: dict[str, Any] | None = None,
+             pinned_receipts: list[dict[str, Any]] | None = None) -> tuple[Any, bool]:
+    from analystos.context.compiler import (
+        KNOWLEDGE_SECTIONS,
+        PINNED_SECTION,
+        CompiledContext,
+        compile_context,
+        load_knowledge,
+        terms,
+    )
 
     run = getattr(ctx, "run", None)
     knowledge: list = []
@@ -435,9 +447,11 @@ def _compile(ctx: Any, purpose: str, profile: Any, settings: Any, *, objective: 
         return compile_context(purpose, profile, objective=objective, required=required, catalog=catalog,
                                knowledge=knowledge, header=header, reference_text=reference_text,
                                limit_chars=max(2_000, limit), min_relevance=settings.context.min_relevance,
-                               generic_terms=generic, knowledge_chars=knowledge_chars), complete
+                               generic_terms=generic, knowledge_chars=knowledge_chars, pinned=pinned,
+                               pinned_receipts=pinned_receipts or ()), complete
     except ContextOverBudget as exc:
-        return CompiledContext(purpose=purpose, header={}, body=dict(required), refused=exc.message,
+        body = {**required, **({PINNED_SECTION: pinned} if pinned else {})}
+        return CompiledContext(purpose=purpose, header={}, body=body, refused=exc.message,
                                budget_chars=int(exc.details.get("budget_chars") or 0),
                                mandatory_chars=int(exc.details.get("mandatory_chars") or 0)), complete
 
@@ -597,9 +611,10 @@ def _knowledge_item(data: dict[str, Any]) -> Any:
 
 def _context_key(ctx: Any, purpose: str, profile: Any, settings: Any, *, objective: str, required: dict[str, Any],
                  catalog: Any, reference_text: str | None, header: dict[str, Any], limit: int,
-                 knowledge_chars: int | None = None) -> str | None:
+                 knowledge_chars: int | None = None, pinned: dict[str, Any] | None = None) -> str | None:
     """(purpose, knowledge version, scope hash, inputs hash, run/thread). The inputs hash covers the
-    catalog as sent, so a catalog edit (curation, crawl) compiles afresh: that is the catalog version."""
+    catalog as sent, so a catalog edit (curation, crawl) compiles afresh: that is the catalog version; and the
+    pinned brief, so a re-pinned brief does too."""
     from analystos.core.ids import stable_hash
 
     session = _session_of(ctx)
@@ -614,7 +629,7 @@ def _context_key(ctx: Any, purpose: str, profile: Any, settings: Any, *, objecti
         inputs = stable_hash({"required": required, "objective": objective, "reference_text": reference_text,
                               "catalog": catalog, "header": header, "profile": profile.model_dump(mode="json"),
                               "limit": limit, "min_relevance": settings.context.min_relevance,
-                              "knowledge_chars": knowledge_chars})
+                              "knowledge_chars": knowledge_chars, "pinned": pinned})
     except (TypeError, ValueError):  # an input that cannot be hashed canonically is simply not cached
         return None
     return stable_hash({"purpose": purpose, "knowledge": knowledge, "scope": scope_hash, "inputs": inputs, "session": session})

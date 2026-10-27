@@ -25,7 +25,11 @@ from analystos.db.models import McpClient, McpGrant, McpUsage, User, WorkspaceMe
 from analystos.governance.audit import audit
 from analystos.governance.policy import get_workspace
 
-TOOLS = ("ask", "investigate", "get_finding_evidence", "validate_sql", "request.create", "request.status")
+# Context Service (S03-T5): read-only, access-filtered ledger tools; `context.read` grants all four
+CONTEXT_TOOLS = ("context.search", "context.get", "context.compile", "context.changes")
+CONTEXT_READ = "context.read"
+TOOLS = ("ask", "investigate", "get_finding_evidence", "validate_sql", "request.create", "request.status", *CONTEXT_TOOLS)
+GRANTABLE = (*TOOLS, CONTEXT_READ)
 # P7-11: a workspace's published query tools and tested/certified read-only HTTP tools, granted by name
 # (`query.<key>`, `http.<capability id>`) or by family (`query.*`, `http.*`)
 WORKSPACE_TOOL_PREFIXES = ("query.", "http.")
@@ -34,7 +38,8 @@ GRANT_ROLES = ("viewer", "analyst")
 TOOL_MIN_ROLE = {"ask": "analyst", "investigate": "analyst", "validate_sql": "analyst",
                  "get_finding_evidence": "viewer", RESOURCE_READ: "viewer",
                  # Request Desk (S13): a request may run Ask or start an investigation, so it needs the grant those need
-                 "request.create": "analyst", "request.status": "viewer"}
+                 "request.create": "analyst", "request.status": "viewer",
+                 **{t: "viewer" for t in (*CONTEXT_TOOLS, CONTEXT_READ)}}
 DEFAULT_DAILY_QUOTA = 1000
 
 
@@ -51,8 +56,9 @@ def min_role(tool: str) -> str:
 
 
 def grants_tool(tools: list[str], tool: str) -> bool:
-    """An exact grant, or the family wildcard for a workspace tool."""
-    return tool in tools or (is_workspace_tool(tool) and f"{tool.split('.', 1)[0]}.*" in tools)
+    """An exact grant, the family wildcard for a workspace tool, or `context.read` for a context tool."""
+    return (tool in tools or (is_workspace_tool(tool) and f"{tool.split('.', 1)[0]}.*" in tools)
+            or (tool in CONTEXT_TOOLS and CONTEXT_READ in tools))
 
 
 def hash_secret(secret: str) -> str:
@@ -117,9 +123,9 @@ def set_grant(session: Session, admin: User, client_id: str, workspace_id: str, 
     if role not in GRANT_ROLES:
         raise InvalidInput(f"an MCP grant role must be one of {', '.join(GRANT_ROLES)}")
     tools = list(dict.fromkeys(tools if tools is not None else ["get_finding_evidence"]))
-    unknown = [t for t in tools if t not in TOOLS and not is_workspace_tool(t)]
+    unknown = [t for t in tools if t not in GRANTABLE and not is_workspace_tool(t)]
     if unknown:
-        raise InvalidInput(f"unknown MCP tools: {', '.join(unknown)} (known: {', '.join(TOOLS)}, query.<key>, http.<id>, "
+        raise InvalidInput(f"unknown MCP tools: {', '.join(unknown)} (known: {', '.join(GRANTABLE)}, query.<key>, http.<id>, "
                            "query.*, http.*)")
     too_low = [t for t in tools if min_role(t) == "analyst" and role != "analyst"]
     if too_low:

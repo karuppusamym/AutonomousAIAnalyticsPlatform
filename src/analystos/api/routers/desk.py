@@ -25,7 +25,7 @@ class RequestIn(BaseModel):
 
 
 class RequestActionIn(BaseModel):
-    type: Literal["accept", "reopen", "assign", "escalate", "answer", "decline", "mark_duplicate"]
+    type: Literal["accept", "reopen", "assign", "escalate", "answer", "decline", "mark_duplicate", "certify"]
     payload: dict = Field(default_factory=dict)
 
 

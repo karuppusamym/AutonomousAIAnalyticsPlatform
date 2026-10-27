@@ -67,3 +67,19 @@ AT-19, AT-20; `test_dedupe_links`; `test_sla_breach_alert`; `test_auto_with_revi
 | S13-T4 | Escalation queue, SLA, assignment, data pack | 2d |
 | S13-T5 | Certify-on-close into ledger | 1.5d |
 | S13-T6 | Value metrics job + API | 1.5d |
+
+## 7. As built: S13-T5 certify-on-close (2026-10-27)
+* Action `certify` on `POST /api/requests/{id}/actions` (`desk/certify.py`), payload `{as, …}`. Analysts only. The
+  request must be `answered` or `accepted`, with an analyst's answer (`via` human or auto_with_review).
+  * `verified_query` promotes the analyst's successful Ask or console statement (`query_id`, or the first `query`
+    evidence item of the answer), with the request text as its phrasing (`registries/verified_queries.promote`, which
+    validates it for the analyst). Ledger: `certified`, `source=desk`. The next similar request triages R1, and the
+    Ask registry rung answers it without a model (AT-20).
+  * `glossary` writes a `context_entry` (`origin=desk_certified`; mapped columns must be readable by the analyst).
+    Ledger: `approved`.
+  * `metric` writes a knowledge suggestion for the owner's review queue. Ledger: `suggested`. Only the semantic
+    layer's own approval certifies a metric, never the desk.
+  * `playbook` keeps the steps on the request (`answer_ref.playbook`). Ledger: kind `playbook`, `approved`.
+* Text that reads like an instruction to a model is refused (422). Each certification is appended to
+  `answer_ref.certified` and written to the timeline (`certified`, event `request.certified`) and the audit trail.
+  It is projected into the ledger in the same transaction.

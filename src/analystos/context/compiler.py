@@ -146,10 +146,18 @@ class CompiledContext:
     def from_dict(cls, data: dict[str, Any]) -> CompiledContext:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
+    @property
+    def identity_hash(self) -> str:
+        """What this context is, as one hash: header, body (pinned brief included) and receipts. Equal contexts
+        hash equal; any change to a receipted item, the brief or the catalog changes it (S03 §4)."""
+        return _sha({"purpose": self.purpose, "header": self.header, "body": self.body,
+                     "receipts": sorted((str(r.get("id")), str(r.get("sha256"))) for r in self.receipts)})
+
     def summary(self) -> dict[str, Any]:
         """What the call record and the UI show as "context used"."""
         return {"purpose": self.purpose, "chars": self.chars, "budget_chars": self.budget_chars,
-                "receipts": self.receipts, "omitted": self.omitted, "no_match": self.no_match}
+                "receipts": self.receipts, "omitted": self.omitted, "no_match": self.no_match,
+                "identity_hash": self.identity_hash}
 
 
 # ------------------------------------------------------------------------------------ scoring
@@ -342,6 +350,10 @@ def render_stable(header: dict[str, Any] | None, stable: dict[str, Any], omitted
             ctx = "; ".join(f"{k.replace('_', ' ')}: {', '.join(map(str, v)) if isinstance(v, list) else v}"
                             for k, v in value.items() if v not in (None, "", []))
             out.append(f"ANALYSIS CONTEXT (pinned): {ctx}")
+        elif key == PINNED_SECTION and isinstance(value, dict):
+            # reviewed, but still data: inside the envelope like every other written text (CLAUDE.md rule 7)
+            lines = [compact(f) for f in value.get("facts") or []]
+            data.insert(0, f"PINNED BRIEF (reviewed, version {value.get('version')})\n" + ("\n".join(lines) or NO_MATCH))
         elif key == "catalog" and isinstance(value, list):
             data.append("CATALOG\n" + render_catalog(value, omitted))
         elif key in KNOWLEDGE_SECTIONS:
@@ -431,13 +443,20 @@ def compile_context(purpose: str, profile: PurposeProfile, *, objective: str, re
                     catalog: list[dict[str, Any]] | None = None, knowledge: Iterable[KnowledgeItem] = (),
                     header: dict[str, Any] | None = None, reference_text: str | None = None,
                     limit_chars: int | None = None, min_relevance: float = 0.15,
-                    generic_terms: Iterable[str] = (), knowledge_chars: int | None = None) -> CompiledContext:
+                    generic_terms: Iterable[str] = (), knowledge_chars: int | None = None,
+                    pinned: dict[str, Any] | None = None,
+                    pinned_receipts: Iterable[dict[str, Any]] = ()) -> CompiledContext:
     """Select the prompt context for one call. Raises ContextOverBudget when `required` (plus the
-    minimal catalog when the profile has one) cannot fit, instead of silently cutting it.
+    pinned brief and the minimal catalog when the profile has one) cannot fit, instead of silently cutting it.
     `knowledge_chars` (the calling agent's `knowledge.budget_chars`, FND-006) caps the characters all
-    knowledge sections together may add; items past it are omitted with that reason."""
+    knowledge sections together may add; items past it are omitted with that reason.
+
+    `pinned` is the run's reviewed brief (S03-T3, the 2026-10-25 review's P0): a first-class mandatory section
+    (`PINNED_SECTION`). Its facts are screened again here, receipted by the compiler and part of the identity
+    hash; when it does not fit, the compile is refused with `details.section = PINNED_SECTION`, never trimmed."""
     budget = min(profile.max_chars, limit_chars) if limit_chars else profile.max_chars
     header = dict(header or {})
+    pinned, brief_receipts = _pinned_section(pinned, pinned_receipts)
     query = terms(objective) | terms(reference_text)
     catalog = [t for t in (catalog or []) if isinstance(t, dict)] if "catalog" in profile.sections else []
     in_scope = {_col_name(c).lower() for t in catalog for c in t.get("columns") or []}
@@ -453,10 +472,12 @@ def compile_context(purpose: str, profile: PurposeProfile, *, objective: str, re
             scored[r.item.section].append(r)
     boost = {_col_ref(c) for items in scored.values() for r in items for c in r.item.mapped_columns}
 
-    receipts: list[dict[str, Any]] = []
+    receipts: list[dict[str, Any]] = list(brief_receipts)
     omitted: list[dict[str, Any]] = []
     no_match: list[str] = []
     body: dict[str, Any] = dict(required)
+    if pinned:
+        body[PINNED_SECTION] = pinned
 
     # catalog: rank tables and columns, cap per profile; the names-only form is mandatory
     tables = _select_tables(catalog, query, focus, boost, profile, reference_text, omitted, no_match)
@@ -476,10 +497,13 @@ def compile_context(purpose: str, profile: PurposeProfile, *, objective: str, re
         body["catalog"] = minimal
     mandatory = (_size(header) if header else 0) + _size(body)
     if mandatory > budget:
+        over_pinned = bool(pinned) and mandatory - _size({PINNED_SECTION: pinned}) <= budget
         raise ContextOverBudget(
-            f"mandatory context for {purpose} is {mandatory} chars, above its budget of {budget}",
+            (f"the pinned reviewed brief for {purpose} does not fit its budget of {budget} chars: refused, not trimmed"
+             if over_pinned else f"mandatory context for {purpose} is {mandatory} chars, above its budget of {budget}"),
             details={"purpose": purpose, "mandatory_chars": mandatory, "budget_chars": budget,
-                     "required_keys": sorted(required)})
+                     "required_keys": sorted(required), **({"section": PINNED_SECTION} if over_pinned else {}),
+                     **({"pinned_version": pinned.get("version")} if pinned else {})})
 
     def used() -> int:
         return (_size(header) if header else 0) + _size(body)
@@ -555,8 +579,38 @@ def compile_context(purpose: str, profile: PurposeProfile, *, objective: str, re
     return compiled
 
 
+# The run's reviewed brief, pinned at start (S03-T3). Prompts and verification read it under this key.
+PINNED_SECTION = "reviewed_business_context"
 # Body keys that do not change within a run or Ask thread (with the catalog and knowledge sections).
-STABLE_KEYS = ("objective", "analysis_context", "reviewed_business_context", "catalog")
+STABLE_KEYS = ("objective", "analysis_context", PINNED_SECTION, "catalog")
+
+
+def _pinned_section(pinned: dict[str, Any] | None,
+                    receipts: Iterable[dict[str, Any]]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """The pinned brief as the compiler sends it: facts that read like instructions are withheld (counted, never
+    shown), and every fact sent has a receipt (the caller's, else one the compiler makes)."""
+    if not pinned:
+        return None, []
+    given = {r.get("id"): r for r in receipts or [] if isinstance(r, dict)}
+    facts, out, withheld = [], [], int(pinned.get("withheld_count") or 0)
+    for fact in pinned.get("facts") or []:
+        if is_injection(compact(fact)):
+            withheld += 1
+            continue
+        facts.append(fact)
+    for n, fact in enumerate(facts):
+        rid = next((k for k, r in given.items() if r.get("sha256") == _full_sha(fact)), None)
+        out.append(dict(given[rid]) if rid else {"id": f"brief:{fact.get('key', n)}", "source": "reviewed_brief",
+                                                 "version": pinned.get("version"), "sha256": _full_sha(fact)})
+        out[-1]["section"] = PINNED_SECTION
+    section = {**{k: v for k, v in pinned.items() if k != "facts"}, "facts": facts, "withheld_count": withheld}
+    return section, out
+
+
+def _full_sha(value: Any) -> str:
+    from analystos.core.ids import stable_hash
+
+    return stable_hash(value)
 
 
 def _select_tables(catalog: list[dict[str, Any]], query: set[str], focus: set[str], boost: set[tuple[str | None, str]],

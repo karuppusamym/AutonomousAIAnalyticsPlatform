@@ -2307,6 +2307,8 @@ class GroundingEvaluation(Base):
     created_at: Mapped[datetime] = _ts()
 
 
+from analystos.context import ledger as _context_ledger  # noqa: E402,F401  (registers the ledger projection hook)
+from analystos.context.models import ContextLedgerChange, ContextLedgerEntry  # noqa: E402,F401  (Context Ledger, S03)
 from analystos.db import column_presence  # noqa: E402,F401  (registers the absent-column filter, P7-20)
 from analystos.desk.models import ClassBaseline, Request, RequestEvent  # noqa: E402,F401  (Request Desk, S13)
 from analystos.tenancy.schema import attach_tenant_columns  # noqa: E402

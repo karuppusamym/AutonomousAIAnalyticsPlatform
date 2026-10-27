@@ -54,7 +54,7 @@ ASK_CLASSES = ("R1", "R2")
 RUN_CLASSES = ("R3", "R6")
 CONTEXT_CLASSES = ("R7",)
 GOVERNED_BY = ("registry", "semantic")  # verified query or certified metric: no review needed
-ACTIONS = ("accept", "reopen", "assign", "escalate", "answer", "decline", "mark_duplicate")
+ACTIONS = ("accept", "reopen", "assign", "escalate", "answer", "decline", "mark_duplicate", "certify")
 RUN_DONE, RUN_FAILED = {"COMPLETED"}, {"FAILED", "REJECTED", "CANCELLED"}
 DEFAULT_LIMIT, MAX_LIMIT = 50, 200
 VALUE_MAX_ROWS = 50_000
@@ -457,6 +457,11 @@ def act(session: Session, user: User, request_id: str, action: str, payload: dic
         move(session, req, "escalated", actor, type_="escalated", payload={"reason": reason}, now=now)
     elif action == "answer":
         _answer(session, req, user, payload, now)
+    elif action == "certify":  # S13-T5: the analyst's answer becomes reusable context in the S03 ledger
+        from analystos.desk.certify import certify
+
+        record = certify(session, req, user, payload)
+        _event(session, req, "certified", actor, payload=record)
     elif action == "decline":
         reason = str(payload.get("reason") or "").strip()
         if not reason:

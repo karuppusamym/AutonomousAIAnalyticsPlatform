@@ -81,7 +81,7 @@ EVENT_TYPES = {
 # Analyst Request Desk (S13): a request's timeline, mirrored to the UI stream (desk/service.py `_event`)
 EVENT_TYPES |= {"request.created", "request.duplicate_linked", "request.follower_added", "request.triaged",
                 "request.state_changed", "request.escalated", "request.assigned", "request.answered", "request.accepted",
-                "request.reopened", "request.declined", "request.sla_breached"}
+                "request.reopened", "request.declined", "request.sla_breached", "request.certified"}
 
 EVENT_TYPES |= {"context.binding_saved", "context.binding_validated", "context.evaluation_saved", "context.meaning_recheck", "context.golden_saved"}
 

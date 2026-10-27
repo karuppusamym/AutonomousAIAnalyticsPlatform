@@ -16,6 +16,7 @@ from analystos.api.routers import bi_dashboards as bi_dashboards_router
 from analystos.api.routers import builds as builds_router
 from analystos.api.routers import context_export as context_export_router
 from analystos.api.routers import context_grounding as context_grounding_router
+from analystos.api.routers import context_v2 as context_v2_router
 from analystos.api.routers import data_shape as data_shape_router
 from analystos.api.routers import decisions as decisions_router
 from analystos.api.routers import definitions as definitions_router
@@ -107,6 +108,7 @@ app.include_router(tenants_router.router)
 app.include_router(scenarios_router.router)  # what-if scenarios (N-9)
 app.include_router(knowledge_router.router)
 app.include_router(context_export_router.router)  # download and inspect the workspace context (Stream D)
+app.include_router(context_v2_router.router)  # Context Service over the ledger (S03): search/get/compile/changes, OKF
 app.include_router(evidence_router.router)
 app.include_router(definitions_router.router)
 app.include_router(work_orders_router.router)
