@@ -245,10 +245,13 @@ def test_admin_models_api(store, monkeypatch):
     """The S05 §6 routes: effective view with sources, If-Match versions, rollback, providers with health."""
     from fastapi.testclient import TestClient
 
+    from analystos.api import deps
     from analystos.api.app import app
+    from analystos.db import base
     from analystos.security.auth import issue_token
     from analystos.tenancy import resolve
 
+    monkeypatch.setattr(deps, "SessionLocal", base.SessionLocal)  # bound at import: an earlier test may have imported it
     resolve.invalidate()
     client = TestClient(app)
     admin = {"Authorization": f"Bearer {issue_token('usr_admin', 'admin@x')}"}

@@ -23,12 +23,12 @@ router = APIRouter(prefix="/api/admin/models", tags=["admin", "models"])
 Scope = Literal["tenant", "workspace"]
 
 
-class OverrideIn(BaseModel):
+class ModelConfigOverrideIn(BaseModel):
     document: dict[str, Any]
     note: str = ""
 
 
-class RollbackIn(BaseModel):
+class ModelConfigRollbackIn(BaseModel):
     version: int
     scope: Scope = "tenant"
     workspace: str | None = None
@@ -79,7 +79,7 @@ def get_override(response: Response, scope: Scope = "tenant", workspace: str | N
 
 
 @router.put("/config")
-def put_override(body: OverrideIn, response: Response, scope: Scope = Query("tenant"), workspace: str | None = None,
+def put_override(body: ModelConfigOverrideIn, response: Response, scope: Scope = Query("tenant"), workspace: str | None = None,
                  if_match: str | None = Header(default=None), user: User = Depends(current_user),
                  session: Session = Depends(db, scope="function")):
     """Replace the scope's override as a new version. If-Match is required ("0" before the first version)."""
@@ -92,7 +92,7 @@ def put_override(body: OverrideIn, response: Response, scope: Scope = Query("ten
 
 
 @router.post("/config/rollback")
-def rollback(body: RollbackIn, response: Response, user: User = Depends(current_user),
+def rollback(body: ModelConfigRollbackIn, response: Response, user: User = Depends(current_user),
              session: Session = Depends(db, scope="function")):
     tenant, ws = _tenant_for(session, user, body.scope, body.workspace)
     out = model_config.rollback(session, session.merge(user), scope=body.scope, tenant_id=tenant, workspace_id=ws,
