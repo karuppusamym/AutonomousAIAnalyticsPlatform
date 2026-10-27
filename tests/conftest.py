@@ -146,6 +146,12 @@ def control_db(analytics_plane):
     from analystos.db.base import Base
 
     Base.metadata.create_all(engine)
+    from analystos.core.config import get_settings
+    from analystos.tenancy.ddl import install
+    from analystos.tenancy.schema import tenant_sources
+
+    with engine.begin() as c:  # tenant isolation as migration 0057 installs it (ADR-009)
+        install(c, tenant_sources(Base.metadata), role=get_settings().tenancy_app_role)
     from analystos.cli import seed
 
     seed()

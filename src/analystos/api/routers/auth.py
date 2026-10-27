@@ -43,6 +43,9 @@ def login(body: Login, session: Session = Depends(db, scope="function")):
     if user is None or not user.active or not verify_password(body.password, user.password_hash):
         audit(f"anon:{body.email[:80]}", "auth.login_failed", decision="deny", session=session)
         raise Unauthenticated("invalid email or password")
+    from analystos.tenancy.session import bind_session
+
+    bind_session(session, user.tenant_id)  # the login is the user's tenant's event (ADR-009)
     audit(f"user:{user.id}", "auth.login", decision="allow", session=session)
     return {"access_token": issue_token(user.id, user.email), "token_type": "bearer",
             "user": row(user, exclude={"password_hash"})}

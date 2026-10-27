@@ -355,6 +355,9 @@ def _principal(ctx: Any) -> G.ClientPrincipal:
     principal = request.scope.get(SCOPE_KEY) if request is not None else None
     if principal is None:  # only reachable if the gate were bypassed: fail closed
         raise Unauthenticated("unauthenticated MCP request")
+    from analystos.tenancy import set_current_tenant
+
+    set_current_tenant(principal.tenant_id)  # handler tasks do not inherit the gate's context
     return principal
 
 
@@ -432,8 +435,10 @@ def _version() -> str:
 
 # ------------------------------------------------------------------------------------ ASGI gate
 def _authenticate(token: str | None) -> G.ClientPrincipal:
+    from analystos.tenancy import system_scope
+
     try:
-        with session_scope() as s:
+        with system_scope(), session_scope() as s:  # credentials are checked before any tenant is known
             return G.authenticate(s, token)
     except Unauthenticated:
         client_id = (token or "").partition(".")[0][:40] or "unknown"
@@ -492,6 +497,9 @@ class McpGate:
         token = auth[7:].strip() if auth.lower().startswith("bearer ") else None
         try:
             principal = await anyio.to_thread.run_sync(_authenticate, token)
+            from analystos.tenancy import set_current_tenant
+
+            set_current_tenant(principal.tenant_id)  # this request's task acts for the client's tenant
         except Unauthenticated as exc:
             await _send_json(send, 401, {"jsonrpc": "2.0", "id": None, "error": {"code": -32001, "message": exc.message,
                                                                                  "data": exc.to_dict()}},

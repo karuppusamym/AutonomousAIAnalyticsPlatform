@@ -58,7 +58,13 @@ def get_engine(url: str | None = None) -> Engine:
 
 @lru_cache
 def _factory(url: str | None = None) -> sessionmaker[Session]:
-    return sessionmaker(bind=get_engine(url), expire_on_commit=False)
+    from sqlalchemy import event
+
+    from analystos.tenancy.session import on_after_begin
+
+    factory = sessionmaker(bind=get_engine(url), expire_on_commit=False)
+    event.listen(factory, "after_begin", on_after_begin)  # tenant binding per transaction (ADR-009)
+    return factory
 
 
 def SessionLocal() -> Session:  # noqa: N802 - conventional name

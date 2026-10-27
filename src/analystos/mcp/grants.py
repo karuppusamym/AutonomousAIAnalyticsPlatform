@@ -64,6 +64,7 @@ class ClientPrincipal:
     client_id: str
     user_id: str
     grants: dict[str, dict[str, Any]] = field(default_factory=dict)  # workspace_id -> {role, tools, quotas}
+    tenant_id: str | None = None  # the service user's home tenant (ADR-009)
 
 
 # ------------------------------------------------------------------------------------ administration
@@ -164,7 +165,7 @@ def authenticate(session: Session, token: str | None) -> ClientPrincipal:
     client.last_used_at = utcnow()
     grants = {g.workspace_id: {"role": g.role, "tools": list(g.tools or []), "quotas": dict(g.quotas or {})}
               for g in session.scalars(select(McpGrant).where(McpGrant.client_id == client.id))}
-    return ClientPrincipal(client_id=client.id, user_id=user.id, grants=grants)
+    return ClientPrincipal(client_id=client.id, user_id=user.id, grants=grants, tenant_id=user.tenant_id)
 
 
 def resolve_workspace(principal: ClientPrincipal, workspace_id: str | None) -> str | None:

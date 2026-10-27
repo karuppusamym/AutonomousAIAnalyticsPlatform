@@ -35,6 +35,7 @@ from analystos.api.routers import registries as registries_router
 from analystos.api.routers import scenarios as scenarios_router
 from analystos.api.routers import semantic as semantic_router
 from analystos.api.routers import steps as steps_router
+from analystos.api.routers import tenants as tenants_router
 from analystos.api.routers import work_orders as work_orders_router
 from analystos.api.routers import worker as worker_router
 from analystos.api.routers import workspace_brief as brief_router
@@ -42,6 +43,7 @@ from analystos.core.config import get_settings
 from analystos.core.errors import AnalystOSError
 from analystos.core.logging import configure_logging, get_logger
 from analystos.mcp import server as mcp_server
+from analystos.tenancy.middleware import TenantMiddleware
 
 configure_logging()
 log = get_logger("analystos.api")
@@ -89,6 +91,7 @@ app = FastAPI(title="Context2AI AnalystOS", version="0.1.0", lifespan=lifespan,
 app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in get_settings().cors_origins.split(",") if o.strip()],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
                    expose_headers=["ETag", "Idempotent-Replayed", "Location", "X-Request-ID"])  # P4-06
+app.add_middleware(TenantMiddleware)  # binds the caller's tenant before any route code (ADR-009)
 app.add_middleware(RequestIdMiddleware)  # outermost: every response, errors included, names its request
 for r in (auth.router, workspaces.router, analysis.router, artifacts.router, admin.router, continuous.router, catalog.router,
           capabilities.router, registries_router.router, semantic_router.router):
@@ -97,6 +100,7 @@ app.include_router(mcp_router.router)
 app.include_router(decisions_router.router)
 app.include_router(builds_router.router)
 app.include_router(ask_router.router)
+app.include_router(tenants_router.router)
 app.include_router(scenarios_router.router)  # what-if scenarios (N-9)
 app.include_router(knowledge_router.router)
 app.include_router(context_export_router.router)  # download and inspect the workspace context (Stream D)

@@ -19,6 +19,7 @@ import importlib
 import os
 import secrets
 import socket
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -31,6 +32,18 @@ from analystos.contracts.worker import ISOLATED_POOLS, Budget, ProbeSpec, TaskEn
 from analystos.core.ids import new_id
 from analystos.workers.dispatch import ListSink, SubprocessTransport, capability_ref, dispatch_isolated
 from analystos.workers.store import ArtifactStore
+
+
+def pytest_collection_modifyitems(config, items):  # noqa: ANN001
+    """The subprocess transport reads worker pipes with select(), which Windows supports only for
+    sockets. Pools run on Linux (containers, ADR-012), so the suite is POSIX-only like the sandbox tests."""
+    if sys.platform != "win32":
+        return
+    here = Path(__file__).parent
+    skip = pytest.mark.skip(reason="worker pools need POSIX select() on pipes; run this suite on Linux")
+    for item in items:
+        if Path(str(item.fspath)).resolve().is_relative_to(here.resolve()):
+            item.add_marker(skip)
 
 
 class FakeRouter:

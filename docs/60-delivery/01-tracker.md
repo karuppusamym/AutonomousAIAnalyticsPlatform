@@ -16,6 +16,24 @@ crawl-time classification.
 
 ## P. Current execution queue
 
+### v2 platform (Autonomous AI Analytics Platform) — 2026-10-27
+
+Work queue for the v2 specs in [`docs/04-specs/`](../04-specs/); ADRs in [`docs/03-decisions/adr-log.md`](../03-decisions/adr-log.md).
+This repository was seeded from AnalystOS `codex/investigator-demo` (561 commits) on 2026-10-27 (ADR-001).
+
+| ID | Scope | Status | Evidence / notes |
+|---|---|---|---|
+| W0-01 | Seed repository from AnalystOS with history; v2 specs, ADR-001..014 accepted; merged README/CLAUDE.md | Done | This repository; `docs/00-review`, `docs/01-product`, `docs/02-architecture`, `docs/03-decisions`, `docs/04-specs`, `docs/05-delivery` |
+| W0-02 | Unit suite green on Windows dev hosts (Python 3.12) | Done | Worker conformance suite marked POSIX-only (`tests/conformance/worker/conftest.py`): the subprocess transport `select()`s on pipes, which Windows supports only for sockets. Pools run on Linux (ADR-012). |
+| S01-T1 | Tenant + tenant_member models, default tenant, `GET /api/tenants/me`, `POST /api/admin/tenants` | Done | `db/models.py` `Tenant`, `TenantMember`; `api/routers/tenants.py`; `tests/integration/test_tenancy_rls.py::test_api_is_isolated_across_tenants` |
+| S01-T2 | `tenant_id` on every tenant-owned table, backfilled | Done | Migration `0057_tenancy` (92 frozen tables + workspace, app_user, tenant_member); trigger-filled from workspace/parent, so no ORM changes; upgrade on data, downgrade and re-upgrade checked on Postgres 16 (2026-10-27) |
+| S01-T3 | RLS policies for the restricted role, per-transaction binding, request middleware, MCP binding | Done | `tenancy/{ddl,session,middleware,resolve}.py`; `tests/unit/test_tenancy_rls_coverage.py` (every table classified; hook behaviour), `tests/integration/test_tenancy_rls.py` (RLS on all 95 tables, isolation, cross-tenant write refused, API 404/403, strict mode) |
+| S01-T4 | Tenant propagation for workers, scheduler, CLI; default mode `strict` | Not started | Mode `bound` (default) restricts API and MCP requests; background roles still run as the owner identity until their entry points bind a tenant |
+| S01-T5 | Audit append-only + hash chain + verify/export | Partial | Append-only enforced (trigger + revoked UPDATE/DELETE, tested); hash chain, verify and WORM export not started |
+| S01-T6 | ABAC attributes in policy decisions + OPA adapter | Not started | |
+| S01-T7 | Cache keys prefixed by tenant/scope/policy version; negative cross-tenant suite over caches | Not started | |
+
+
 ### October 26 demo — investigation brief (2026-10-25)
 
 | ID | Scope | Status | Evidence / notes |

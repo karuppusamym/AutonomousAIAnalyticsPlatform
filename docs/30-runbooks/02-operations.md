@@ -114,3 +114,19 @@ event and notification. Without Redis, reservations fail closed (`spend_counters
 * **Demo schedules and monitors** — evidence scripts mark theirs (`[demo] ` name, `config.demo`) and
   disable them on exit. Leftovers: `analystos schedules disable-demo [--dry-run]`; every enabled
   schedule and monitor: `--all` (per workspace: `--workspace ws_...`).
+
+## Tenant isolation (ADR-009, migration 0057)
+
+* `analystos migrate` creates the restricted role `analystos_app` (NOLOGIN, NOBYPASSRLS) and grants it to the
+  migrating login. On a managed Postgres where the migrating login has no `CREATEROLE`, a DBA runs once:
+  `CREATE ROLE analystos_app NOLOGIN NOBYPASSRLS; GRANT analystos_app TO <app login>;`. Then migrate.
+* Row-level security applies after `SET LOCAL ROLE analystos_app` even when the login is a superuser, so dev compose works.
+  In production use a non-superuser owner login without `BYPASSRLS` anyway: a superuser session could switch the role back.
+* Check isolation on a live database:
+  `SELECT relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND
+  EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name=c.relname AND column_name='tenant_id') AND NOT c.relrowsecurity;`
+  It must return no rows.
+* New tenant: `POST /api/admin/tenants` (platform admin). Users act for their home tenant, or for another tenant they
+  belong to via the `X-Tenant-Id` header.
+* `audit_event` is append-only. A retention job sets `app.audit_maintenance = 'on'` in its own transaction, runs as the
+  owner identity, and audits itself.

@@ -14,6 +14,7 @@ from sqlalchemy import (
     CheckConstraint,
     Computed,
     DateTime,
+    FetchedValue,
     Float,
     ForeignKey,
     Index,
@@ -48,6 +49,36 @@ def by_code(column) -> tuple:
     return func.length(column), column
 
 
+class Tenant(Base):
+    """The isolation boundary above workspaces (ADR-009). Row-level security binds every tenant-owned
+    row to one tenant; see analystos.tenancy."""
+
+    __tablename__ = "tenant"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    slug: Mapped[str] = mapped_column(String(80), unique=True)
+    name: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(20), default="active", server_default="active")
+    data_residency: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    settings: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    created_at: Mapped[datetime] = _ts()
+
+
+class TenantMember(Base):
+    """A user's membership of a tenant other than (or in addition to) their home tenant."""
+
+    __tablename__ = "tenant_member"
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenant.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True, index=True)
+    role: Mapped[str] = mapped_column(String(30), default="member")  # tenant_admin | tenant_auditor | member
+    created_at: Mapped[datetime] = _ts()
+
+
+def _tenant_column() -> Mapped[str]:
+    """Filled by the tenancy trigger from the bound tenant (default tenant in system scope). NOT NULL is
+    enforced in Postgres by ``tenancy.ddl.install``; the metadata stays nullable for SQLite unit fixtures."""
+    return mapped_column(String(40), ForeignKey("tenant.id"), index=True, nullable=True, server_default=FetchedValue())
+
+
 class User(Base):
     __tablename__ = "app_user"
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
@@ -58,6 +89,7 @@ class User(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # ABAC inputs (department, pii_clearance)
     created_at: Mapped[datetime] = _ts()
+    tenant_id: Mapped[str | None] = _tenant_column()  # home tenant
 
 
 class UserIdentity(Base):
@@ -80,6 +112,7 @@ class UserIdentity(Base):
 class Workspace(Base):
     __tablename__ = "workspace"
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    tenant_id: Mapped[str | None] = _tenant_column()
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     objective: Mapped[str] = mapped_column(Text, default="")
@@ -2240,3 +2273,6 @@ class GroundingEvaluation(Base):
 
 
 from analystos.db import column_presence  # noqa: E402,F401  (registers the absent-column filter, P7-20)
+from analystos.tenancy.schema import attach_tenant_columns  # noqa: E402
+
+attach_tenant_columns(Base.metadata)  # tenant_id on every tenant-owned table (ADR-009)

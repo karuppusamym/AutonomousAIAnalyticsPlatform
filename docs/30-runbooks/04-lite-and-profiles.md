@@ -168,6 +168,7 @@ seed, start and a completed local run
 | Compose containers | `ANALYSTOS_IN_CONTAINER` (set by `compose.yaml`: a `localhost` Redis, Superset, Temporal or mock URL from a host `.env` is read as the compose service of that name, and a URL keeps only its first word, so a note after it in `.env` does no harm) |
 | Spend caps and counters | `ANALYSTOS_SPEND_COUNTER_STORE`, `ANALYSTOS_BUDGET_COUNTER_PREFIX` |
 | Connection pools | `ANALYSTOS_DB_POOL_MODE`, `ANALYSTOS_DB_POOL_SIZE`, `ANALYSTOS_DB_MAX_OVERFLOW`, `ANALYSTOS_DB_POOL_TIMEOUT`, `ANALYSTOS_DB_POOL_RECYCLE`, `ANALYSTOS_ANALYTICS_POOL_MODE`, `ANALYSTOS_ANALYTICS_POOL_SIZE`, `ANALYSTOS_ANALYTICS_MAX_OVERFLOW`, `ANALYSTOS_ANALYTICS_POOL_TIMEOUT`, `ANALYSTOS_LOADER_POOL_MODE`, `ANALYSTOS_LOADER_POOL_SIZE`, `ANALYSTOS_LOADER_MAX_OVERFLOW`, `ANALYSTOS_LOADER_POOL_TIMEOUT`, `ANALYSTOS_DB_TRANSACTION_POOLER` |
+| Tenant isolation (ADR-009) | `ANALYSTOS_TENANCY_MODE` (`bound` default: API/MCP requests restricted to their tenant by Postgres RLS; `strict`: every transaction outside system scope; `off`), `ANALYSTOS_TENANCY_APP_ROLE` (restricted role, default `analystos_app`) |
 | Analytics roles | `ANALYSTOS_ANALYTICS_WORKSPACE_ROLE_PREFIX`, `ANALYSTOS_ANALYTICS_BUILD_ROLE_PREFIX`, `ANALYSTOS_ANALYTICS_WRITER_ROLE_PREFIX` |
 | Managed writer | `ANALYSTOS_WRITER_KEEP_VERSIONS` (version tables kept per destination: the rollback depth) |
 | Gateway | `ANALYSTOS_QUERY_TIMEOUT_SECONDS`, `ANALYSTOS_QUERY_MAX_ROWS`, `ANALYSTOS_QUERY_CACHE_TTL_SECONDS` |
