@@ -1,5 +1,31 @@
 # Capability register (evidence)
 
+## 2026-10-27 — S03 Context Service + Context Ledger (T1–T6) and S13-T5 certify-on-close
+
+The Context Ledger (`context_ledger_entry`, `context_ledger_change`; migration `0061_context_ledger`, RLS) is a
+versioned projection of nine owner tables, written in the owner's own transaction by a session hook, with a
+consistency check and `analystos context reconcile`. Reads (`context/retrieval.py`) filter by the caller's access
+before ranking (workspace membership, trust, data scope from `resolve_scope`), rank hybrid (exact/alias, mention,
+synonyms, lineage proximity, cosine × trust × freshness × in-scope) and compile a bundle with receipts, omissions and
+an identity hash; suggestions never enter it and conflicting certified definitions block it. The run's reviewed brief
+is a first-class compiler section (receipted, in the cache key and identity hash, inside the untrusted envelope,
+refused rather than trimmed). Interfaces: REST `/api/v2/context/*`, MCP `context.search|get|compile|changes` (grant
+`context.read`) and ledger resources; OKF export (deterministic, access-filtered, withheld entries counted only) and
+import as suggestions. The desk `certify` action turns an analyst's answer into a verified query, glossary entry,
+metric suggestion or playbook in the ledger.
+Tests (Windows dev host, Python 3.12, Postgres 16 with RLS, strict tenancy, fake model transport, 2026-10-27):
+`tests/unit/test_context_ledger.py` (15) and `tests/integration/test_context_service.py` (6): ledger isolated per
+tenant; REST access filter (an analyst without PII clearance never sees the PII-mapped entry; W2 404); 409 on
+conflicting certified metrics; AT-17 (MCP client with `context.read` on W gets receipts of W's approved entries only,
+W2 refused 403); AT-16 (export → import into a clean tenant → export byte-identical; restricted export omits the PII
+entry and counts it in `log.md`); AT-20 (escalated R2 answered and certified as a verified query; the paraphrased repeat
+triages R1 and is auto-answered by the registry rung with no model call). Migration upgrade from empty, downgrade -1
+and re-upgrade checked. Regression: full unit suite shows only the 5 failures that also fail on `main`; 18 integration
+files (tenancy, desk, MCP, registries, knowledge, context, semantic, crawler, API) show 3 failures unrelated to this
+change (Claude models blocked on `main`, a Windows path as push remote, migration-0017 column check vs `tenant_id`).
+Not built: federation (T7), OpenLineage/ODCS export, run plan-hash wiring of the identity hash (S07), MCP HTTP
+transport run (SDK extra absent on this host; tool handlers tested directly).
+
 ## 2026-10-27 — S13 Analyst Request Desk (T1–T4, T6 backend)
 
 New package `src/analystos/desk/`: requests from the UI/API (`POST /api/requests`) and MCP (`request.create`) are
