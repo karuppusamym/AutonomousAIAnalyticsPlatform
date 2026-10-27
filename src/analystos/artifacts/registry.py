@@ -10,7 +10,7 @@ from sqlalchemy import Integer, String, and_, case, literal, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
-from analystos.core.ids import new_id, stable_hash, utcnow
+from analystos.core.ids import new_id, ordered_utcnow, stable_hash
 from analystos.db.models import AnalysisRun, Artifact, ArtifactVersion, Insight, LineageEdge, QueryExecution
 
 ARTIFACT_TYPES = {"query", "profile", "quality_report", "relationship_map", "context_package", "plan", "dataset",
@@ -80,7 +80,7 @@ def save_artifact(session: Session, *, workspace_id: str, type_: str, name: str,
     # transaction, and every `ORDER BY created_at` reader must get them back in the order written.
     artifact = Artifact(id=new_id("art"), workspace_id=workspace_id, run_id=run_id, type=type_, name=name, version=1,
                         plan_version=plan_version, status=status, creator_agent=creator_agent, creator_user=creator_user,
-                        content=content, content_hash=content_hash, created_at=utcnow())
+                        content=content, content_hash=content_hash, created_at=ordered_utcnow())
     session.add(artifact)
     session.flush()
     session.add(ArtifactVersion(artifact_id=artifact.id, version=1, content=content, content_hash=content_hash,

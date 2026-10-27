@@ -101,7 +101,7 @@ What landed, and where it differs from §3–§7. Evidence is in the tracker row
   Vault/AWS/Azure/GCP account was reachable.
 * **T3.** `gateway/handles.py`: rows stream through a `ResultSink`; past 256 rows / 64 KB the result is written as
   Parquet (zstd) to `tenant/{t}/results/{qe_id}.parquet` and recorded in `result_handle` (tenant RLS, migration
-  `0061_query_gateway_s02`) with schema, row count, bytes, sha256, expiry and the highest column classification.
+  `0066_query_gateway_s02`) with schema, row count, bytes, sha256, expiry and the highest column classification.
   `open_dataset` / `read_rows` re-check tenant visibility, expiry and the sha256 on every open; the scheduler's
   housekeeping purges expired files. Deviations: the store is a local directory (`ANALYSTOS_RESULT_STORE_DIR`), not
   an S3-compatible object store, and files are not encrypted by the platform (use an encrypted volume). The legacy

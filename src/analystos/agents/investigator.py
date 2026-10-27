@@ -163,7 +163,8 @@ def question_coverage(objective: str, proposals: list[dict], resolutions: list[d
     required |= focus & distinctive
     synonyms = {"sla": {"sla", "breach", "made"}, "breach": {"breach", "sla", "made"},
                 "resolution": {"resolved", "resolution", "duration"}, "volume": {"volume", "count"}}
-    if any((p.get("spec") or {}).get("method") == "trend" for p in proposals):
+    volume_trend = methods.for_playbook("volume_trend")
+    if volume_trend is not None and any((p.get("spec") or {}).get("method") == volume_trend.name for p in proposals):
         addressed.add("volume")
     missing = sorted(t for t in required if not (synonyms.get(t, {t}) & addressed))
     return {"covered": not missing and bool(proposals), "missing": missing, "addressed": sorted(addressed)}
@@ -189,12 +190,15 @@ def metric_candidates(grounding: dict, types: dict, scope) -> list[dict]:
             outcome.update(type="duration_hours", end_column=metric["end_column"].rsplit(".", 1)[-1])
         if metric.get("true_value") is not None:
             outcome["value"] = metric["true_value"]
+        segment_method = methods.for_playbook("flag_by_segment" if rate else "measure_by_segment")
+        if segment_method is None:
+            continue
         for segment, st in types.get(asset, {}).items():
             if st != "categorical":
                 continue
             out.append({"question": f"Does {r['term']} differ by {segment}?", "statement": f"{r['term']} differs by {segment}.",
                         "rationale": f"Reviewed measure {r['id']} revision {r.get('revision')}", "priority": "high",
-                        "spec": {"asset": asset, "method": "rate_by_segment" if rate else "numeric_by_segment",
+                        "spec": {"asset": asset, "method": segment_method.name,
                                  "outcome": outcome, "segment": {"type": "column", "column": segment}}, "pack": "reviewed_metric"})
     return out[:12]
 
@@ -532,8 +536,33 @@ def _prioritise(ctx: RunContext, accepted: list[dict]) -> str:
                                   "confidence": item.get("confidence"), "model": decision.model,
                                   "decision_id": decision.id} if v else None
         a["priority"] = "high" if a["priority_score"] >= 0.7 else "medium" if a["priority_score"] >= 0.35 else "low"
+    _prefer_playbook_methods(ctx, accepted)
     accepted.sort(key=lambda a: -a["priority_score"])
     return "jev" if decision.backend == "jev" else "rules"
+
+
+def _prefer_playbook_methods(ctx: RunContext, accepted: list[dict]) -> None:
+    """A template playbook's step names the kinds of method its analysis is about (`params.prefer_method_tags`,
+    S06 §3.8, matched against the registered methods' tags): hypotheses whose method carries more of those
+    tags, earlier ones weighing more, rank first. A rule over data, applied after JEV; nothing is dropped."""
+    from analystos.capabilities.binding import run_playbook
+
+    run, task = getattr(ctx, "run", None), getattr(ctx, "task", None)
+    if run is None or task is None or not getattr(run, "capabilities", None):
+        return
+    step = run_playbook(run).step(task.key)
+    prefer = list((step.params if step is not None else {}).get("prefer_method_tags") or [])
+    if not prefer:
+        return
+    weights = {t: (len(prefer) - i) / len(prefer) for i, t in enumerate(prefer)}
+    top = sum(weights.values())
+    for a in accepted:
+        manifest = methods.manifests().get((a.get("spec") or {}).get("method"))
+        score = sum(weights.get(t, 0.0) for t in (manifest.tags if manifest is not None else []))
+        if score:
+            a["priority_score"] = round(min(1.0, a["priority_score"] + 0.5 * score / top), 3)
+            a["priority"] = "high" if a["priority_score"] >= 0.7 else "medium" if a["priority_score"] >= 0.35 else "low"
+            a["priority_by"] = f"{a.get('priority_by') or 'rules'}+playbook"
 
 
 def _contracted(ctx: RunContext, accepted: list[dict]) -> list[dict]:

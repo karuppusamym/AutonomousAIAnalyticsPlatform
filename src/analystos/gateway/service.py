@@ -4,7 +4,10 @@ execute():
   1. effective limits = min(requested, scope limits, platform ceilings);
   2. validate (validator.validate_sql) — fail closed, precise SQLRejected messages;
   3. resolve the source from the control plane and check it belongs to the scope's workspace;
-  4. result cache lookup (Redis; key binds fingerprint + scope hash + source version + row cap);
+  3b. ABAC (S01-T6, governance/abac.py): classification, purpose, region, grain, audience; a denial is a 403
+      policy_denied {rule, reason, remedy}, audited as a rejection, before any cache lookup;
+  4. result cache lookup (Redis; key `tenant:{t}:scope:{s}:policy:{v}:` + hash of fingerprint, scope hash,
+     source version, row cap; S01-T7);
   5. execute the *generated* SQL:
        staged sources  -> analytics DB with the READER identity only, READ ONLY transaction,
                           SET LOCAL ROLE to the owning workspace's reader role (the reader login
@@ -177,6 +180,7 @@ class QueryGateway:
         result_mode: str = "inline",
         max_scan_bytes: int | None = None,
         query_id: str | None = None,
+        _federation_leg: bool = False,
     ) -> QueryResult:
         """`retain_rows=False` (e.g. crawler PII value sampling): the statement is validated, executed
         and audited as usual, but no result value is stored anywhere — no audit preview, no result cache.
@@ -209,7 +213,7 @@ class QueryGateway:
         if federated:
             return self._execute_federated(scope, sql, audit, started, eff_rows=eff_rows, eff_timeout=eff_timeout,
                                            use_cache=use_cache, retain_rows=retain_rows, result_mode=result_mode,
-                                           max_scan_bytes=max_scan_bytes)
+                                           max_scan_bytes=max_scan_bytes, purpose=purpose)
 
         # 1. validate
         try:
@@ -227,6 +231,14 @@ class QueryGateway:
             fingerprint=validated.fingerprint,
             referenced_assets=validated.referenced_assets,
         )
+        # 1b. ABAC on every statement, before the cache (S01-T6): a cached result is never a way around a denial.
+        # A federation leg was decided as part of its federated statement.
+        if not _federation_leg:
+            try:
+                self._abac(scope, validated, source.get("tenant_id"), purpose)
+            except PolicyDenied as exc:
+                self._reject(audit, exc, started)
+                raise
 
         # 2. scan budget (S02-T4): estimate before running, refuse above the budget
         estimate = self._check_budget(scope, source, validated, audit, started, eff_timeout, max_scan_bytes)
@@ -234,7 +246,8 @@ class QueryGateway:
         # 3. cache
         key = None
         if use_cache and self.cache is not None:
-            key = self.cache.key(validated.fingerprint, scope.scope_hash(), source["version"], eff_rows)
+            key = self.cache.key(validated.fingerprint, scope.scope_hash(), source["version"], eff_rows,
+                                 tenant=source.get("tenant_id"), policy_version=scope.policy_version)
             hit = self.cache.get(key)
             if hit is not None and isinstance(hit.get("columns"), list) and isinstance(hit.get("rows"), list):
                 return self._finish(audit, validated, hit["columns"], hit["rows"], bool(hit.get("truncated")), started,
@@ -363,31 +376,66 @@ class QueryGateway:
         except Exception:  # noqa: BLE001 - an unreadable plan is no estimate, never a pass
             return CostEstimate(basis="explain_unreadable")
 
+    def _run_limits(self, run_id: str | None) -> dict[str, Any]:
+        """A goal run's limits (S06), cached by `autonomy.budget.run_limits`; none outside a run."""
+        if not run_id:
+            return {}
+        from analystos.autonomy.budget import run_limits
+
+        session = self.session_factory()
+        try:
+            return run_limits(session, run_id)  # no run row (ad-hoc ids): {}
+        finally:
+            session.close()
+
     def _check_budget(self, scope: DataScope, source: dict[str, Any], validated: ValidatedSQL, audit: dict[str, Any],
                       started: float, timeout: int, requested: int | None) -> CostEstimate | None:
         limits = [x for x in (requested, source.get("max_scan_bytes"), getattr(self.settings, "query_max_scan_bytes", 0))
                   if x is not None and x > 0]
-        if not limits:
-            return None
-        budget = min(limits)
+        run_limits = self._run_limits(audit.get("run_id"))
+        run_cap = run_limits.get("max_scan_bytes")
+        if not limits and run_cap is None:
+            return None  # no budget applies: no estimate, no extra round trip
+        budget = min(limits) if limits else None
         try:
             estimate = self._estimate(source, validated, scope.max_rows, timeout)
         except AnalystOSError as exc:
             self._fail(audit, "error", exc, started)
             raise
-        audit["cost_estimate"] = dict(estimate.model_dump(), budget=budget)
+        audit["cost_estimate"] = dict(estimate.model_dump(), budget=budget, run_budget=run_cap)
         if estimate.basis == "explain_unreadable":  # a budget applies and the plan could not be read: fail closed
             exc = BudgetExceeded("The statement's cost could not be estimated, so the scan budget cannot be checked.")
             self._reject(audit, exc, started, reason_code="budget.unestimated")
             raise exc
-        if over_budget(estimate, budget):
+        if budget is not None and over_budget(estimate, budget):
             exc = BudgetExceeded(f"The statement would scan about {estimate.bytes} bytes, above the scan budget of "
                                  f"{budget} bytes. Filter or aggregate more, or ask for a larger budget.")
             self._reject(audit, exc, started, reason_code="budget.max_scan_bytes")
             raise exc
+        if run_cap is not None:  # S06: the run's scan budget is charged each admitted statement's estimate
+            from analystos.autonomy.budget import check_scan, record_scan
+
+            try:
+                check_scan(audit["run_id"], run_limits, estimate.bytes or 0)
+            except BudgetExceeded as exc:
+                self._reject(audit, exc, started, reason_code="budget.run_scan_bytes")
+                raise
+            record_scan(audit["run_id"], estimate.bytes or 0)
         return estimate
 
     # ------------------------------------------------------------------ helpers
+    @staticmethod
+    def _abac(scope: DataScope, validated: ValidatedSQL, tenant_id: str | None, purpose: str) -> None:
+        """S01-T6: classification of the columns read, the statement's grain, the purpose, the caller's region."""
+        from analystos.governance import abac
+
+        verdict = abac.decide_query(scope, tenant_id=tenant_id, source_id=validated.source_id or None,
+                                    sql=validated.executable_sql, dialect=validated.dialect,
+                                    referenced_assets=validated.referenced_assets,
+                                    referenced_columns=validated.referenced_columns, purpose=purpose)
+        if not verdict.allow:
+            raise abac.denial(verdict, what="query")
+
     def _load_source(self, scope: DataScope, validated: ValidatedSQL) -> dict[str, Any]:
         session = self.session_factory()
         try:
@@ -475,7 +523,7 @@ class QueryGateway:
     # ------------------------------------------------------------------ federation (P4-E03)
     def _execute_federated(self, scope: DataScope, sql: str, audit: dict[str, Any], started: float, *, eff_rows: int,
                            eff_timeout: int, use_cache: bool, retain_rows: bool, result_mode: str = "inline",
-                           max_scan_bytes: int | None = None) -> QueryResult:
+                           max_scan_bytes: int | None = None, purpose: str = "analysis") -> QueryResult:
         """Multi-source (S02-T7, FR-051): each source's leg runs through `execute` on its own scope, identity,
         budget and audit row and comes back as a ResultHandle; the join runs in DuckDB over those handles only
         (scanned lazily from Parquet), and lineage records every leg handle. Needs `data_movement: staged_ok`."""
@@ -497,10 +545,18 @@ class QueryGateway:
             raise
         audit.update(executed_sql=validated.executable_sql, fingerprint=validated.fingerprint,
                      referenced_assets=validated.referenced_assets, purpose=f"federated:{audit['purpose']}"[:120])
+        tenants = {sources[s].get("tenant_id") for s in sources}
+        tenant = next(iter(tenants)) if len(tenants) == 1 else None
+        try:
+            self._abac(scope, validated, tenant, purpose)
+        except PolicyDenied as exc:
+            self._reject(audit, exc, started)
+            raise
         key = None
-        if use_cache and self.cache is not None:
+        if use_cache and self.cache is not None and len(tenants) == 1:  # every leg's workspace has one tenant
             versions = "|".join(sources[s]["version"] for s in sorted(sources))
-            key = self.cache.key(validated.fingerprint, scope.scope_hash(), versions, eff_rows)
+            key = self.cache.key(validated.fingerprint, scope.scope_hash(), versions, eff_rows, tenant=tenant,
+                                 policy_version=scope.policy_version)
             hit = self.cache.get(key)
             if hit is not None and isinstance(hit.get("columns"), list) and isinstance(hit.get("rows"), list):
                 return self._finish(audit, validated, hit["columns"], hit["rows"], bool(hit.get("truncated")), started,
@@ -515,7 +571,7 @@ class QueryGateway:
                 leg = self.execute(bound, leg_sql, actor=audit["actor"], purpose=f"federation.leg:{audit['id']}",
                                    run_id=audit["run_id"], task_id=audit["task_id"], max_rows=leg_cap,
                                    timeout_seconds=eff_timeout, retain_rows=False, use_cache=False,
-                                   result_mode="handle", max_scan_bytes=max_scan_bytes)
+                                   result_mode="handle", max_scan_bytes=max_scan_bytes, _federation_leg=True)
                 if leg.truncated:
                     raise InvalidInput(
                         f"{asset} has more than {leg_cap} rows, the federation limit per source; a partial leg would "

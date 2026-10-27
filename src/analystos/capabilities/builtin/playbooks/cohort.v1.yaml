@@ -1,0 +1,70 @@
+# Template (S06 §3.8): cohort retention. Cohort retention first, then trend and drivers; findings are
+# verified before the report.
+apiVersion: analystos/v1
+kind: Playbook
+id: playbook.cohort
+version: 1.0.0
+summary: Cohort retention (retention by cohort and period, verified differences between cohorts, a cohort report)
+determinism: model
+side_effect: write_internal
+cost_class: llm_small
+certification: {status: tested, evidence: tests/integration/test_template_playbooks.py}
+tags: [template, cohort]
+spec:
+  framing: true
+  inputs:
+    - {name: question, type: question, required: true}
+    - {name: entity, type: dimension, description: "Who is retained (customer, account, user)"}
+    - {name: cohort_event, type: event, description: "What starts a cohort (signup, first order)"}
+    - {name: period, type: period, description: "Cohort grain, e.g. month"}
+  outputs: [cohort_report, report]
+  default_limits: {max_steps: 35, max_duration_s: 2400, max_cost_usd: 0.6, max_replans: 2, max_retries: 6}
+  router:
+    intents: ['cohorts?', 'retention', 'churn', 'repeat (purchase|order|customer)s?', 'stick(y|iness)']
+    tiers: [medium, complex]
+    priority: 20
+  steps:
+    - key: plan_approval
+      use: agent.supervisor
+      behaviour: plan_approved
+      title: Wait for plan approval
+      type: approval_gate
+      payload: plan
+      when: "run.autonomy_level <= 2"
+      gates_roots: true
+    - {key: context, use: agent.context, title: Load business context and the cohort definition}
+    - {key: metadata, use: agent.metadata, title: Discover technical metadata of selected tables}
+    - key: relationships
+      use: agent.metadata
+      behaviour: discover_relationships
+      title: Discover and validate relationships
+      after: [metadata]
+      optional: true
+    - {key: profile, use: agent.profiler, title: Profile selected tables, after: [metadata]}
+    - key: quality
+      use: agent.data_quality
+      title: Detect data-quality issues in entity and event dates
+      after: [profile, relationships]
+      optional: true
+    - key: hypotheses
+      use: agent.investigator
+      title: Frame retention differences between cohorts as testable hypotheses
+      after: [context, profile, quality]
+      params: {prefer_method_tags: [cohort, time_series]}
+      replan_boundary: [{trigger: redirect, reset: self_and_downstream}]
+      expands:
+        - {prefix: "test:", use: agent.data_scientist}
+        - {prefix: "followups:", use: agent.investigator, behaviour: follow_ups}
+    - key: insights
+      use: agent.insight
+      title: Turn supported retention differences into evidence-backed findings
+      after: [hypotheses, "test:*", "followups:*"]
+    - key: verify
+      use: agent.critic
+      title: REV verification of every finding
+      after: [insights]
+      replan_boundary: [{trigger: finding_rejected, reset: downstream}]
+    - {key: dataset, use: agent.sql, title: Build the cohort dataset, after: [verify]}
+    - {key: semantic, use: agent.semantic, title: Define and validate the retention KPIs, after: [dataset]}
+    - {key: visualize, use: agent.visualization, title: Chart retention by cohort, after: [semantic]}
+    - {key: finalize, use: agent.supervisor, title: Write the cohort report, after: [visualize]}

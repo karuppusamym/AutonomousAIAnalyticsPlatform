@@ -16,6 +16,8 @@ from analystos.api.routers import bi_dashboards as bi_dashboards_router
 from analystos.api.routers import builds as builds_router
 from analystos.api.routers import context_export as context_export_router
 from analystos.api.routers import context_grounding as context_grounding_router
+from analystos.api.routers import context_v2 as context_v2_router
+from analystos.api.routers import conversations as conversations_router
 from analystos.api.routers import data_shape as data_shape_router
 from analystos.api.routers import decisions as decisions_router
 from analystos.api.routers import definitions as definitions_router
@@ -23,6 +25,7 @@ from analystos.api.routers import deliveries as deliveries_router
 from analystos.api.routers import desk as desk_router
 from analystos.api.routers import entity_matching as entity_matching_router
 from analystos.api.routers import evidence as evidence_router
+from analystos.api.routers import goals_v2 as goals_v2_router
 from analystos.api.routers import index_advice as index_advice_router
 from analystos.api.routers import investigation_value as investigation_value_router
 from analystos.api.routers import knowledge as knowledge_router
@@ -38,6 +41,7 @@ from analystos.api.routers import scenarios as scenarios_router
 from analystos.api.routers import semantic as semantic_router
 from analystos.api.routers import steps as steps_router
 from analystos.api.routers import tenants as tenants_router
+from analystos.api.routers import tools_v2 as tools_v2_router
 from analystos.api.routers import work_orders as work_orders_router
 from analystos.api.routers import worker as worker_router
 from analystos.api.routers import workspace_brief as brief_router
@@ -99,6 +103,7 @@ for r in (auth.router, workspaces.router, analysis.router, artifacts.router, adm
           capabilities.router, registries_router.router, semantic_router.router):
     app.include_router(r)
 app.include_router(mcp_router.router)
+app.include_router(tools_v2_router.router)  # tool, agent and data-product registry (S10)
 app.include_router(models_admin_router.router)  # model gateway admin (S05)
 app.include_router(decisions_router.router)
 app.include_router(builds_router.router)
@@ -107,6 +112,7 @@ app.include_router(tenants_router.router)
 app.include_router(scenarios_router.router)  # what-if scenarios (N-9)
 app.include_router(knowledge_router.router)
 app.include_router(context_export_router.router)  # download and inspect the workspace context (Stream D)
+app.include_router(context_v2_router.router)  # Context Service over the ledger (S03): search/get/compile/changes, OKF
 app.include_router(evidence_router.router)
 app.include_router(definitions_router.router)
 app.include_router(work_orders_router.router)
@@ -122,6 +128,8 @@ app.include_router(investigation_value_router.router)
 app.include_router(context_grounding_router.router)
 app.include_router(process_router.router)  # process and task mining over event logs
 app.include_router(desk_router.router)  # Analyst Request Desk (S13)
+app.include_router(conversations_router.router)  # API v2 conversations and memory (S04)
+app.include_router(goals_v2_router.router)  # Goal API v2 (S06): goals, signals, run state, SSE, evidence, plans
 app.include_router(deliveries_router.router)  # approved external email/webhook delivery (N-3)
 app.include_router(data_shape_router.router)  # what the selected tables are good for (patterns, next steps)
 app.include_router(index_advice_router.router)  # index / partitioning / clustering advice, never applied (N-11)

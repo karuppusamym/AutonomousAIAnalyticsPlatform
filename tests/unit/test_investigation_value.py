@@ -55,7 +55,8 @@ def review(**patch):
 
 
 def test_each_guided_template_preserves_the_requested_question_and_does_not_invent_impact():
-    for t in svc.TEMPLATES:
+    assert {t["id"] for t in svc.templates()} >= {"data_quality", "sla_change", "recurring_incidents"}
+    for t in svc.templates():
         template, question = svc.template_question(GuidedInvestigationIn(template_id=t["id"], period="Q3 2026",
                         comparison="Q2 2026", decision="Choose the team to review"))
         assert template["version"] == 1

@@ -173,7 +173,9 @@ def test_pinned_schedule_upgrade_available_nothing_changed_and_retired_blocks(wo
     # A pack upgrade: a newer agent.investigator in the installed registry.
     snap = reg.current()
     raw = snap.get("agent.investigator").model_dump(mode="json")
-    newer = CapabilityManifest.model_validate({**raw, "version": "1.1.0", "summary": raw["summary"] + " (pack 1.1)"})
+    cur = raw["version"]  # whatever is installed; the upgrade bumps its minor
+    nxt = ".".join([cur.split(".")[0], str(int(cur.split(".")[1]) + 1), "0"])
+    newer = CapabilityManifest.model_validate({**raw, "version": nxt, "summary": raw["summary"] + " (pack upgrade)"})
     monkeypatch.setattr(reg, "_current", reg.pinned(snap, [newer]))
     with session_scope() as s:
         assert pins.refresh_workspace(s, ws) == {sid: "upgrade_available"}
@@ -183,7 +185,7 @@ def test_pinned_schedule_upgrade_available_nothing_changed_and_retired_blocks(wo
         st = pins.status(s, s.get(Schedule, sid))
         assert st.state == "upgrade_available"
         assert {(i.type, i.id, i.pinned, i.current) for i in st.items if i.state == "newer"} >= {
-            ("capability", "agent.investigator", "agent.investigator@1.0.0", "agent.investigator@1.1.0"),
+            ("capability", "agent.investigator", f"agent.investigator@{cur}", f"agent.investigator@{nxt}"),
             ("metric", "breach_rate", "breach_rate@v1", "breach_rate@v2")}
         assert s.scalar(select(RunEvent).where(RunEvent.workspace_id == ws, RunEvent.type == "schedule.upgrade_available"))
 
@@ -194,7 +196,7 @@ def test_pinned_schedule_upgrade_available_nothing_changed_and_retired_blocks(wo
     _wait_schedule_run(srun)
     with session_scope() as s:
         run = s.get(AnalysisRun, fire_run)
-        assert run.capabilities["refs"] == base_refs  # agent.investigator@1.0.0, not the upgrade
+        assert run.capabilities["refs"] == base_refs  # the installed agent.investigator, not the upgrade
         assert run.capabilities["semantic"]["metrics"]["breach_rate"]["version"] == 1
         assert run.capabilities["pinned"]["revision"] == 1 and run.origin["replay"] is True
         fired = {spec_hash(h.spec) for h in s.scalars(select(Hypothesis).where(Hypothesis.run_id == fire_run))}

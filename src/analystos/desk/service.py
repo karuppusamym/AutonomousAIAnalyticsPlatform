@@ -54,7 +54,7 @@ ASK_CLASSES = ("R1", "R2")
 RUN_CLASSES = ("R3", "R6")
 CONTEXT_CLASSES = ("R7",)
 GOVERNED_BY = ("registry", "semantic")  # verified query or certified metric: no review needed
-ACTIONS = ("accept", "reopen", "assign", "escalate", "answer", "decline", "mark_duplicate")
+ACTIONS = ("accept", "reopen", "assign", "escalate", "answer", "decline", "mark_duplicate", "certify")
 RUN_DONE, RUN_FAILED = {"COMPLETED"}, {"FAILED", "REJECTED", "CANCELLED"}
 DEFAULT_LIMIT, MAX_LIMIT = 50, 200
 VALUE_MAX_ROWS = 50_000
@@ -114,9 +114,11 @@ def _call_ctx(session: Session, workspace_id: str, request_id: str) -> Any:
     from analystos.governance.policy import get_workspace, load_policy
     from analystos.llm.router import CallContext
 
-    policy = load_policy(session, get_workspace(session, workspace_id))
+    workspace = get_workspace(session, workspace_id)
+    policy = load_policy(session, workspace)
     return CallContext.for_policy(policy, workspace_id=workspace_id, task_id=request_id, agent_id="desk",
-                                  prompt_version="request_triage.v1")
+                                  prompt_version="request_triage.v1", tenant_id=workspace.tenant_id,
+                                  policy_version=workspace.policy_version)
 
 
 def _router() -> Any:
@@ -134,9 +136,10 @@ def _cost(session: Session, task_ids: list[str]) -> float:
 
 # ------------------------------------------------------------------------------------------- intake
 def submit(user: User, workspace_id: str, text: str, *, channel: str = "ui", priority: str = "normal",
-           process: bool = True) -> dict[str, Any]:
+           process: bool = True, conversation_id: str | None = None) -> dict[str, Any]:
     """Create a request, link it to an open duplicate or triage it, and (``process``) run its auto path.
-    Returns the request as its requester sees it."""
+    Returns the request as its requester sees it. ``conversation_id`` (S04, the requester's own conversation in this
+    workspace) makes an Ask answer a message of that conversation instead of a new one."""
     text = " ".join((text or "").split())
     if len(text) < 3:
         raise InvalidInput("say what you need (at least a few words)")
@@ -149,12 +152,16 @@ def submit(user: User, workspace_id: str, text: str, *, channel: str = "ui", pri
     now = utcnow()
     with session_scope() as s:
         require_role(s, user, workspace_id, "viewer")
+        if conversation_id is not None:
+            from analystos.conversations.service import load as load_conversation
+
+            load_conversation(s, s.merge(user), conversation_id, workspace_id)
         cat = catalog(s, workspace_id)
         rules = triage.classify_rules(text, cat)
         intent = triage.normalize_intent(text, rules.request_class, cat)
         req = Request(id=new_id("rq"), workspace_id=workspace_id, requester_id=user.id, channel=channel, text=text,
                       normalized_intent=intent, state="new", priority=priority, run_ids=[], triage={}, followers=[],
-                      cost_usd=0.0, revision=1)
+                      cost_usd=0.0, revision=1, conversation_id=conversation_id)
         s.add(req)
         s.flush()
         _event(s, req, "created", _actor(user), to_state="new", payload={"channel": channel, "priority": priority})
@@ -228,8 +235,11 @@ def _ask_path(user: User, request_id: str, ws: str, text: str, flags: set[str]) 
 
     with session_scope() as s:
         req = s.get(Request, request_id)
-        thread = ask_svc.create_thread(s, s.merge(user), ws, title=text[:300])
-        req.conversation_id = thread["id"]
+        if req.conversation_id:  # S04: a message in the requester's existing conversation
+            thread = {"id": req.conversation_id}
+        else:
+            thread = ask_svc.create_thread(s, s.merge(user), ws, title=text[:300], channel=req.channel, request_id=req.id)
+            req.conversation_id = thread["id"]
         move(s, req, "auto_answering", "desk", payload={"path": "ask", "conversation_id": thread["id"]})
     turn = ask_svc.ask_in_thread(user, thread["id"], text)
     if turn.get("status") != "answered":
@@ -457,6 +467,11 @@ def act(session: Session, user: User, request_id: str, action: str, payload: dic
         move(session, req, "escalated", actor, type_="escalated", payload={"reason": reason}, now=now)
     elif action == "answer":
         _answer(session, req, user, payload, now)
+    elif action == "certify":  # S13-T5: the analyst's answer becomes reusable context in the S03 ledger
+        from analystos.desk.certify import certify
+
+        record = certify(session, req, user, payload)
+        _event(session, req, "certified", actor, payload=record)
     elif action == "decline":
         reason = str(payload.get("reason") or "").strip()
         if not reason:

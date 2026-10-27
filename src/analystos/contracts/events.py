@@ -81,11 +81,23 @@ EVENT_TYPES = {
 # Analyst Request Desk (S13): a request's timeline, mirrored to the UI stream (desk/service.py `_event`)
 EVENT_TYPES |= {"request.created", "request.duplicate_linked", "request.follower_added", "request.triaged",
                 "request.state_changed", "request.escalated", "request.assigned", "request.answered", "request.accepted",
-                "request.reopened", "request.declined", "request.sla_breached"}
+                "request.reopened", "request.declined", "request.sla_breached", "request.certified"}
+
+# Conversations and memory (S04): created, branched, a non-Ask message, corrections, summaries, holds, deletion
+EVENT_TYPES |= {"conversation.created", "conversation.branched", "conversation.message", "conversation.correction_applied",
+                "conversation.summarized", "conversation.legal_hold", "conversation.deleted"}
 
 EVENT_TYPES |= {"context.binding_saved", "context.binding_validated", "context.evaluation_saved", "context.meaning_recheck", "context.golden_saved"}
 
-RUN_TERMINAL = {"COMPLETED", "FAILED", "REJECTED", "CANCELLED"}
+# Autonomy engine (S06): goals, remaining budget, budget exhaustion, typed replans
+EVENT_TYPES |= {"goal.created", "goal.signal", "run.budget", "run.limited"}
+
+# COMPLETED_WITH_LIMITATIONS: a budget ran out; validated partial results stand (S06 §3.4, AT-04).
+# EXPIRED: the run outlived its wall-clock limit while waiting for a person (architecture §5.2).
+RUN_TERMINAL = {"COMPLETED", "FAILED", "REJECTED", "CANCELLED", "COMPLETED_WITH_LIMITATIONS", "EXPIRED"}
 RUN_STATUSES = ["NEW", "PLANNING", "READY", "RUNNING", "WAITING_TOOL", "WAITING_USER", "PAUSED",
                 "EVALUATING", "VERIFYING", *sorted(RUN_TERMINAL)]
 TASK_STATUSES = ["NEW", "READY", "RUNNING", "WAITING_USER", "COMPLETED", "FAILED", "SKIPPED", "CANCELLED", "INVALIDATED"]
+# Tool, agent and data-product registry (S10): signed versions published, quarantined at admission, status changes,
+# invocations
+EVENT_TYPES |= {"tool.published", "tool.quarantined", "tool.deprecated", "tool.status_changed", "tool.invoked"}

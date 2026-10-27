@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from analystos.capabilities import job_kinds
 from analystos.contracts.brief import EvidenceRef, ReadinessAssessmentDoc, ReadinessCheck, ReadinessIn
-from analystos.core.ids import new_id, stable_hash, utcnow
+from analystos.core.ids import new_id, ordered_utcnow, stable_hash, utcnow
 from analystos.db.models import ReadinessAssessment, Relationship, Source, SourceAsset, SourceColumn, User, WorkOrder
 from analystos.services import brief as brief_svc
 
@@ -401,7 +401,7 @@ def assess(session: Session, user: User, workspace_id: str, body: ReadinessIn, *
                               brief_version=out.brief_version, status=out.status,
                               checks=[c.model_dump(mode="json") for c in out.checks], inputs=out.inputs,
                               inputs_hash=out.inputs_hash or "", alternatives=out.alternatives, created_by=f"user:{user.id}",
-                              created_at=utcnow())
+                              created_at=ordered_utcnow())
     session.add(row)
     session.flush()
     emit(workspace_id, "readiness.assessed", {"assessment_id": row.id, "job_kind": out.job_kind, "status": out.status,

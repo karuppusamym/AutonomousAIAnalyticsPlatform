@@ -111,6 +111,19 @@ def main() -> int:
     check["3_incident_and_change_selected"] = {a["asset"].split(".")[-1] for a in sel["loaded"]} == {"incident", "change_request"}
     ev["source"] = {"discovered": [a["name"] for a in disc["assets"]], "loaded": sel["loaded"]}
 
+    # The objective says "recurring operational problems": a run does not guess what recurring means for this
+    # population (context grounding asks before testing hypotheses), so the owner records a reviewed definition.
+    refs = [c["ref"] for c in admin.get(f"/api/workspaces/{wid}/grounding")["catalog"]]
+    incident = {r.rsplit(".", 1)[1]: r for r in refs if r.split(".")[-2] == "incident"}
+    me = admin.get("/api/auth/me")["id"]
+    ev["recurring_definition"] = admin.post(f"/api/workspaces/{wid}/grounding/bindings", {
+        "term": "recurring", "kind": "definition", "state": "approved", "owner_id": me,
+        "definition": "An operational problem is recurring when the same configuration item (cmdb_ci) has two or more "
+                      "incidents opened within the analysis window (the last 12 months).",
+        "columns": [incident["cmdb_ci"], incident["opened_at"]],
+        "evidence": "Service management policy reviewed by the workspace owner for the e2e demo.",
+        "examples": "A CI with incidents opened on 2026-03-02 and 2026-04-11 is recurring; a CI with one incident is not."})["id"]
+
     # run
     run = analyst.post(f"/api/workspaces/{wid}/analysis", {"objective": OBJECTIVE})
     rid = run["id"]
@@ -222,7 +235,7 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     stamp = started.strftime("%Y%m%d-%H%M%S")
-    (out / f"e2e-{stamp}.json").write_text(json.dumps(ev, indent=2, default=str))
+    (out / f"e2e-{stamp}.json").write_text(json.dumps(ev, indent=2, default=str), encoding="utf-8")
     passed = sum(1 for v in check.values() if v)
     lines = [f"# MVP end-to-end evidence — {started:%Y-%m-%d %H:%M} UTC", "",
              f"Live run through the HTTP API at `{args.api}` (workspace `{wid}`, run `{rid}`). Raw evidence: `e2e-{stamp}.json`.",
@@ -243,7 +256,7 @@ def main() -> int:
     lines += ["", "## Publication", "", *[f"- {k}: {v}" for k, v in (publication.get("urls") or {}).items()], "",
               "## Model usage", "", f"```json\n{json.dumps(ev['model_usage'], indent=2)}\n```", "",
               "## Redirect (dynamic replanning)", "", f"```json\n{json.dumps({k: fb.get(k) for k in ('kind', 'classified_by', 'consequential_p', 'interpretation', 'replan')}, indent=2, default=str)}\n```", ""]
-    (out / f"e2e-{stamp}.md").write_text("\n".join(lines) + "\n")
+    (out / f"e2e-{stamp}.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines[:len(check) + 10]))
     print(f"wrote {out / f'e2e-{stamp}.md'}")
     return 0 if passed == len(check) else 1

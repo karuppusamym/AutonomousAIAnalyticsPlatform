@@ -10,7 +10,7 @@ TOPICS = (
     ("discounts", "Discount patterns", ("discount",)),
     ("sla", "SLA performance", ("sla", "breach")),
     ("rework", "Rework and reassignment", ("reopen", "reassignment")),
-    ("resolution", "Resolution time", ("resolution", "resolved_at")),
+    ("resolution", "Resolution time", ("resolution", "resolved")),
     ("waiting", "Process waiting time", ("wait_hours", "wait time")),
     ("handover", "Process handovers", ("handover",)),
 )

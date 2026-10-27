@@ -1,0 +1,51 @@
+# Template (S06 §3.8): a data-quality review. Deterministic end to end (metadata, relationships,
+# profiling, quality rules): no model is needed, so it is the cheapest goal the router can choose.
+apiVersion: analystos/v1
+kind: Playbook
+id: playbook.dq_review
+version: 1.0.0
+summary: Data-quality review (metadata, relationships, profiles and quality rules over the selected tables, a DQ report)
+determinism: deterministic
+side_effect: write_internal
+cost_class: query
+certification: {status: tested, evidence: tests/integration/test_template_playbooks.py}
+tags: [template, data_quality]
+spec:
+  framing: false
+  inputs:
+    - {name: question, type: question, required: true}
+    - {name: tables, type: tables, description: Tables to review (default the goal's data scope)}
+  outputs: [dq_report]
+  default_limits: {max_steps: 10, max_duration_s: 900, max_cost_usd: 0.05, max_replans: 1, max_retries: 4}
+  router:
+    intents:
+      - 'data[- ]quality'
+      - '\bdq\b'
+      - '\bnulls?\b'
+      - 'missing values'
+      - 'duplicates?'
+      - 'freshness'
+      - 'stale data'
+      - 'completeness'
+      - 'data issues'
+    tiers: [low, medium]
+    priority: 30
+  steps:
+    - {key: metadata, use: agent.metadata, title: Discover technical metadata of selected tables}
+    - key: relationships
+      use: agent.metadata
+      behaviour: discover_relationships
+      title: Discover and validate relationships
+      after: [metadata]
+      optional: true
+    - key: profile
+      use: agent.profiler
+      title: Profile selected tables
+      after: [metadata]
+      replan_boundary: [{trigger: redirect, reset: self_and_downstream}]
+    - key: quality
+      use: agent.data_quality
+      title: Run the data-quality rules
+      after: [profile, relationships]
+      replan_boundary: [{trigger: quality_failure, reset: self_and_downstream}]
+    - {key: finalize, use: agent.supervisor, title: Write the data-quality report, after: [quality]}

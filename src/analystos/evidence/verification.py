@@ -39,7 +39,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from analystos.core.errors import InvalidInput, PolicyDenied
-from analystos.core.ids import new_id, stable_hash, utcnow
+from analystos.core.ids import new_id, ordered_utcnow, stable_hash, utcnow
 from analystos.core.logging import get_logger
 
 log = get_logger(__name__)
@@ -397,7 +397,7 @@ def record_verdict(session: Session, *, workspace_id: str, run_id: str | None, s
                              subject_id=subject_id, question_hash=question_hash, verdict=verdict, checks=list(checks),
                              verifier=verifier, fingerprint=fingerprint(deps), dependencies=[d.as_dict() for d in deps],
                              evidence_bundle_id=f"sha256:{stable_hash(dict(evidence_bundle))}" if evidence_bundle else None,
-                             state=state, flags=[], created_at=utcnow())
+                             state=state, flags=[], created_at=ordered_utcnow())
     for old in session.scalars(select(VerificationRecord).where(VerificationRecord.subject_type == subject_type,
                                                                 VerificationRecord.subject_id == subject_id,
                                                                 VerificationRecord.state.in_(LIVE))):

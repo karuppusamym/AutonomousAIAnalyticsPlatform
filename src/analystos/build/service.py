@@ -21,14 +21,14 @@ from analystos.build.runner import write_profile, write_project
 from analystos.build.targets import DEFAULT_ENGINE, build_role_for, provision_target
 from analystos.contracts.bi import MetricDef
 from analystos.core.config import get_settings
-from analystos.core.errors import Forbidden, InvalidInput, NotFound, PolicyDenied
+from analystos.core.errors import Forbidden, InvalidInput, NotFound
 from analystos.core.ids import new_id
 from analystos.db.base import session_scope
 from analystos.db.models import AnalysisRun, Artifact, BuildJob, BuildTarget, RunTask, Source, User
 from analystos.events.bus import emit
 from analystos.governance.approvals import request_approval
 from analystos.governance.audit import audit
-from analystos.governance.policy import evaluate, require_role
+from analystos.governance.policy import denied, evaluate, require_role
 
 PLAYBOOK = "playbook.elt_build"
 RUN_STEP = "elt_run"
@@ -215,7 +215,7 @@ def plan_build(ctx: Any) -> dict[str, Any]:
         user = s.get(User, run.requested_by)
         decision = evaluate(s, user, ctx.identity, "build", destination=f"{engine}/{target_schema}")
         if decision.decision == "deny":
-            raise PolicyDenied("build denied: " + ", ".join(decision.reasons))
+            raise denied(decision, "build denied: " + ", ".join(decision.reasons))
         approval = request_approval(
             s, workspace_id=ctx.workspace.id, run_id=run.id, action=BUILD_ACTION, payload=approval_payload(job),
             plan_hash=run.plan_hash, policy_version=run.policy_version, requested_by=run.requested_by, risk_tier="high",

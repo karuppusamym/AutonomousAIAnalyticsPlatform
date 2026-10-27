@@ -1,0 +1,70 @@
+# Template (S06 §3.8): review a set of KPIs over a period. Trend and segment methods first; builds a
+# draft dashboard of the verified KPIs. Nothing is published from this playbook: the draft goes through
+# `dashboard_build.v1` (or a publication request) when someone wants it live.
+apiVersion: analystos/v1
+kind: Playbook
+id: playbook.kpi_review
+version: 1.0.0
+summary: KPI review over a period (trend and segment tests on the KPIs, verified findings, a draft KPI dashboard)
+determinism: model
+side_effect: write_internal
+cost_class: llm_small
+certification: {status: tested, evidence: tests/integration/test_template_playbooks.py}
+tags: [template, kpi]
+spec:
+  framing: true
+  inputs:
+    - {name: question, type: question, required: true, description: "What the review should answer"}
+    - {name: metrics, type: metric, description: KPIs to review (default the workspace's approved metrics)}
+    - {name: period, type: period, description: "Review window, e.g. last 3 months"}
+    - {name: dimensions, type: dimension, description: "Breakdowns to test"}
+  outputs: [kpi_review, dashboard_draft]
+  default_limits: {max_steps: 30, max_duration_s: 1800, max_cost_usd: 0.5, max_replans: 1, max_retries: 6}
+  router:
+    intents:
+      - '\bkpis?\b'
+      - 'scorecard'
+      - 'metrics? review'
+      - '(weekly|monthly|quarterly) (business )?review'
+      - 'how (are|is) .{0,40} (doing|performing)'
+    tiers: [low, medium]
+    priority: 10
+  steps:
+    - key: plan_approval
+      use: agent.supervisor
+      behaviour: plan_approved
+      title: Wait for plan approval
+      type: approval_gate
+      payload: plan
+      when: "run.autonomy_level <= 2"
+      gates_roots: true
+    - {key: context, use: agent.context, title: Load business context and the KPI definitions}
+    - {key: metadata, use: agent.metadata, title: Discover technical metadata of selected tables}
+    - {key: profile, use: agent.profiler, title: Profile selected tables, after: [metadata]}
+    - key: quality
+      use: agent.data_quality
+      title: Detect data-quality issues that would distort the KPIs
+      after: [profile]
+      optional: true
+    - key: hypotheses
+      use: agent.investigator
+      title: Frame KPI questions (trend and breakdown) as testable hypotheses
+      after: [context, profile, quality]
+      params: {prefer_method_tags: [time_series]}
+      replan_boundary: [{trigger: redirect, reset: self_and_downstream}]
+      expands:
+        - {prefix: "test:", use: agent.data_scientist}
+        - {prefix: "followups:", use: agent.investigator, behaviour: follow_ups}
+    - key: insights
+      use: agent.insight
+      title: Turn supported KPI movements into evidence-backed findings
+      after: [hypotheses, "test:*", "followups:*"]
+    - key: verify
+      use: agent.critic
+      title: REV verification of every finding
+      after: [insights]
+      replan_boundary: [{trigger: finding_rejected, reset: downstream}]
+    - {key: dataset, use: agent.sql, title: Build the KPI dataset, after: [verify]}
+    - {key: semantic, use: agent.semantic, title: Define and validate the KPIs, after: [dataset]}
+    - {key: visualize, use: agent.visualization, title: Design the draft KPI dashboard, after: [semantic]}
+    - {key: finalize, use: agent.supervisor, title: Consolidate the KPI review, after: [visualize]}

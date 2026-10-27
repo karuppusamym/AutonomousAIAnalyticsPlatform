@@ -1,5 +1,97 @@
 {
   "$defs": {
+    "AbacCondition": {
+      "description": "One test on an attribute. `in`/`not_in` compare values (a region value also matches its sub-regions:\n`eu` matches `eu-west-1`; a purpose value also matches the purpose's class). `at_least`/`at_most` compare\nclassifications by order. An unknown region is never `in` a list and always `not_in` it (fail closed).",
+      "properties": {
+        "attribute": {
+          "enum": [
+            "classification",
+            "purpose",
+            "region",
+            "aggregation_grain",
+            "audience"
+          ],
+          "title": "Attribute",
+          "type": "string"
+        },
+        "op": {
+          "default": "in",
+          "enum": [
+            "in",
+            "not_in",
+            "at_least",
+            "at_most"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Values",
+          "type": "array"
+        }
+      },
+      "required": [
+        "attribute",
+        "values"
+      ],
+      "title": "AbacCondition",
+      "type": "object"
+    },
+    "AbacRule": {
+      "description": "A workspace ABAC rule (S01-T6). Rules only deny: a call is refused when every condition in `when` holds.\n`reason` and `remedy` are returned to the caller as `403 policy_denied {rule, reason, remedy}`.",
+      "properties": {
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "when": {
+          "items": {
+            "$ref": "#/$defs/AbacCondition"
+          },
+          "minItems": 1,
+          "title": "When",
+          "type": "array"
+        },
+        "applies_to": {
+          "items": {
+            "enum": [
+              "tool",
+              "query",
+              "action"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Applies To",
+          "type": "array"
+        },
+        "reason": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Reason",
+          "type": "string"
+        },
+        "remedy": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Remedy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "when"
+      ],
+      "title": "AbacRule",
+      "type": "object"
+    },
     "AttributeRule": {
       "description": "ABAC (SEC-003): data a caller may only see when their user attributes match. Attributes come\nfrom the IdP (OIDC claims mapped in config/oidc.yaml) or an administrator. Rules only remove data\nfrom a scope, never add: `assets` (\"schema.table\", \"*.table\") are dropped whole, `columns`\n(\"schema.table.column\", \"*.column\") and columns carrying one of `column_tags` become denied.\n`require` maps an attribute to its accepted values; every listed attribute must match (a user\nattribute that is a list matches when any element does).",
       "properties": {
@@ -308,6 +400,13 @@
       "title": "Attribute Rules",
       "type": "array"
     },
+    "abac_rules": {
+      "items": {
+        "$ref": "#/$defs/AbacRule"
+      },
+      "title": "Abac Rules",
+      "type": "array"
+    },
     "row_filters": {
       "items": {
         "$ref": "#/$defs/RowFilter"
@@ -372,6 +471,11 @@
     "require_approved_metrics": {
       "default": false,
       "title": "Require Approved Metrics",
+      "type": "boolean"
+    },
+    "share_conversation_summaries": {
+      "default": false,
+      "title": "Share Conversation Summaries",
       "type": "boolean"
     }
   },

@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from analystos.contracts.step import Branch, ForkIn, MergeIn, StepEdit
 from analystos.core.errors import InvalidInput, NotFound, PolicyDenied
-from analystos.core.ids import new_id, utcnow
+from analystos.core.ids import new_id, ordered_utcnow, utcnow
 from analystos.db.base import session_scope
 from analystos.db.models import AnalysisStep, AnalysisStepVersion, Artifact, StepBranch, User
 from analystos.events.bus import emit
@@ -63,7 +63,7 @@ def fork(user: User, workspace_id: str, branch_id: str, body: ForkIn, *, runtime
                            container_id=parent.container_id, name=(body.name or f"fork of {src.title}")[:200],
                            parent_branch_id=parent.id, forked_from_step_id=src.id, forked_from_version=src_ver.version,
                            base=[{"step_id": st.id, "version": v.version} for st, v, _ in eff[:pos]], status="open",
-                           merged_into=[], created_by=actor, created_at=utcnow())
+                           merged_into=[], created_by=actor, created_at=ordered_utcnow())
         s.add(child)
         s.flush()
         to_copy = [(src, src_ver)]

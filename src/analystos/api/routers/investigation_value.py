@@ -16,7 +16,10 @@ router = APIRouter(prefix="/api/workspaces/{workspace_id}", tags=["investigation
 @router.get("/investigation-templates")
 def templates(workspace_id: str, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
     require_role(session, user, workspace_id, "viewer")
-    return svc.TEMPLATES
+    from analystos.capabilities import packs
+
+    fitting = packs.for_workspace(session, workspace_id)
+    return svc.templates(None if fitting is None else fitting)
 
 
 @router.get("/reviewed-context")

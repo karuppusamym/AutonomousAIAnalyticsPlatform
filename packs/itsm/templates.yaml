@@ -66,3 +66,22 @@ templates:
     priority: medium
     question: "Which factors jointly predict {outcome}?"
     statement: "Several operational factors jointly predict {outcome}."
+
+# Guided investigations the Start Work screen offers for IT service management data
+# (services/investigation_value.py adds the domain-neutral ones).
+investigations:
+  - id: sla_change
+    version: 1
+    title: Explain an SLA increase
+    description: Compare breach rates, workload and resolution time; test likely drivers.
+    question: "Investigate whether SLA breaches increased. Compare breach rates, incident volume and resolution times. Test differences by priority, assignment group and reassignment; separate associations from causes."
+  - id: team_comparison
+    version: 1
+    title: Compare team performance
+    description: Compare teams while checking workload and priority mix.
+    question: "Compare assignment-group performance: volume, resolution time and SLA breach rates. Check priority mix and sample sizes before ranking teams. Identify where comparisons are unfair or inconclusive."
+  - id: recurring_incidents
+    version: 1
+    title: Find recurring incidents
+    description: Find concentration and repeated problems without assuming duplicate records are repeat incidents.
+    question: "Investigate recurring incidents by business service, application and category. Distinguish repeated incidents from duplicate records. Compare concentration, severity and resolution time; identify evidence gaps."

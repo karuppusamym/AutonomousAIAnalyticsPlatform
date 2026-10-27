@@ -102,7 +102,8 @@ def test_knowledge_edit_changes_the_version_and_misses_the_cache(workspace):
     assert statuses == ["ok", "cache_hit", "ok"]
 
 
-def test_model_call_records_cached_tokens_and_receipts(workspace):
+def test_model_call_records_cached_tokens_and_receipts(workspace, pinned_models_config):
+    # The pinned table still lists a prompt-cache model (Claude); the shipped models.yaml blocks that family.
     from analystos.runtime.context import workspace_call_ctx
 
     # A prompt-cache model on purpose: defaults are cheap-first now, and those models take plain strings.

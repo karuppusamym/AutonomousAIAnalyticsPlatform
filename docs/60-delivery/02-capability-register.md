@@ -1,5 +1,69 @@
 # Capability register (evidence)
 
+## 2026-10-27 — S01-T6 ABAC on every call + OPA adapter, S01-T7 tenant-scoped cache keys
+
+ABAC (`governance/abac.py`): the policy decision input carries `{classification, purpose, region,
+aggregation_grain, audience}`, derived by code from the DataScope (column tags, the caller's `region` attribute,
+the workspace or tenant data residency), the validated SQL (syntactic grain) and the tool contract. It is decided in
+`policy.evaluate` (so the `ToolRuntime` pre-hook and run, publish, build, MCP-tool and monitor decisions) and in
+`QueryGateway.execute` for every statement, before the result cache. Rules only deny: platform rules
+(`platform.data_residency`, `platform.restricted_external`) plus versioned workspace `abac_rules`. Denials are
+`403 policy_denied {rule, reason, remedy}`, recorded on the tool execution, the `policy.denied` event and a rejected
+query audit row. `ANALYSTOS_POLICY_ENGINE=opa` adds an OPA sidecar that can only add a denial; unreachable or
+malformed answers deny. Cache keys (`tenancy/cache_keys.py`): the query result cache, the model response cache and
+the context caches (retrieval, compiled contexts) key every entry `tenant:{t}:scope:{scope_hash}:policy:{v}`; a
+caller bound to another tenant than the workspace's gets no cache. Tests: `tests/unit/test_abac.py` (attributes,
+grain, rules, OPA allow/deny/malformed/unreachable over a local HTTP server, gateway denial before the cache, tool
+gate denial and record, restricted data to an external audience), `tests/unit/test_cache_tenant_isolation.py`
+(negative cross-tenant suite over all four caches, forged owner tenant, unbound entries, scope and policy segments),
+`tests/integration/test_cache_tenant_isolation.py` on Postgres 16 with RLS (strict) and Redis db 3 (2026-10-27,
+Windows dev host): tenant B never reads tenant A's query results, model answers or context entries with the same
+workspace layout, SQL and prompt; B presenting A's scope gets 404 and runs nothing; tenant residency read under RLS
+denies a query from outside it, audited only in B. Not built: a real OPA sidecar in compose (adapter tested against
+an OPA-shaped HTTP server), an OPA decision cache, ABAC on `explain` (reads no rows).
+## 2026-10-27 — S03 Context Service + Context Ledger (T1–T6) and S13-T5 certify-on-close
+
+The Context Ledger (`context_ledger_entry`, `context_ledger_change`; migration `0061_context_ledger`, RLS) is a
+versioned projection of nine owner tables, written in the owner's own transaction by a session hook, with a
+consistency check and `analystos context reconcile`. Reads (`context/retrieval.py`) filter by the caller's access
+before ranking (workspace membership, trust, data scope from `resolve_scope`), rank hybrid (exact/alias, mention,
+synonyms, lineage proximity, cosine × trust × freshness × in-scope) and compile a bundle with receipts, omissions and
+an identity hash; suggestions never enter it and conflicting certified definitions block it. The run's reviewed brief
+is a first-class compiler section (receipted, in the cache key and identity hash, inside the untrusted envelope,
+refused rather than trimmed). Interfaces: REST `/api/v2/context/*`, MCP `context.search|get|compile|changes` (grant
+`context.read`) and ledger resources; OKF export (deterministic, access-filtered, withheld entries counted only) and
+import as suggestions. The desk `certify` action turns an analyst's answer into a verified query, glossary entry,
+metric suggestion or playbook in the ledger.
+Tests (Windows dev host, Python 3.12, Postgres 16 with RLS, strict tenancy, fake model transport, 2026-10-27):
+`tests/unit/test_context_ledger.py` (15) and `tests/integration/test_context_service.py` (6): ledger isolated per
+tenant; REST access filter (an analyst without PII clearance never sees the PII-mapped entry; W2 404); 409 on
+conflicting certified metrics; AT-17 (MCP client with `context.read` on W gets receipts of W's approved entries only,
+W2 refused 403); AT-16 (export → import into a clean tenant → export byte-identical; restricted export omits the PII
+entry and counts it in `log.md`); AT-20 (escalated R2 answered and certified as a verified query; the paraphrased repeat
+triages R1 and is auto-answered by the registry rung with no model call). Migration upgrade from empty, downgrade -1
+and re-upgrade checked. Regression: full unit suite shows only the 5 failures that also fail on `main`; 18 integration
+files (tenancy, desk, MCP, registries, knowledge, context, semantic, crawler, API) show 3 failures unrelated to this
+change (Claude models blocked on `main`, a Windows path as push remote, migration-0017 column check vs `tenant_id`).
+Not built: federation (T7), OpenLineage/ODCS export, run plan-hash wiring of the identity hash (S07), MCP HTTP
+transport run (SDK extra absent on this host; tool handlers tested directly).
+## 2026-10-27 — S10 Tool, agent and data-product registry; MCP server and client (T1–T5 backend)
+
+New package `src/analystos/toolreg/` and API `/v2/tools`: certified metrics, verified queries, published datasets and
+playbooks are published as typed, signed tools (`ToolManifestV2`, migration `0065_tool_registry`) and invoked through
+one path for REST, MCP and agents: grant or role, version pin (`@4`), ed25519 signature check, JSON-Schema arguments,
+hash-bound approval for side effects, then exactly one deterministic execution path (semantic compiler, verified-query
+template with typed literals, a SELECT tree over the dataset, `create_run`, or the MCP client), all SQL through
+`QueryGateway`. MCP clients see and call registry tools within their grants (exact ids, families, `tool_patterns`,
+per-minute rate, daily quota, expiry); every call is a `tool_invocation` row. External MCP tools are admitted
+quarantined (`write_external`), refused when screening flags them, re-screened into a new quarantined version when the
+server changes a definition, and certified only by an owner's classification. Evidence:
+`tests/unit/test_tool_registry.py` (17) and `tests/integration/test_tool_registry.py` (8) on Postgres 16 with strict
+tenancy and RLS, 2026-10-27 (Windows dev host; the MCP protocol and admission tests ran with the `mcp` 2.3 extra):
+migration up/down; REST publish and invoke through the real gateway over staged ServiceNow data equal to reference
+queries; AT-22 over the official MCP SDK client; grants, rate and usage; single-use hash-bound approval; tenant
+isolation of rows and keys; quarantine, classification and re-screen against the SDK test double (a double, not a
+certification). Not built: registry UI, built-in tools/agents as registry rows, a real third-party MCP server.
+
 ## 2026-10-27 — S13 Analyst Request Desk (T1–T4, T6 backend)
 
 New package `src/analystos/desk/`: requests from the UI/API (`POST /api/requests`) and MCP (`request.create`) are

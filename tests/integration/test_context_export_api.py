@@ -227,8 +227,12 @@ def test_preview_is_the_prompt_ask_sends_and_is_not_counted(api, env):
     assert p["estimated_tokens"]["total"] == p["estimated_tokens"]["stable"] + p["estimated_tokens"]["volatile"] > 0
     assert {s["name"] for s in p["sections"]} >= {"system", "catalog", "question"} and p["knowledge_version"]
     assert p["cache"]["kind"] == "retrieval" and p["cache"]["key"] and p["cache"]["hit"] is False
+    # S01-T7: cache entries are keyed by the caller's whole DataScope (role included), so a viewer does not reuse
+    # the admin's entry; the viewer's own second preview does. The prompt text is the same either way.
     second = api.get(url, headers=env["viewer"], params={"purpose": "sql_generation", "question": question}).json()
-    assert second["cache"]["hit"] is True and second["preamble_text"] == p["preamble_text"]  # a viewer sees the same
+    assert second["cache"]["hit"] is False and second["preamble_text"] == p["preamble_text"]
+    third = api.get(url, headers=env["viewer"], params={"purpose": "sql_generation", "question": question}).json()
+    assert third["cache"]["hit"] is True and third["preamble_text"] == p["preamble_text"]
     assert context_cache.stats() == before  # previews are not hits or misses
 
     with session_scope() as s:  # Ask's own context and generation path, through llm_json's real message assembly

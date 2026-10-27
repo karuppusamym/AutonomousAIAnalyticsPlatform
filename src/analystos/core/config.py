@@ -121,6 +121,13 @@ class Settings(BaseSettings):
     # (fail closed); `bound` restricts only transactions with a bound tenant (upgrade aid); `off` skips it.
     tenancy_mode: Literal["off", "bound", "strict"] = "strict"
     tenancy_app_role: str = Field(default="analystos_app", pattern=r"^[a-z_][a-z0-9_]{0,62}$")
+    # ABAC engine (S01-T6, governance/abac.py): `builtin` (default) decides with the platform and workspace
+    # rules; `opa` also asks an OPA sidecar, which may deny what the built-in engine allows, never the reverse.
+    # An OPA error, timeout or malformed answer is a deny (fail closed).
+    policy_engine: Literal["builtin", "opa"] = "builtin"
+    policy_opa_url: str = "http://127.0.0.1:8181"
+    policy_opa_decision_path: str = Field(default="analystos/abac/decision", pattern=r"^[A-Za-z0-9_]+(/[A-Za-z0-9_]+)*$")
+    policy_opa_timeout_seconds: float = Field(default=1.0, gt=0, le=10)
     redis_url: str = "redis://localhost:6379/0"
     # Neo4j is an optional projection of the Postgres lineage/relationship tables (spec v3 §8), off
     # by default: lineage and table neighbourhood are served from Postgres unless this is on.
@@ -145,6 +152,9 @@ class Settings(BaseSettings):
     # HMAC key of scoped worker task tokens; None = derived from jwt_secret (domain-separated). Only the
     # control plane and the artifact store (the API) hold it; never give it to a worker.
     worker_token_secret: str | None = None
+    # S10-T5: the platform secret tenant manifest-signing keys (ed25519) are derived from; None = derived from
+    # jwt_secret (domain-separated). Only public keys are stored; rotating this secret invalidates every signature.
+    tool_signing_secret: str | None = None
     # The artifact store as isolated workers reach it (the API's base URL on their network).
     worker_artifact_url: str = "http://localhost:8000"
     # temporal | local. local runs the same engine in-process (lite profile, tests, laptops); lite's default.
@@ -414,7 +424,10 @@ def secret_env(name: str) -> str | None:
 
 
 def _env_file_values() -> dict[str, str]:
-    path = Path(str(Settings.model_config.get("env_file") or ".env"))
+    env_file = Settings.model_config.get("env_file")
+    if not env_file:  # disabled (the test suite): keys come from the process environment only
+        return {}
+    path = Path(str(env_file))
     try:
         stamp = path.stat().st_mtime_ns
     except OSError:

@@ -66,6 +66,8 @@ def workspace_call_ctx(workspace_id: str, **kwargs: Any) -> CallContext:
     with session_scope() as s:
         workspace = s.get(Workspace, workspace_id)
         policy = load_policy(s, workspace) if workspace else WorkspacePolicyDoc()
+        kwargs.setdefault("tenant_id", getattr(workspace, "tenant_id", None))
+        kwargs.setdefault("policy_version", getattr(workspace, "policy_version", None))
     if "knowledge_version" not in kwargs:
         from analystos.context.version import workspace_knowledge_version
 
@@ -188,7 +190,9 @@ class RunContext:
         `agents.common.llm_json` replaces it with `<prompt name>@<text hash>` for the prompt it sends."""
         return CallContext.for_policy(self.policy, workspace_id=self.workspace.id, run_id=self.run.id, task_id=self.task.id,
                                       agent_id=self.agent.id, prompt_version=f"{self.agent.id}.{self.agent.prompt_version}",
-                                      exclude_families=exclude_families or [], knowledge_version=self.knowledge_version)
+                                      exclude_families=exclude_families or [], knowledge_version=self.knowledge_version,
+                                      tenant_id=self.workspace.tenant_id, scope_hash=self.scope.scope_hash(),
+                                      policy_version=self.scope.policy_version)
 
     @property
     def knowledge_version(self) -> str | None:
@@ -216,7 +220,7 @@ class RunContext:
         return self.services.decisions
 
     def tools(self) -> ToolRuntime:
-        return ToolRuntime(user=self.user, identity=self.identity, agent=self.agent)
+        return ToolRuntime(user=self.user, identity=self.identity, agent=self.agent, scope=self.scope)
 
     def authorize_tool(self, tool_id: str) -> None:
         """Implicit tool gate (spec v2 §6) for paths that act as a tool without invoking it by name.
@@ -242,6 +246,10 @@ class RunContext:
         used = counted() if after is None else int(after) - 1  # statements before this one
         if used >= self.policy.max_queries_per_run:
             raise BudgetExceeded(f"per-run query budget ({self.policy.max_queries_per_run}) exhausted")
+        if (getattr(self.run, "limits", None) or {}).get("max_scan_bytes") is not None:  # a goal's scan budget (S06 §3.4)
+            from analystos.autonomy.budget import check_scan
+
+            check_scan(self.run.id, self.run.limits, 0)
 
     def run_sql(self, source_id: str | None = None, *, federated: bool = False):
         """Governed SQL runner for skills and agents: tool gate (``sql.execute``), per-run query budget,

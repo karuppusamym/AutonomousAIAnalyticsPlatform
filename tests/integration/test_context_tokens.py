@@ -113,9 +113,15 @@ def test_prompt_tokens_per_run_with_every_chat_purpose_on(control_db, servicenow
 
     monkeypatch.setattr(router_mod.ModelRouter, "complete", complete)
     # Every chat purpose model-first (P4-T02 made `auto` the default); decision purposes stay off.
-    CHAT_ALWAYS = {p: "always" for p, profile in load_models_config().routing.items() if profile != "decision"}
+    # The pinned model table keeps a prompt-cache family (Claude) so cache breakpoints are measured; the shipped
+    # models.yaml blocks that family for cost (blocked_families).
+    from tests.conftest import PINNED_MODELS
+
+    monkeypatch.setenv("ANALYSTOS_MODELS_CONFIG", str(PINNED_MODELS))
     CALLS.clear()
     get_settings.cache_clear()
+    load_models_config.cache_clear()
+    CHAT_ALWAYS = {p: "always" for p, profile in load_models_config().routing.items() if profile != "decision"}
     default_router.cache_clear()
     with session_scope() as s:
         admin_id = s.scalar(select(User.id).where(User.email == get_settings().bootstrap_admin_email))
@@ -180,7 +186,7 @@ def test_prompt_tokens_per_run_with_every_chat_purpose_on(control_db, servicenow
             rows = list(s.scalars(select(ModelCall).where(ModelCall.run_id == run.id, ModelCall.status == "ok",
                                                           ModelCall.purpose == "hypothesis_generation")))
         assert rows and all(r.context_receipts for r in rows)
-        anthropic = [c for c in CALLS if c["model"].startswith("anthropic/")]  # prompt_cache: true in models.yaml
+        anthropic = [c for c in CALLS if c["model"].startswith("anthropic/")]  # prompt_cache: true in the pinned table
         assert anthropic and all(c["blocks"] for c in anthropic)
         assert not any(c["blocks"] for c in CALLS if not c["model"].startswith("anthropic/"))
     finally:
@@ -191,3 +197,4 @@ def test_prompt_tokens_per_run_with_every_chat_purpose_on(control_db, servicenow
         platform_settings.invalidate()
         get_settings.cache_clear()
         default_router.cache_clear()
+        load_models_config.cache_clear()  # the pinned table must not leak into later tests

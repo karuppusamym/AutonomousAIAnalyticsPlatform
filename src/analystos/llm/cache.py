@@ -1,7 +1,8 @@
 """Response cache for model calls whose output depends only on the (redacted) request, and the
 store the context cache shares (`context/cache.py`).
 
-Keyed by purpose + the model that answered + request payload hash; stored in Redis with a TTL and an
+Keyed by tenant, caller scope and policy version (S01-T7), then purpose + the model that answered + request
+payload hash; stored in Redis with a TTL and an
 in-process LRU fallback that honours the same TTL. Only purposes listed in
 settings.llm.cacheable_purposes are cached."""
 from __future__ import annotations
@@ -16,6 +17,7 @@ from typing import Any
 
 from analystos.core.ids import stable_hash
 from analystos.core.logging import get_logger
+from analystos.tenancy.cache_keys import scoped_prefix
 
 log = get_logger(__name__)
 
@@ -46,17 +48,25 @@ class ResponseCache:
 
     @staticmethod
     def key(purpose: str, model: str | list[str], payload: Any, workspace_id: str | None = None,
-            knowledge_version: str | None = None) -> str:
-        """Scoped per workspace so its entries can be found and purged (retention, deletion). Keyed on
-        the model that answers (a budget downgrade to another tier then finds that tier's answers,
-        not a key made of a different candidate list). The workspace knowledge version (P4-T06) is
-        part of the hash, so a knowledge edit misses."""
+            knowledge_version: str | None = None, *, tenant: str | None = None, scope_hash: str | None = None,
+            policy_version: int | None = None) -> str | None:
+        """`aos:llm:tenant:{t}:scope:{s}:policy:{v}:{workspace}:{purpose}:{hash}` (S01-T7): only the same
+        tenant, caller scope and policy version find an entry; None (bound tenant is not `tenant`, the
+        workspace's) means no cache. Scoped per workspace so its entries can be found and purged
+        (retention, deletion). Keyed on the model that answers (a budget downgrade to another tier then
+        finds that tier's answers, not a key made of a different candidate list). The workspace knowledge
+        version (P4-T06) is part of the hash, so a knowledge edit misses."""
+        head = scoped_prefix(owner_tenant=tenant, scope_hash=scope_hash, policy_version=policy_version)
+        if head is None:
+            return None
         material = {'models': model if isinstance(model, list) else [model], 'payload': payload}
         if knowledge_version:
             material['knowledge'] = knowledge_version
-        return f"aos:llm:{workspace_id or '-'}:{purpose}:{stable_hash(material)}"
+        return f"aos:llm:{head}:{workspace_id or '-'}:{purpose}:{stable_hash(material)}"
 
-    def get(self, key: str) -> dict | None:
+    def get(self, key: str | None) -> dict | None:
+        if key is None:
+            return None
         raw = None
         if self._redis is not None:
             try:
@@ -74,8 +84,8 @@ class ResponseCache:
                     raw = item[1]
         return json.loads(raw) if raw else None
 
-    def set(self, key: str, value: Any, ttl_seconds: int | float) -> None:
-        if ttl_seconds <= 0:
+    def set(self, key: str | None, value: Any, ttl_seconds: int | float) -> None:
+        if ttl_seconds <= 0 or key is None:
             return
         raw = json.dumps(value, default=str)
         if self._redis is not None:

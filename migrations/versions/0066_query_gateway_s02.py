@@ -2,8 +2,8 @@
 query_execution. `result_handle` is tenant-owned through its workspace; tenant isolation (column, fill
 trigger, row-level security) is installed for it here.
 
-Revision ID: 0061_query_gateway_s02
-Revises: 0060_request_desk
+Revision ID: 0066_query_gateway_s02
+Revises: 0065_tool_registry
 """
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
-revision = "0061_query_gateway_s02"
-down_revision = "0060_request_desk"
+revision = "0066_query_gateway_s02"
+down_revision = "0065_tool_registry"
 branch_labels = None
 depends_on = None
 

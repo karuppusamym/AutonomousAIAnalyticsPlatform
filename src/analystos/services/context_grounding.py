@@ -17,7 +17,7 @@ from analystos.core.ids import new_id, stable_hash
 from analystos.db.models import ContextBinding, ContextEntry, Source, SourceAsset, SourceColumn, User, WorkspaceMember
 from analystos.events.bus import emit
 from analystos.governance.audit import audit
-from analystos.governance.policy import load_in_workspace, require_role, resolve_scope
+from analystos.governance.policy import load_in_workspace, require_role, resolve_scope, scoped_loader
 from analystos.security.injection import is_injection
 
 
@@ -58,6 +58,7 @@ def domains_for(session, scope):
     return {p.name for p in packs.for_scope(scope, load_policy(session, get_workspace(session, scope.workspace_id)))}
 
 
+@scoped_loader
 def save_binding(session, user, workspace_id, body: BindingIn, binding_id=None, revision=None):
     require_role(session, user, workspace_id, "editor")
     scope = resolve_scope(session, session.merge(user), workspace_id, minimum_role="editor")
@@ -153,6 +154,7 @@ def pinned_prompt_context(run, scope):
             "withheld_count": len(pinned.get("facts", [])) - len(facts)}, receipts
 
 
+@scoped_loader
 def check_binding(session, user, workspace_id, binding_id, *, gateway=None):
     """Bounded structural checks; passing them never approves business meaning or a join."""
     import sqlglot

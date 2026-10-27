@@ -237,15 +237,17 @@ def test_pack_upgrade_shows_upgrade_and_the_next_fire_keeps_the_pinned_versions(
     _baseline()
     sid = _schedule(world["owner"])
     base_refs = _bind_refs("run_base")
-    monkeypatch.setattr(reg, "_current", _bumped("agent.investigator", "1.1.0"))
+    cur = reg.current().get("agent.investigator").version  # whatever is installed; the test bumps its minor
+    nxt = ".".join([cur.split(".")[0], str(int(cur.split(".")[1]) + 1), "0"])
+    monkeypatch.setattr(reg, "_current", _bumped("agent.investigator", nxt))
     with session_scope() as s:
         st = pins.refresh(s, s.get(Schedule, sid))
     assert st.state == "upgrade_available" and st.upgrade_hash
     item = next(i for i in st.items if i.id == "agent.investigator")
-    assert (item.pinned, item.current, item.state) == ("agent.investigator@1.0.0", "agent.investigator@1.1.0", "newer")
-    assert {"path": "version", "from": "1.0.0", "to": "1.1.0"} in item.diff
+    assert (item.pinned, item.current, item.state) == (f"agent.investigator@{cur}", f"agent.investigator@{nxt}", "newer")
+    assert {"path": "version", "from": cur, "to": nxt} in item.diff
     caps = _fire_binding(sid, "run_fire1")
-    assert "agent.investigator@1.0.0" in caps["refs"] and "agent.investigator@1.1.0" not in caps["refs"]
+    assert f"agent.investigator@{cur}" in caps["refs"] and f"agent.investigator@{nxt}" not in caps["refs"]
     assert caps["refs"] == base_refs
     assert caps["pinned"]["analyses"][0]["spec"] == SPEC and "manifests" not in caps["pinned"]
     with session_scope() as s:

@@ -46,6 +46,57 @@ signature: {alg: ed25519, key_id: tenant-signing-1, value: ...}
 5. **Registry UI and API**: `GET /v2/tools?kind=&q=` (only tools the caller may use), manifest view, usage, health,
    owner, versions, deprecate.
 
+## 4a. As built (2026-10-27, tasks T1–T5, backend)
+* **Package** `src/analystos/toolreg/` (`store`, `publish`, `invoke`, `external`, `signing`); contract
+  `contracts/tool_manifest.py::ToolManifestV2` (`apiVersion: analystos/tool.v2`, exported as
+  `contracts/tool_manifest.schema.json`); API `api/routers/tools_v2.py`; migration `0065_tool_registry`.
+* **Manifest.** As §3, plus `title`, `description` (screened text, data not instructions) and `execution.ref` (what
+  exactly runs: metric name + version + definition hash, verified-query id + template hash, dataset artifact id +
+  content hash + columns, playbook definition key + version or built-in capability). Schemas are inlined, not `$ref`.
+  `kind ↔ execution.via` is enforced (a data product can only use the compiler, a verified query or a dataset) and a
+  data product must be `side_effect: none`. Versions are strict `MAJOR.MINOR.PATCH`.
+* **Tables.** `registered_tool` (one signed, immutable version per row; only `status` changes), `tool_invocation`
+  (usage per call: caller, client, channel, version, status, latency, rows, query id, cost), `tool_signing_key`
+  (tenant-level, `tenancy/schema.py` `DIRECT`). `mcp_grant` gains `tool_patterns`, `rate_per_min`, `expires_at`;
+  `mcp_usage.day` widens to 16 characters for the per-minute rate counter (`tool = __rate__`).
+* **Tool ids.** `metric.<name>`, `verified_query.<name>`, `dataset.<name>`, `playbook.<key>`, `mcp.<server>.<tool>`.
+  `query.<certified_query>` (ADR-007) stays the existing P7-11 query-tool family; a published verified query is
+  `verified_query.*` so the two never collide.
+* **Versions.** A metric/dataset/playbook tool's major version is the source version (`metric@4` ⇒ `4.0.0`); a changed
+  manifest from the same source is a minor bump; identical content is idempotent. Publishing a new certified version
+  deprecates the older ones (callable only when pinned). A source that changed after publishing makes the tool stale:
+  invoke answers 409 and `health.source_current` is false (no silent re-binding).
+* **Who may.** Publish/deprecate: workspace `editor`. Admission and classification: `owner`. Invoke: the role the
+  permissions imply (`dataset.read`, `run.start`, `external.call` ⇒ `analyst`); MCP/API clients additionally need a
+  grant covering the id (exact, family `x.*`, or a `tool_patterns` glob; patterns never cover built-in tools) that has
+  not expired, inside the grant's per-minute rate and per-tool daily quota. `POST /v2/tools/{id}:invoke` accepts a
+  client's `client_id.secret` bearer; the request then acts for the client's tenant as its service user.
+* **Approvals.** `side_effect != none` needs a hash-bound approval of `{workspace, tool, version, manifest hash,
+  arguments}`, verified and consumed immediately before acting. Deviation: a **playbook tool** (`write_internal`) only
+  starts a run, like MCP `investigate`; the run carries its own gates (plan approval at autonomy ≤ 2, approvals for
+  every publication), so no extra approval is requested. (The approval path also requires the requester to hold
+  `editor`, which would lock analysts and MCP clients out of playbooks.) External tools use the MCP client's own gate.
+* **External MCP.** Admission (`POST /v2/mcp-servers/{id}:admit`) runs the existing allowlisted, pinned client
+  (`mcp/client.py`), then mirrors each screened tool as a registry version: `quarantined` + `write_external`, or
+  `refused` when screening flagged it. `description_hash` is the hash of the raw definition (name, description,
+  schema); a change re-screens into a new quarantined major version and retires the older ones, and until re-admission
+  invocation refuses because the server no longer offers the screened definition. Classification re-signs a new minor
+  version as `certified` with the chosen side effect and records the same hash-bound classification in the MCP client.
+  Admitted tools are exposed over REST only (`exposure.mcp: false`) by default: the platform does not re-export
+  third-party tools to its own MCP clients. Agents need a run whose bound playbook lists the tool in `spec.tools`
+  (glob patterns).
+* **Signing.** ed25519 via `cryptography` (now a runtime dependency). No private key is stored: a tenant key is derived
+  from `tool_signing_secret` (else a domain-separated key from `jwt_secret`), the tenant and the key id; the table keeps
+  public keys, and verification re-derives the public key, so swapping a row cannot bless a forgery. Rotation
+  (`POST /v2/tool-keys:rotate`, platform admin) retires or revokes the previous key and re-signs every untampered
+  version of the tenant. Deviation: built-in playbooks and skills shipped in the repository are trusted code and are
+  not signed per tenant; what the registry runs (published playbook/data-product tools, admitted external tools) is.
+* **Cost.** The data-product paths make no model call, so `tool_invocation.cost_usd` is 0 for them; the column is there
+  for paths that do.
+* **Not built.** Registry UI (manifest view, usage, health, deprecate screens), registering built-in tools and agents as
+  registry rows (they stay in the capability registry), an external MCP server outside the test double, AT-22 as a
+  full end-to-end scenario.
+
 ## 5. Acceptance
 AT-22; `test_quarantined_tool_not_invocable`; `test_description_change_rescreens`; `test_unsigned_manifest_refused`;
 `test_grant_scope_enforced`; `test_data_product_uses_compiler_path` (no raw SQL path).

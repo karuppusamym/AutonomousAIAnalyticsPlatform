@@ -237,10 +237,12 @@ def test_python_agents_only_route_their_declared_purposes_within_budget(world):
     from analystos.agents.common import llm_json
 
     _modes(world)
-    investigator = registry.current().get("agent.investigator")  # model_purposes: hypothesis/follow-up; llm_calls: 1
-    ctx, transport = _ctx(investigator, [{"hypotheses": []}, {"hypotheses": []}])
+    investigator = registry.current().get("agent.investigator")  # model_purposes: hypothesis/follow-up
+    budget = investigator.spec["budget"]["llm_calls"]  # read from the manifest: the agent's own limit
+    ctx, transport = _ctx(investigator, [{"hypotheses": []}] * (budget + 1))
     assert llm_json(ctx, "planning", "planning.v1", {"objective": "x"}) == (None, "purpose_not_declared")
-    data, model = llm_json(ctx, "hypothesis_generation", "hypothesis_generation.v1", {"objective": "x"})
-    assert data == {"hypotheses": []} and model
+    for _ in range(budget):
+        data, model = llm_json(ctx, "hypothesis_generation", "hypothesis_generation.v1", {"objective": "x"})
+        assert data == {"hypotheses": []} and model
     assert llm_json(ctx, "follow_up_generation", "follow_up_generation.v1", {"objective": "x"}) == (None, "agent_budget_exhausted")
-    assert len(transport.chat_calls) == 1
+    assert len(transport.chat_calls) == budget

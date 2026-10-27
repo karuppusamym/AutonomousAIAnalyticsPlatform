@@ -14,19 +14,29 @@ from analystos.db.models import AnalysisRun, Insight, InvestigationAction, Pilot
 from analystos.events.bus import emit
 from analystos.evidence.verification import insight_states
 from analystos.governance.audit import audit
-from analystos.governance.policy import load_in_workspace, require_role, resolve_scope
+from analystos.governance.policy import load_in_workspace, require_role, resolve_scope, scoped_loader
 from analystos.services import brief
 
-TEMPLATES = [
-    {"id": "sla_change", "version": 1, "title": "Explain an SLA increase", "description": "Compare breach rates, workload and resolution time; test likely drivers.",
-     "question": "Investigate whether SLA breaches increased. Compare breach rates, incident volume and resolution times. Test differences by priority, assignment group and reassignment; separate associations from causes."},
-    {"id": "team_comparison", "version": 1, "title": "Compare team performance", "description": "Compare teams while checking workload and priority mix.",
-     "question": "Compare assignment-group performance: volume, resolution time and SLA breach rates. Check priority mix and sample sizes before ranking teams. Identify where comparisons are unfair or inconclusive."},
-    {"id": "recurring_incidents", "version": 1, "title": "Find recurring incidents", "description": "Find concentration and repeated problems without assuming duplicate records are repeat incidents.",
-     "question": "Investigate recurring incidents by business service, application and category. Distinguish repeated incidents from duplicate records. Compare concentration, severity and resolution time; identify evidence gaps."},
+# Domain-neutral guided investigations; domain packs add their own (`investigations:` in the pack's templates).
+CORE_TEMPLATES = [
     {"id": "data_quality", "version": 1, "title": "Check data quality", "description": "Check completeness, duplicates, timestamps and joins before using the data.",
      "question": "Investigate data quality: missing values, duplicate entity keys, invalid timestamps, inconsistent categories and join coverage. Quantify recorded problems and state which conclusions they prevent."},
 ]
+
+
+def templates(pack_list=None) -> list[dict]:
+    """Guided investigation templates: the core ones, then each pack's (every installed pack by default;
+    pass `packs.for_workspace(...)` for the ones that fit a workspace)."""
+    from analystos.capabilities import packs
+
+    out = list(CORE_TEMPLATES)
+    seen = {t["id"] for t in out}
+    for pack in packs.installed() if pack_list is None else pack_list:
+        for t in pack.templates.get("investigations") or []:
+            if t.get("id") and t["id"] not in seen:
+                out.append({**t, "pack": pack.id})
+                seen.add(t["id"])
+    return out
 
 
 def reviewed_context(session: Session, user: User, workspace_id: str, source_ids: list[str] | None = None) -> dict:
@@ -48,7 +58,7 @@ def visible_facts(assertions: list[dict], scope: Any) -> list[dict]:
 
 
 def template_question(body: GuidedInvestigationIn) -> tuple[dict, str]:
-    template = next((t for t in TEMPLATES if t["id"] == body.template_id), None)
+    template = next((t for t in templates() if t["id"] == body.template_id), None)
     if template is None:
         raise InvalidInput("unknown investigation template")
     question = (f"{template['question']} Requested period: {body.period}. Comparison baseline: {body.comparison}. "
@@ -84,6 +94,7 @@ def action_list(session: Session, user: User, workspace_id: str, run_id: str | N
     return [{**row(a), "verification_state": states[a.insight_id]} for a in actions]
 
 
+@scoped_loader
 def save_action(session: Session, user: User, workspace_id: str, insight_id: str, body: InvestigationActionIn,
                 action_id: str | None = None, revision: int | None = None) -> InvestigationAction:
     insight = load_in_workspace(session, Insight, insight_id, workspace_id, user=user, minimum="analyst", label="finding")
@@ -123,6 +134,7 @@ def save_action(session: Session, user: User, workspace_id: str, insight_id: str
     return action
 
 
+@scoped_loader
 def save_review(session: Session, user: User, workspace_id: str, body: PilotReviewIn,
                 review_id: str | None = None, revision: int | None = None) -> PilotReview:
     run = load_in_workspace(session, AnalysisRun, body.run_id, workspace_id, user=user, minimum="analyst", label="run")

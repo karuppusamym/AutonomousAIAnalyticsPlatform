@@ -2,6 +2,7 @@
 mounted at `/mcp` by `analystos.mcp.server.mount`."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -51,6 +52,10 @@ class GrantIn(BaseModel):
     role: str = "viewer"
     tools: list[str] = Field(default_factory=lambda: ["get_finding_evidence"])
     quotas: dict[str, int] = Field(default_factory=dict)
+    # S10-T3: registry tools by pattern (metric.*), calls per minute across the grant, expiry
+    tool_patterns: list[str] = Field(default_factory=list)
+    rate_per_min: int | None = None
+    expires_at: datetime | None = None
 
 
 def _server_out(srv: McpServer) -> dict[str, Any]:
@@ -130,8 +135,11 @@ def revoke_client(client_id: str, admin: User = Depends(admin_user), session: Se
 @router.put("/admin/mcp/clients/{client_id}/grants/{workspace_id}")
 def set_grant(client_id: str, workspace_id: str, body: GrantIn, admin: User = Depends(admin_user),
               session: Session = Depends(db, scope="function")):
-    g = mcp_grants.set_grant(session, admin, client_id, workspace_id, role=body.role, tools=body.tools, quotas=body.quotas)
-    return {"client_id": g.client_id, "workspace_id": g.workspace_id, "role": g.role, "tools": g.tools, "quotas": g.quotas}
+    g = mcp_grants.set_grant(session, admin, client_id, workspace_id, role=body.role, tools=body.tools, quotas=body.quotas,
+                             tool_patterns=body.tool_patterns, rate_per_min=body.rate_per_min, expires_at=body.expires_at)
+    return {"client_id": g.client_id, "workspace_id": g.workspace_id, "role": g.role, "tools": g.tools, "quotas": g.quotas,
+            "tool_patterns": g.tool_patterns, "rate_per_min": g.rate_per_min,
+            "expires_at": g.expires_at.isoformat() if g.expires_at else None}
 
 
 @router.delete("/admin/mcp/clients/{client_id}/grants/{workspace_id}", status_code=204)

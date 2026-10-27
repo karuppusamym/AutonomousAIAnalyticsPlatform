@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy import func, select, update
 
 from analystos.artifacts.registry import producing_plan
+from analystos.autonomy import budget
 from analystos.capabilities.binding import bind_run, bound_refs, run_playbook
 from analystos.capabilities.playbook import Step, evaluate
 from analystos.contracts.events import RUN_TERMINAL
@@ -130,15 +131,19 @@ def plan_run(run_id: str, services: Services | None = None) -> dict:
             spec = binding.playbook.step(st["key"])
             if spec is None or spec.type != "approval_gate" or spec.payload != "plan":
                 continue
-            from analystos.governance.approvals import request_approval
-
-            approval = request_approval(s, workspace_id=run.workspace_id, run_id=run.id, action="execute_plan",
-                                        payload={"plan": plan, "constraints": run.constraints}, plan_hash=run.plan_hash,
-                                        policy_version=run.policy_version, requested_by=run.requested_by, risk_tier="medium",
-                                        destination=None, affected_assets=run.scope.get("assets", []))
-            task = s.scalar(select(RunTask).where(RunTask.run_id == run.id, RunTask.key == st["key"]))
-            task.input = {**task.input, "approval_id": approval.id}
+            _request_plan_approval(s, run, s.scalar(select(RunTask).where(RunTask.run_id == run.id, RunTask.key == st["key"])))
     return {"plan_version": 1}
+
+
+def _request_plan_approval(s, run: AnalysisRun, task: RunTask) -> None:
+    """A plan approval bound to the run's current plan hash, handed to the gate task that waits for it."""
+    from analystos.governance.approvals import request_approval
+
+    approval = request_approval(s, workspace_id=run.workspace_id, run_id=run.id, action="execute_plan",
+                                payload={"plan": run.plan, "constraints": run.constraints}, plan_hash=run.plan_hash,
+                                policy_version=run.policy_version, requested_by=run.requested_by, risk_tier="medium",
+                                destination=None, affected_assets=run.scope.get("assets", []))
+    task.input = {**task.input, "approval_id": approval.id}
 
 
 def _approval_gate(session, task: RunTask, step: Step | None) -> str | None:
@@ -247,14 +252,18 @@ def _decide(s, run: AnalysisRun, *, locked: bool, workspace_disabled: bool = Fal
             emit(run.workspace_id, "task.updated", {"task": key, "status": "SKIPPED"}, run_id=run_id, session=s)
         else:
             ready.append(key)
-    failed_required = [k for k, t in tasks.items() if t.status == "FAILED" and not t.input.get("optional")]
+    limits = run.limits or {}
+    refused = [k for k, t in tasks.items() if limits and t.status == "FAILED" and budget.is_budget_failure(t.error)]
+    failed_required = [k for k, t in tasks.items() if t.status == "FAILED" and not t.input.get("optional") and k not in refused]
     if failed_required:
         # the task's own error carries the cause and remedy (e.g. a policy refusal); the run shows it
         causes = "; ".join(f"{k}: {tasks[k].error}" for k in failed_required if tasks[k].error)
         return {"fail": f"required task(s) failed: {', '.join(failed_required)}" + (f" — {causes}" if causes else "")}
     done = all(t.status in ("COMPLETED", "SKIPPED", "FAILED", "CANCELLED", "INVALIDATED") for t in tasks.values())
-    if done:
+    if done and not refused:
         return {"done": True}
+    if limits:  # a goal run's budget counters (S06 §3.4): no extra statement for runs without limits
+        return _decide_within_budget(s, run, tasks, limits, refused, ready, waiting, running, change)
     if ready:
         if run.status not in ("RUNNING",):
             change()
@@ -267,6 +276,38 @@ def _decide(s, run: AnalysisRun, *, locked: bool, workspace_disabled: bool = Fal
         return {"waiting_user": waiting}
     if running:
         return {"running": running}
+    return {"fail": "no runnable task (dependency deadlock)"}
+
+
+def _decide_within_budget(s, run: AnalysisRun, tasks: dict, limits: dict, refused: list[str], ready: list[str],
+                          waiting: list[str], running: list[str], change) -> dict:
+    """`_decide` for a run with goal limits: dispatch no more than the step budget allows; once a
+    counter is used up (or a step was refused by a budget), let running steps finish, then stop."""
+    used = budget.usage(run, tasks.values(), session=s)
+    snap = budget.snapshot(limits, used)
+    stops = budget.stops(limits, used) + [f"{k}: {tasks[k].error}" for k in refused]
+    steps_left = None if limits.get("max_steps") is None else int(limits["max_steps"] - used["steps"])
+    if steps_left is not None and steps_left <= 0 and (ready or waiting) and not stops:
+        stops.append(f"max_steps ({used['steps']:g} of {float(limits['max_steps']):g})")
+    if stops:
+        if running:
+            return {"running": running, "budget": snap, "draining": stops}
+        expired = bool(waiting) and not ready and any(x.startswith("max_duration_s") for x in stops)
+        return {"limited": "; ".join(stops), "expired": expired, "budget": snap}
+    if ready and steps_left is not None:
+        ready = ready[:max(steps_left, 0)]
+    if ready:
+        if run.status != "RUNNING":
+            change()
+            set_run_status(s, run, "RUNNING")
+        return {"ready": ready[:4], "budget": snap}
+    if waiting and not running:
+        if run.status != "WAITING_USER":
+            change()
+            set_run_status(s, run, "WAITING_USER")
+        return {"waiting_user": waiting, "budget": snap}
+    if running:
+        return {"running": running, "budget": snap}
     return {"fail": "no runnable task (dependency deadlock)"}
 
 
@@ -364,6 +405,10 @@ def execute_task(run_id: str, key: str, services: Services | None = None) -> dic
             task.status, task.output, task.error, task.finished_at = status, output, error, utcnow()
             emit(run.workspace_id, "task.updated" if status == "WAITING_USER" else "agent.completed" if status == "COMPLETED" else "agent.failed",
                  {"task": key, "agent": task.agent_id, "status": status, "error": error}, run_id=run_id, session=s)
+            if run.limits:  # remaining budget for the Autonomy Center, after every step of a goal run
+                used = budget.usage(run, s.scalars(select(RunTask).where(RunTask.run_id == run_id)), session=s)
+                emit(run.workspace_id, "run.budget", {"task": key, **budget.snapshot(run.limits, used)}, run_id=run_id,
+                     session=s)
         return {"status": status, "error": error}
     finally:
         run_id_var.reset(token)
@@ -375,9 +420,17 @@ def _age_seconds(ts) -> float:
 
 
 def _is_last_attempt(run_id: str, key: str, max_attempts: int = 3) -> bool:
+    """No retry after `max_attempts`, nor once a goal run has used its `max_retries` (S06 §3.4)."""
     with session_scope() as s:
         task = s.scalar(select(RunTask).where(RunTask.run_id == run_id, RunTask.key == key))
-        return task is None or task.attempts >= max_attempts
+        if task is None or task.attempts >= max_attempts:
+            return True
+        cap = (s.scalar(select(AnalysisRun.limits).where(AnalysisRun.id == run_id)) or {}).get("max_retries")
+        if cap is None:
+            return False
+        retries = s.scalar(select(func.coalesce(func.sum(RunTask.attempts - 1), 0)).where(
+            RunTask.run_id == run_id, RunTask.attempts > 1)) or 0
+        return retries >= cap
 
 
 def _reset(run_id: str, key: str, error: str, claim: int) -> None:
@@ -431,6 +484,8 @@ def finish_run(run_id: str, outcome: str, error: str | None = None) -> None:
             published = bool(side_effects) and s.scalar(select(func.count()).select_from(RunTask).where(
                 RunTask.run_id == run_id, RunTask.key.in_(side_effects), RunTask.status == "COMPLETED")) > 0
             run.summary = {**(run.summary or {}), "cancel_outcome": "cancelled_after_publication" if published else "cancelled_before_side_effects"}
+        if outcome in LIMITED:
+            _close_with_limitations(s, run, outcome, error or "budget exhausted")
         set_run_status(s, run, outcome, **({"error": error} if error else {}))
         notify_needed = (run.origin or {}).get("type") in ("schedule", "alert")
         workspace_id, requested_by = run.workspace_id, run.requested_by
@@ -444,7 +499,31 @@ def finish_run(run_id: str, outcome: str, error: str | None = None) -> None:
         record_quietly("run", workspace_id, run_id, requested_by)
 
 
-def apply_replan(session, run: AnalysisRun, reason: str, *, full: bool = True) -> dict:
+LIMITED = ("COMPLETED_WITH_LIMITATIONS", "EXPIRED")
+
+
+def _close_with_limitations(s, run: AnalysisRun, outcome: str, reason: str) -> None:
+    """A budget ran out (or the wall clock while the run waited for a person): work not started is
+    skipped, approvals not yet acted on are invalidated (nothing is published after the stop), and
+    the summary says what stands. Only verified findings are results; the rest stay drafts (AT-04)."""
+    s.execute(update(RunTask).where(RunTask.run_id == run.id, RunTask.status.in_(["NEW", "READY", "WAITING_USER"]))
+              .values(status="SKIPPED", error=f"not run: {reason}", finished_at=utcnow())
+              .execution_options(synchronize_session=False))
+    invalidate_run_approvals(s, run.id, f"run ended {outcome}: {reason}")
+    tasks = list(s.scalars(select(RunTask).where(RunTask.run_id == run.id).execution_options(populate_existing=True)))
+    insights = list(s.execute(select(Insight.id, Insight.status).where(Insight.run_id == run.id)))
+    used = budget.usage(run, tasks, session=s) if run.limits else {}
+    limitations = {"outcome": outcome, "reason": reason, "limits": dict(run.limits or {}), "used": used,
+                   "completed_steps": sorted(t.key for t in tasks if t.status == "COMPLETED" and not t.key.startswith("_")),
+                   "not_run": sorted(t.key for t in tasks if t.status == "SKIPPED" and (t.error or "").startswith("not run:")),
+                   "verified_findings": sorted(i.id for i in insights if i.status == "verified"),
+                   "unverified_findings": sum(1 for i in insights if i.status not in ("verified", "superseded"))}
+    run.summary = {**(run.summary or {}), "limitations": limitations}
+    emit(run.workspace_id, "run.limited", limitations, run_id=run.id, actor="engine", session=s)
+
+
+def apply_replan(session, run: AnalysisRun, reason: str, *, full: bool = True, reason_code: str | None = None,
+                 actor: str | None = None) -> dict:
     """Dynamic replanning (§40): persist, mark impacted, cancel invalid pending work, reuse valid artifacts.
 
     What is reset comes from the playbook's `replan_boundary` steps:
@@ -453,15 +532,29 @@ def apply_replan(session, run: AnalysisRun, reason: str, *, full: bool = True) -
     full=False (finding rejected / metric edited): the `finding_rejected` boundary (investigate.v1:
                dataset onward).
     """
+    from analystos.autonomy.replan import check_replan_budget, record_superseded
+
     playbook = run_playbook(run)
-    trigger = "redirect" if full else "finding_rejected"
-    reset_keys = playbook.reset_keys(trigger)
-    removed_prefixes = playbook.removed_prefixes(trigger)
-    run.plan_version += 1
+    if reason_code is None:  # v1 callers (feedback): the redirect / finding-rejected boundaries
+        trigger: str | None = "redirect" if full else "finding_rejected"
+        reason_code = "user_redirect" if full else "rejected_hypothesis"
+    else:
+        trigger = playbook.trigger_for(reason_code)
+        full = trigger is not None and trigger != "finding_rejected"  # a re-plan of the analysis supersedes its findings
+    check_replan_budget(run)
+    reset_keys = playbook.reset_keys(trigger) if trigger else set()
+    removed_prefixes = playbook.removed_prefixes(trigger) if trigger else ()
     tasks = list(session.scalars(select(RunTask).where(RunTask.run_id == run.id)))
-    removed, reset = 0, 0
+    record_superseded(session, run, tasks, reason_code=reason_code, detail=reason, actor=actor)
+    run.plan_version += 1
+    removed, reset, dropped = 0, 0, 0
     for task in tasks:
-        if removed_prefixes and task.key.startswith(removed_prefixes):
+        if trigger is None and task.status == "NEW" and task.input.get("optional"):
+            # budget_downgrade: optional work that has not started is dropped; nothing is redone
+            task.status, task.error, task.finished_at = "SKIPPED", f"dropped by replan: {reason_code}", utcnow()
+            task.plan_version = run.plan_version
+            dropped += 1
+        elif removed_prefixes and task.key.startswith(removed_prefixes):
             session.delete(task)
             removed += 1
         elif task.key in reset_keys:
@@ -480,11 +573,17 @@ def apply_replan(session, run: AnalysisRun, reason: str, *, full: bool = True) -
                            f"replanned: {reason}")
     invalidated = invalidate_run_approvals(session, run.id, f"replanned: {reason}")
     run.plan_hash = run_hash(run)
+    for task in tasks:  # a plan gate still waiting asks again, for the new plan: an invalidated approval never opens it
+        spec = playbook.step(task.key)
+        if spec is not None and spec.type == "approval_gate" and spec.payload == "plan" and task.status in ("NEW", "WAITING_USER")                 and task in session:
+            _request_plan_approval(session, run, task)
     if run.status in ("WAITING_USER", "COMPLETED", "PAUSED"):
         run.status = "RUNNING"
         run.finished_at = None
     emit(run.workspace_id, "run.replanned", {"plan_version": run.plan_version, "plan_hash": run.plan_hash,
-                                             "reason": reason, "tasks_reset": reset, "tasks_removed": removed,
-                                             "approvals_invalidated": invalidated}, run_id=run.id, session=session)
-    return {"plan_version": run.plan_version, "tasks_reset": reset, "tasks_removed": removed, "approvals_invalidated": invalidated}
+                                             "reason": reason, "reason_code": reason_code, "trigger": trigger,
+                                             "tasks_reset": reset, "tasks_removed": removed, "tasks_dropped": dropped,
+                                             "approvals_invalidated": invalidated}, run_id=run.id, actor=actor, session=session)
+    return {"plan_version": run.plan_version, "reason_code": reason_code, "tasks_reset": reset, "tasks_removed": removed,
+            "tasks_dropped": dropped, "approvals_invalidated": invalidated}
 
