@@ -169,10 +169,9 @@ def test_export_files_verify_offline_and_are_incremental(control_db, tmp_path):
 
 
 def test_nightly_runs_once_a_day(control_db, tmp_path):
+    from analystos.core.ids import utcnow
     from analystos.governance import audit_chain as ac
     from analystos.tenancy import system_scope
-
-    from analystos.core.ids import utcnow
 
     with system_scope():  # "a day later" than any pass an in-process scheduler of another test already ran
         first = ac.maybe_run_nightly(now=utcnow() + timedelta(days=2), out_dir=tmp_path)
