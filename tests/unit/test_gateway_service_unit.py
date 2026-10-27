@@ -147,7 +147,7 @@ def test_cache_hit_skips_execution_and_is_audited(env, scope: DataScope) -> None
     gw._run = lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not execute"))  # type: ignore[method-assign]
     # Prime: compute the key the gateway will use and store a result under it.
     spy(scope, v)
-    key = cache.key(v.fingerprint, scope.scope_hash(), version_holder["v"], 100)
+    key = cache.key(v.fingerprint, scope.scope_hash(), version_holder["v"], 100, policy_version=scope.policy_version)
     cache.set(key, {"columns": ["priority", "n"], "rows": [[1, 5]], "truncated": False, "result_hash": "h"})
     res = gw.execute(scope, "select priority, count(*) as n from incident group by priority", actor="user:u_1")
     assert res.cache_hit and res.rows == [[1, 5]] and res.result_hash == "h"

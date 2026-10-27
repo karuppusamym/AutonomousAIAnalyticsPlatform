@@ -49,7 +49,7 @@ class InvokeContext:
 
         identity = ExecutionIdentity(user_id=self.user.id, workspace_id=self.workspace.id, agent_id=self.agent.id,
                                      purpose="capability.invoke")
-        return ToolRuntime(user=self.user, identity=identity, agent=self.agent)
+        return ToolRuntime(user=self.user, identity=identity, agent=self.agent, scope=getattr(self, "scope", None))
 
     def run_sql(self, source_id: str | None = None) -> Any:
         """Tool gate (`sql.execute`, the workspace policy applies), budget, then the gateway as the user."""

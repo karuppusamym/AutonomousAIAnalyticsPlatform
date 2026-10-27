@@ -241,7 +241,8 @@ def _authorize_ask(ctx: Any) -> None:
     from analystos.tools.registry import ToolRuntime
 
     identity = ExecutionIdentity(user_id=ctx.user.id, workspace_id=ctx.workspace.id, agent_id=ctx.agent.id, purpose=ASK_PURPOSE)
-    ToolRuntime(user=ctx.user, identity=identity, agent=ctx.agent).authorize("sql.execute", {"purpose": ASK_PURPOSE})
+    ToolRuntime(user=ctx.user, identity=identity, agent=ctx.agent, scope=getattr(ctx, "scope", None)).authorize(
+        "sql.execute", {"purpose": ASK_PURPOSE})
 
 
 def _check_budget(ctx: Any) -> None:

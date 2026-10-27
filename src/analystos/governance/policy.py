@@ -247,7 +247,26 @@ def resolve_scope(session: Session, user: User, workspace_id: str, *, source_ids
         apply_attribute_rules(scope, user.attributes, policy.attribute_rules, tags_by_column)
     if policy.row_filters:
         apply_row_filters(scope, user, policy.row_filters)
+    from analystos.governance import abac
+
+    scope.abac = abac.scope_attributes(region=(user.attributes or {}).get("region"),
+                                       residency=data_residency(session, workspace, policy),
+                                       tags_by_column=tags_by_column, readable=abac.readable_columns(scope),
+                                       rules=policy.abac_rules)
     return scope
+
+
+def data_residency(session: Session, workspace: Workspace, policy: WorkspacePolicyDoc) -> str | None:
+    """The workspace policy's residency, else its tenant's (S01 `tenant.data_residency`)."""
+    if policy.data_residency:
+        return policy.data_residency
+    tenant_id = getattr(workspace, "tenant_id", None)
+    if not tenant_id:
+        return None
+    from analystos.db.models import Tenant
+
+    tenant = session.get(Tenant, tenant_id)
+    return tenant.data_residency if tenant is not None else None
 
 
 def row_filter_user(user: User, role: str) -> dict:
@@ -291,8 +310,10 @@ def apply_row_filters(scope: DataScope, user: User, filters: list) -> None:
 
 def evaluate(session: Session, user: User, identity: ExecutionIdentity, action: str, *,
              tool: ToolSpec | None = None, destination: str | None = None, autonomy_level: int | None = None,
-             record: bool = True) -> PolicyDecision:
-    """allow | deny | approval_required with machine-readable reasons. Re-evaluated at execution time."""
+             record: bool = True, scope: DataScope | None = None) -> PolicyDecision:
+    """allow | deny | approval_required with machine-readable reasons. Re-evaluated at execution time.
+    ABAC (S01-T6) is decided after the role and autonomy checks, on every call: a denial adds the reason
+    `abac:<rule>` and `details.abac = {rule, reason, remedy, engine}` (`abac.denial` builds the 403)."""
     workspace = get_workspace(session, identity.workspace_id)
     policy = load_policy(session, workspace)
     role = member_role(session, user, identity.workspace_id)
@@ -330,13 +351,49 @@ def evaluate(session: Session, user: User, identity: ExecutionIdentity, action: 
                 reasons.append("autonomy_level_2_executes_after_plan_approval")
             else:
                 reasons.append(f"within_policy_autonomy_{level}")
+    details: dict[str, Any] = {"role": role, "action": action, "tool": tool.tool_id if tool else None,
+                               "destination": destination, "agent": identity.agent_id, "purpose": identity.purpose}
+    if decision != "deny":
+        verdict = _abac(session, user, identity, action, workspace=workspace, policy=policy, role=role, tool=tool,
+                        scope=scope)
+        details["abac"] = verdict.model_dump(exclude_none=True)
+        if not verdict.allow:
+            decision, reasons = "deny", [*reasons, f"abac:{verdict.rule}"]
     result = PolicyDecision(decision=decision, reasons=reasons, risk_tier=risk, policy_version=workspace.policy_version,
-                            effective_autonomy=level, details={"role": role, "action": action,
-                                                               "tool": tool.tool_id if tool else None,
-                                                               "destination": destination, "agent": identity.agent_id,
-                                                               "purpose": identity.purpose})
+                            effective_autonomy=level, details=details)
     if record:
         audit(f"user:{user.id}" if not identity.agent_id else f"agent:{identity.agent_id}", f"policy.{action}",
               workspace_id=identity.workspace_id, run_id=identity.run_id, target=tool.tool_id if tool else destination,
               decision=decision, reasons=reasons, details=result.details, session=session)
     return result
+
+
+def denied(decision: PolicyDecision, message: str) -> Forbidden:
+    """The error for a denied decision: `403 policy_denied {rule, reason, remedy}` when ABAC denied it."""
+    from analystos.core.errors import PolicyDenied
+
+    verdict = decision.details.get("abac") or {}
+    if verdict.get("allow") is False:
+        return PolicyDenied(message, details={k: verdict.get(k) for k in ("rule", "reason", "remedy", "engine")})
+    return PolicyDenied(message)
+
+
+def _abac(session: Session, user: User, identity: ExecutionIdentity, action: str, *, workspace: Workspace,
+          policy: WorkspacePolicyDoc, role: str | None, tool: ToolSpec | None, scope: DataScope | None):
+    """The ABAC decision for a tool call or action. A scope (a run step, an Ask turn) gives the classification
+    of what the call can read and the region and residency it was resolved with; without one the caller's
+    region attribute and the workspace residency are used, and the data counts as `internal`."""
+    from analystos.contracts.policy import AbacAttributes, PolicyInput
+    from analystos.governance import abac
+
+    facts = scope.abac if scope is not None else None
+    region = facts.region if facts is not None else abac.normalize_region((user.attributes or {}).get("region"))
+    residency = facts.residency if facts is not None else data_residency(session, workspace, policy)
+    attrs = AbacAttributes(classification=abac.scope_classification(scope), purpose=identity.purpose or "analysis",
+                           region=region, aggregation_grain="none", audience=abac.audience_for(action, tool))
+    inp = PolicyInput(point="tool" if tool is not None else "action", action=action,
+                      tenant_id=getattr(workspace, "tenant_id", None), workspace_id=identity.workspace_id,
+                      user_id=user.id, role=role, agent_id=identity.agent_id, tool_id=tool.tool_id if tool else None,
+                      source_id=identity.source_id, assets=list(scope.assets) if scope is not None else [],
+                      residency=residency, policy_version=workspace.policy_version, attributes=attrs)
+    return abac.decide(inp, policy.abac_rules)

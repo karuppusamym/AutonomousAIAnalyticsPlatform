@@ -19,7 +19,7 @@ from analystos.db.models import AnalysisRun, Approval, Artifact, Publication, Ru
 from analystos.events.bus import emit
 from analystos.governance.approvals import request_approval, verify_for_execution
 from analystos.governance.audit import audit
-from analystos.governance.policy import evaluate
+from analystos.governance.policy import denied, evaluate
 from analystos.runtime.context import RunContext
 from analystos.tools.registry import ToolRuntime, get_agent_spec
 
@@ -112,9 +112,10 @@ def request_publication(ctx: RunContext) -> dict:
     payload = bundle.model_dump()
     with session_scope() as s:
         user = s.get(User, ctx.user.id)
-        decision = evaluate(s, user, ctx.identity, "publish", destination=destination if destination != "preview" else "superset")
+        decision = evaluate(s, user, ctx.identity, "publish", destination=destination if destination != "preview" else "superset",
+                            scope=getattr(ctx, "scope", None))
         if decision.decision == "deny":
-            raise PolicyDenied("publication denied: " + ", ".join(decision.reasons))
+            raise denied(decision, "publication denied: " + ", ".join(decision.reasons))
         run = s.get(AnalysisRun, ctx.run.id)
         # No risk_check decision here (P4-T02): publication is always high tier and always needs an
         # approval, so a model opinion could not change the next step.

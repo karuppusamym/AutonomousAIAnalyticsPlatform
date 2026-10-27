@@ -373,14 +373,16 @@ def compile_for(ctx: Any, purpose: str, required: dict[str, Any], *, objective: 
                        reference_text=reference_text, header=header, limit=limit, knowledge_chars=knowledge_chars) \
         if settings.context.cache_enabled else None
     workspace_id = getattr(getattr(ctx, "workspace", None), "id", None)
-    reused = _COMPILED.get(key, purpose, workspace_id=workspace_id) if key else None
+    key_scope = context_cache.scope_of(ctx)
+    reused = _COMPILED.get(key, purpose, workspace_id=workspace_id, scope=key_scope) if key else None
     if reused is not None:
         return reused
     compiled, complete = _compile(ctx, purpose, profile, settings, objective=objective, required=required, catalog=catalog,
                                   reference_text=reference_text, header=header, limit=limit, knowledge_chars=knowledge_chars)
     compiled.receipts.extend(pinned_receipts)
     if key and complete:  # a context compiled without its knowledge (load failed) is not kept
-        _COMPILED.put(key, purpose, compiled, ttl=settings.context.cache_ttl_seconds, workspace_id=workspace_id)
+        _COMPILED.put(key, purpose, compiled, ttl=settings.context.cache_ttl_seconds, workspace_id=workspace_id,
+                      scope=key_scope)
     return compiled
 
 
@@ -485,15 +487,20 @@ class CompiledContextCache:
                            workspace_id=workspace_id)
 
     @staticmethod
-    def _key(key: str, workspace_id: str | None) -> str:
-        """Under the workspace's context-cache prefix, so its entries can be counted and cleared."""
-        return context_cache.entry_key("compiled", workspace_id, key)
+    def _key(key: str, workspace_id: str | None, scope: dict[str, Any] | None = None) -> str | None:
+        """Under the tenant/scope/policy prefix and the workspace's context-cache prefix (S01-T7), so an entry is
+        only found by the same tenant and scope, and one workspace's entries can be counted and cleared."""
+        return context_cache.entry_key("compiled", workspace_id, key, **(scope or {}))
 
-    def get(self, key: str, purpose: str, *, workspace_id: str | None = None) -> Any | None:
+    def get(self, key: str, purpose: str, *, workspace_id: str | None = None,
+            scope: dict[str, Any] | None = None) -> Any | None:
         from analystos.context.compiler import CompiledContext
 
+        entry = self._key(key, workspace_id, scope)
+        if entry is None:
+            return None
         try:
-            hit = self.store.get(self._key(key, workspace_id))
+            hit = self.store.get(entry)
         except Exception:
             hit = None
         if not isinstance(hit, dict):
@@ -502,10 +509,14 @@ class CompiledContextCache:
         self._count(purpose, "reused", compiled.chars, workspace_id)
         return compiled
 
-    def put(self, key: str, purpose: str, compiled: Any, *, ttl: float | None = None, workspace_id: str | None = None) -> None:
+    def put(self, key: str, purpose: str, compiled: Any, *, ttl: float | None = None, workspace_id: str | None = None,
+            scope: dict[str, Any] | None = None) -> None:
         self._count(purpose, "compiled", workspace_id=workspace_id)
+        entry = self._key(key, workspace_id, scope)
+        if entry is None:
+            return
         try:
-            self.store.set(self._key(key, workspace_id), compiled.to_dict(), self.ttl if ttl is None else min(ttl, self.ttl))
+            self.store.set(entry, compiled.to_dict(), self.ttl if ttl is None else min(ttl, self.ttl))
         except Exception as exc:  # pragma: no cover - reuse is an optimisation
             log.warning("compiled context not stored: %s", exc)
 
@@ -561,8 +572,11 @@ def _retrieval_key(ctx: Any, sections: list[str], query: str | None) -> str | No
     run = getattr(ctx, "run", None)
     from datetime import date
 
+    # The caller's scope is part of the prefix (S01-T7): load_knowledge filters by the scope's assets and denied
+    # columns, so a narrower scope never reads a wider one's retrieval.
     return context_cache.key("retrieval", workspace_id, {"knowledge": knowledge, "effective_date": date.today().isoformat(), "sections": sorted(sections), "query": query,
-                                                         "session": session, "run": getattr(run, "id", None)})
+                                                         "session": session, "run": getattr(run, "id", None)},
+                             **context_cache.scope_of(ctx))
 
 
 def _retrieval_query(objective: str | None, reference_text: str | None) -> str | None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 Decision = Literal["allow", "deny", "approval_required"]
 
@@ -33,6 +33,106 @@ class AttributeRule(BaseModel):
         if empty:
             raise ValueError(f"attribute rule lists no accepted values for {', '.join(empty)}")
         return value
+
+
+Classification = Literal["public", "internal", "confidential", "restricted"]
+CLASSIFICATION_ORDER: dict[str, int] = {"public": 0, "internal": 1, "confidential": 2, "restricted": 3}
+AggregationGrain = Literal["none", "aggregate", "row"]
+Audience = Literal["self", "workspace", "tenant", "external"]
+AbacAttribute = Literal["classification", "purpose", "region", "aggregation_grain", "audience"]
+DecisionPoint = Literal["tool", "query", "action"]
+
+
+class AbacAttributes(BaseModel):
+    """The five ABAC attributes of one decision (spec S01 §3.7), derived by code at the decision point, never
+    taken from a prompt or model output. `classification` is the highest class of the data the call can touch;
+    `purpose` the business purpose (a gateway purpose such as `monitor.freshness` also matches its class
+    `monitor`); `region` the caller's region (user attribute `region`), None when unknown; `aggregation_grain`
+    `row` or `aggregate` for a query (syntactic: the outermost SELECT), `none` for a call that reads no rows;
+    `audience` who sees the result (`external` for publish, export and external-write tools)."""
+
+    classification: Classification = "internal"
+    purpose: str = "analysis"
+    region: str | None = None
+    aggregation_grain: AggregationGrain = "none"
+    audience: Audience = "workspace"
+
+
+class AbacCondition(BaseModel):
+    """One test on an attribute. `in`/`not_in` compare values (a region value also matches its sub-regions:
+    `eu` matches `eu-west-1`; a purpose value also matches the purpose's class). `at_least`/`at_most` compare
+    classifications by order. An unknown region is never `in` a list and always `not_in` it (fail closed)."""
+
+    attribute: AbacAttribute
+    op: Literal["in", "not_in", "at_least", "at_most"] = "in"
+    values: list[str] = Field(min_length=1)
+
+    @field_validator("values")
+    @classmethod
+    def _non_blank(cls, value: list[str]) -> list[str]:
+        if any(not str(v).strip() for v in value):
+            raise ValueError("condition values must not be blank")
+        return value
+
+    @model_validator(mode="after")
+    def _ordered_ops_compare_classifications(self) -> AbacCondition:
+        if self.op in ("at_least", "at_most") and (self.attribute != "classification" or len(self.values) != 1):
+            raise ValueError("at_least/at_most compare one classification value")
+        if self.attribute == "classification":
+            unknown = [v for v in self.values if v not in CLASSIFICATION_ORDER]
+            if unknown:
+                raise ValueError(f"unknown classification {', '.join(unknown)}")
+        return self
+
+
+class AbacRule(BaseModel):
+    """A workspace ABAC rule (S01-T6). Rules only deny: a call is refused when every condition in `when` holds.
+    `reason` and `remedy` are returned to the caller as `403 policy_denied {rule, reason, remedy}`."""
+
+    id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$")
+    when: list[AbacCondition] = Field(min_length=1)
+    applies_to: list[DecisionPoint] = Field(default_factory=lambda: ["tool", "query", "action"], min_length=1)
+    reason: str = Field(default="", max_length=500)
+    remedy: str = Field(default="", max_length=500)
+
+
+class AbacScope(BaseModel):
+    """ABAC facts resolved with a DataScope, so the gateway can decide every query without another read:
+    the caller's region, the data residency (workspace policy, else the tenant), the classification of each
+    readable column that is not `internal`, and the workspace's ABAC rules at the scope's policy version.
+    Never part of the scope hash: these are inputs to a decision made on every call, not part of what the
+    scope authorizes."""
+
+    region: str | None = None
+    residency: str | None = None
+    column_classes: dict[str, Classification] = Field(default_factory=dict)  # "schema.table.column" -> class
+    rules: list[AbacRule] = Field(default_factory=list)
+
+
+class PolicyInput(BaseModel):
+    """What a policy engine decides on (built-in or OPA `input`). Identity facts plus the ABAC attributes."""
+
+    point: DecisionPoint
+    action: str
+    tenant_id: str | None = None
+    workspace_id: str | None = None
+    user_id: str | None = None
+    role: str | None = None
+    agent_id: str | None = None
+    tool_id: str | None = None
+    source_id: str | None = None
+    assets: list[str] = Field(default_factory=list)
+    residency: str | None = None
+    policy_version: int | None = None
+    attributes: AbacAttributes = Field(default_factory=AbacAttributes)
+
+
+class AbacDecision(BaseModel):
+    allow: bool
+    rule: str | None = None
+    reason: str | None = None
+    remedy: str | None = None
+    engine: str = "builtin"
 
 
 class RowFilter(BaseModel):
@@ -97,6 +197,9 @@ class WorkspacePolicyDoc(BaseModel):
     pii_access: Literal["none", "restricted", "allowed"] = "restricted"
     tool_denylist: list[str] = Field(default_factory=list)
     attribute_rules: list[AttributeRule] = Field(default_factory=list)  # ABAC; applied in resolve_scope
+    # S01-T6: deny rules over {classification, purpose, region, aggregation_grain, audience}, decided on every
+    # tool call, action and query (governance/abac.py); the platform rules there always apply as well.
+    abac_rules: list[AbacRule] = Field(default_factory=list)
     row_filters: list[RowFilter] = Field(default_factory=list)  # row-level security; rendered in resolve_scope
     publish_destinations: list[str] = Field(default_factory=lambda: ["superset"])
     publish_requires_approval: bool = True  # cannot be disabled in the MVP (enforced in code)
@@ -141,13 +244,15 @@ class DataScope(BaseModel):
     row_filters: dict[str, list[str]] = Field(default_factory=dict)
     # Assets a row filter withheld from this caller (a missing attribute: fail closed) -> the reason.
     withheld_assets: dict[str, str] = Field(default_factory=dict)
+    # S01-T6: decision inputs for every query (AbacScope); never part of the hash.
+    abac: AbacScope | None = None
 
     def scope_hash(self) -> str:
         from analystos.core.ids import stable_hash
 
         # Empty row-security fields are left out, so a scope without row filters keeps its earlier hash.
         empty = {k for k in ("row_filters", "withheld_assets") if not getattr(self, k)}
-        return stable_hash(self.model_dump(exclude=empty))
+        return stable_hash(self.model_dump(exclude={*empty, "abac"}))
 
 
 class PolicyDecision(BaseModel):

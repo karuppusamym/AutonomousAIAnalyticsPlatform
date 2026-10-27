@@ -1,5 +1,27 @@
 # Capability register (evidence)
 
+## 2026-10-27 — S01-T6 ABAC on every call + OPA adapter, S01-T7 tenant-scoped cache keys
+
+ABAC (`governance/abac.py`): the policy decision input carries `{classification, purpose, region,
+aggregation_grain, audience}`, derived by code from the DataScope (column tags, the caller's `region` attribute,
+the workspace or tenant data residency), the validated SQL (syntactic grain) and the tool contract. It is decided in
+`policy.evaluate` (so the `ToolRuntime` pre-hook and run, publish, build, MCP-tool and monitor decisions) and in
+`QueryGateway.execute` for every statement, before the result cache. Rules only deny: platform rules
+(`platform.data_residency`, `platform.restricted_external`) plus versioned workspace `abac_rules`. Denials are
+`403 policy_denied {rule, reason, remedy}`, recorded on the tool execution, the `policy.denied` event and a rejected
+query audit row. `ANALYSTOS_POLICY_ENGINE=opa` adds an OPA sidecar that can only add a denial; unreachable or
+malformed answers deny. Cache keys (`tenancy/cache_keys.py`): the query result cache, the model response cache and
+the context caches (retrieval, compiled contexts) key every entry `tenant:{t}:scope:{scope_hash}:policy:{v}`; a
+caller bound to another tenant than the workspace's gets no cache. Tests: `tests/unit/test_abac.py` (attributes,
+grain, rules, OPA allow/deny/malformed/unreachable over a local HTTP server, gateway denial before the cache, tool
+gate denial and record, restricted data to an external audience), `tests/unit/test_cache_tenant_isolation.py`
+(negative cross-tenant suite over all four caches, forged owner tenant, unbound entries, scope and policy segments),
+`tests/integration/test_cache_tenant_isolation.py` on Postgres 16 with RLS (strict) and Redis db 3 (2026-10-27,
+Windows dev host): tenant B never reads tenant A's query results, model answers or context entries with the same
+workspace layout, SQL and prompt; B presenting A's scope gets 404 and runs nothing; tenant residency read under RLS
+denies a query from outside it, audited only in B. Not built: a real OPA sidecar in compose (adapter tested against
+an OPA-shaped HTTP server), an OPA decision cache, ABAC on `explain` (reads no rows).
+
 ## 2026-10-27 — S13 Analyst Request Desk (T1–T4, T6 backend)
 
 New package `src/analystos/desk/`: requests from the UI/API (`POST /api/requests`) and MCP (`request.create`) are

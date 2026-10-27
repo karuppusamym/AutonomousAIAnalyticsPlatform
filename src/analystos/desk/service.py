@@ -114,9 +114,11 @@ def _call_ctx(session: Session, workspace_id: str, request_id: str) -> Any:
     from analystos.governance.policy import get_workspace, load_policy
     from analystos.llm.router import CallContext
 
-    policy = load_policy(session, get_workspace(session, workspace_id))
+    workspace = get_workspace(session, workspace_id)
+    policy = load_policy(session, workspace)
     return CallContext.for_policy(policy, workspace_id=workspace_id, task_id=request_id, agent_id="desk",
-                                  prompt_version="request_triage.v1")
+                                  prompt_version="request_triage.v1", tenant_id=workspace.tenant_id,
+                                  policy_version=workspace.policy_version)
 
 
 def _router() -> Any:

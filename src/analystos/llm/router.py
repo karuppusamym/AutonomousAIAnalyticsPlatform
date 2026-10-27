@@ -73,6 +73,14 @@ class CallContext:
     expensive_model_approval_usd: float | None = None  # pre-call estimate above this needs an approval
     knowledge_version: str | None = None  # workspace knowledge version (P4-T06): part of the L0 cache key
     context_receipts: list[dict] | None = None  # what the context compiler put in the prompt (P4-T03)
+    # S01-T7: the L0 cache key prefix `tenant:{t}:scope:{s}:policy:{v}`. tenant_id is the workspace's tenant (the
+    # bound tenant wins and must match); scope_hash is the caller's DataScope hash; policy_version the workspace's.
+    tenant_id: str | None = None
+    scope_hash: str | None = None
+    policy_version: int | None = None
+
+    def cache_scope(self) -> dict[str, Any]:
+        return {"tenant": self.tenant_id, "scope_hash": self.scope_hash, "policy_version": self.policy_version}
 
     @classmethod
     def for_policy(cls, policy: Any, **kwargs: Any) -> CallContext:
@@ -772,7 +780,7 @@ class ModelRouter:
             hit = None
             for candidate in dict.fromkeys([*models, *escalation, *tier_before]):
                 hit = self.cache.get(ResponseCache.key(purpose, candidate, cache_payload, ctx.workspace_id,
-                                                       knowledge_version=ctx.knowledge_version))
+                                                       knowledge_version=ctx.knowledge_version, **ctx.cache_scope()))
                 if hit:
                     break
             if hit:
@@ -807,7 +815,7 @@ class ModelRouter:
         assert isinstance(outcome, ModelResponse)
         if cache_payload is not None and not outcome.validation_error:
             self.cache.set(ResponseCache.key(purpose, outcome.routed_model or outcome.model, cache_payload, ctx.workspace_id,
-                                             knowledge_version=ctx.knowledge_version), {"text": outcome.text, "data": outcome.data, "model": outcome.model,
+                                             knowledge_version=ctx.knowledge_version, **ctx.cache_scope()), {"text": outcome.text, "data": outcome.data, "model": outcome.model,
                                        "input_tokens": outcome.input_tokens, "output_tokens": outcome.output_tokens},
                            llm.cache_ttl_hours * 3600)
         return outcome
@@ -932,7 +940,7 @@ class ModelRouter:
         cache_key = None
         if llm.cache_enabled and purpose in llm.cacheable_purposes:
             cache_key = ResponseCache.key(purpose, models[0], {"s": safe_state, "q": questions}, ctx.workspace_id,
-                                          knowledge_version=ctx.knowledge_version)
+                                          knowledge_version=ctx.knowledge_version, **ctx.cache_scope())
             hit = self.cache.get(cache_key)
             if hit:
                 self.sink.record(ctx=ctx, purpose=purpose, profile=profile_name, provider=profile.provider, model=hit["model"],

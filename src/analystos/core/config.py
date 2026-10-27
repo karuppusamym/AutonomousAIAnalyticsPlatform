@@ -121,6 +121,13 @@ class Settings(BaseSettings):
     # (fail closed); `bound` restricts only transactions with a bound tenant (upgrade aid); `off` skips it.
     tenancy_mode: Literal["off", "bound", "strict"] = "strict"
     tenancy_app_role: str = Field(default="analystos_app", pattern=r"^[a-z_][a-z0-9_]{0,62}$")
+    # ABAC engine (S01-T6, governance/abac.py): `builtin` (default) decides with the platform and workspace
+    # rules; `opa` also asks an OPA sidecar, which may deny what the built-in engine allows, never the reverse.
+    # An OPA error, timeout or malformed answer is a deny (fail closed).
+    policy_engine: Literal["builtin", "opa"] = "builtin"
+    policy_opa_url: str = "http://127.0.0.1:8181"
+    policy_opa_decision_path: str = Field(default="analystos/abac/decision", pattern=r"^[A-Za-z0-9_]+(/[A-Za-z0-9_]+)*$")
+    policy_opa_timeout_seconds: float = Field(default=1.0, gt=0, le=10)
     redis_url: str = "redis://localhost:6379/0"
     # Neo4j is an optional projection of the Postgres lineage/relationship tables (spec v3 §8), off
     # by default: lineage and table neighbourhood are served from Postgres unless this is on.

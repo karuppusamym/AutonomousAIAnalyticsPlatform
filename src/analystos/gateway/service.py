@@ -4,7 +4,10 @@ execute():
   1. effective limits = min(requested, scope limits, platform ceilings);
   2. validate (validator.validate_sql) — fail closed, precise SQLRejected messages;
   3. resolve the source from the control plane and check it belongs to the scope's workspace;
-  4. result cache lookup (Redis; key binds fingerprint + scope hash + source version + row cap);
+  3b. ABAC (S01-T6, governance/abac.py): classification, purpose, region, grain, audience; a denial is a 403
+      policy_denied {rule, reason, remedy}, audited as a rejection, before any cache lookup;
+  4. result cache lookup (Redis; key `tenant:{t}:scope:{s}:policy:{v}:` + hash of fingerprint, scope hash,
+     source version, row cap; S01-T7);
   5. execute the *generated* SQL:
        staged sources  -> analytics DB with the READER identity only, READ ONLY transaction,
                           SET LOCAL ROLE to the owning workspace's reader role (the reader login
@@ -39,6 +42,7 @@ from analystos.core.errors import (
     Forbidden,
     InvalidInput,
     NotFound,
+    PolicyDenied,
     QueryTimeout,
     SQLRejected,
     UpstreamUnavailable,
@@ -163,6 +167,7 @@ class QueryGateway:
         timeout_seconds: int | None = None,
         retain_rows: bool = True,
         federated: bool = False,
+        _federation_leg: bool = False,
     ) -> QueryResult:
         """`retain_rows=False` (e.g. crawler PII value sampling): the statement is validated, executed
         and audited as usual, but no result value is stored anywhere — no audit preview, no result cache.
@@ -187,7 +192,7 @@ class QueryGateway:
 
         if federated:
             return self._execute_federated(scope, sql, audit, started, eff_rows=eff_rows, eff_timeout=eff_timeout,
-                                           use_cache=use_cache, retain_rows=retain_rows)
+                                           use_cache=use_cache, retain_rows=retain_rows, purpose=purpose)
 
         # 1. validate
         try:
@@ -205,11 +210,20 @@ class QueryGateway:
             fingerprint=validated.fingerprint,
             referenced_assets=validated.referenced_assets,
         )
+        # 1b. ABAC on every statement, before the cache (S01-T6): a cached result is never a way around a denial.
+        # A federation leg was decided as part of its federated statement.
+        if not _federation_leg:
+            try:
+                self._abac(scope, validated, source.get("tenant_id"), purpose)
+            except PolicyDenied as exc:
+                self._reject(audit, exc, started)
+                raise
 
         # 2. cache
         key = None
         if use_cache and self.cache is not None:
-            key = self.cache.key(validated.fingerprint, scope.scope_hash(), source["version"], eff_rows)
+            key = self.cache.key(validated.fingerprint, scope.scope_hash(), source["version"], eff_rows,
+                                 tenant=source.get("tenant_id"), policy_version=scope.policy_version)
             hit = self.cache.get(key)
             if hit is not None and isinstance(hit.get("columns"), list) and isinstance(hit.get("rows"), list):
                 return self._finish(audit, validated, hit["columns"], hit["rows"], bool(hit.get("truncated")), started,
@@ -277,6 +291,18 @@ class QueryGateway:
         return {"available": True, **summary}
 
     # ------------------------------------------------------------------ helpers
+    @staticmethod
+    def _abac(scope: DataScope, validated: ValidatedSQL, tenant_id: str | None, purpose: str) -> None:
+        """S01-T6: classification of the columns read, the statement's grain, the purpose, the caller's region."""
+        from analystos.governance import abac
+
+        verdict = abac.decide_query(scope, tenant_id=tenant_id, source_id=validated.source_id or None,
+                                    sql=validated.executable_sql, dialect=validated.dialect,
+                                    referenced_assets=validated.referenced_assets,
+                                    referenced_columns=validated.referenced_columns, purpose=purpose)
+        if not verdict.allow:
+            raise abac.denial(verdict, what="query")
+
     def _load_source(self, scope: DataScope, validated: ValidatedSQL) -> dict[str, Any]:
         session = self.session_factory()
         try:
@@ -303,6 +329,7 @@ class QueryGateway:
                 "execution_mode": row.execution_mode,
                 "staging_schema": row.staging_schema or staging_schema_for(row.id),
                 "workspace_id": row.workspace_id,
+                "tenant_id": getattr(ws, "tenant_id", None),
                 "version": version,
             }
         finally:
@@ -348,7 +375,7 @@ class QueryGateway:
 
     # ------------------------------------------------------------------ federation (P4-E03)
     def _execute_federated(self, scope: DataScope, sql: str, audit: dict[str, Any], started: float, *, eff_rows: int,
-                           eff_timeout: int, use_cache: bool, retain_rows: bool) -> QueryResult:
+                           eff_timeout: int, use_cache: bool, retain_rows: bool, purpose: str = "analysis") -> QueryResult:
         from analystos.engines.registry import federation_engine
 
         try:
@@ -360,10 +387,18 @@ class QueryGateway:
             raise
         audit.update(executed_sql=validated.executable_sql, fingerprint=validated.fingerprint,
                      referenced_assets=validated.referenced_assets, purpose=f"federated:{audit['purpose']}"[:120])
+        tenants = {sources[s].get("tenant_id") for s in sources}
+        tenant = next(iter(tenants)) if len(tenants) == 1 else None
+        try:
+            self._abac(scope, validated, tenant, purpose)
+        except PolicyDenied as exc:
+            self._reject(audit, exc, started)
+            raise
         key = None
-        if use_cache and self.cache is not None:
+        if use_cache and self.cache is not None and len(tenants) == 1:  # every leg's workspace has one tenant
             versions = "|".join(sources[s]["version"] for s in sorted(sources))
-            key = self.cache.key(validated.fingerprint, scope.scope_hash(), versions, eff_rows)
+            key = self.cache.key(validated.fingerprint, scope.scope_hash(), versions, eff_rows, tenant=tenant,
+                                 policy_version=scope.policy_version)
             hit = self.cache.get(key)
             if hit is not None and isinstance(hit.get("columns"), list) and isinstance(hit.get("rows"), list):
                 return self._finish(audit, validated, hit["columns"], hit["rows"], bool(hit.get("truncated")), started,
@@ -376,7 +411,8 @@ class QueryGateway:
                 leg_sql = _leg_sql(asset, validated.referenced_columns, bound.source_dialects[source_id])
                 leg = self.execute(bound, leg_sql, actor=audit["actor"], purpose=f"federation.leg:{audit['id']}",
                                    run_id=audit["run_id"], task_id=audit["task_id"], max_rows=leg_cap,
-                                   timeout_seconds=eff_timeout, retain_rows=False, use_cache=False)
+                                   timeout_seconds=eff_timeout, retain_rows=False, use_cache=False,
+                                   _federation_leg=True)
                 if leg.truncated:
                     raise InvalidInput(
                         f"{asset} has more than {leg_cap} rows, the federation limit per source; a partial leg would "
