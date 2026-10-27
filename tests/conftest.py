@@ -11,6 +11,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+# Hermetic: a developer's `.env` (settings, provider keys) never reaches the suite. Tests that need a setting
+# set it here or with monkeypatch; no test may make a billable model call.
+from analystos.core.config import Settings  # noqa: E402
+
+Settings.model_config["env_file"] = None
+
 TEST_DB = os.environ.get("ANALYSTOS_TEST_DATABASE_URL", "postgresql+psycopg://analystos:analystos@localhost:5432/analystos_test")
 os.environ["ANALYSTOS_DATABASE_URL"] = TEST_DB
 os.environ.setdefault("ANALYSTOS_ORCHESTRATOR", "local")

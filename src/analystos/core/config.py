@@ -372,7 +372,10 @@ def secret_env(name: str) -> str | None:
 
 
 def _env_file_values() -> dict[str, str]:
-    path = Path(str(Settings.model_config.get("env_file") or ".env"))
+    env_file = Settings.model_config.get("env_file")
+    if not env_file:  # disabled (the test suite): keys come from the process environment only
+        return {}
+    path = Path(str(env_file))
     try:
         stamp = path.stat().st_mtime_ns
     except OSError:

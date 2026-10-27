@@ -163,7 +163,8 @@ def question_coverage(objective: str, proposals: list[dict], resolutions: list[d
     required |= focus & distinctive
     synonyms = {"sla": {"sla", "breach", "made"}, "breach": {"breach", "sla", "made"},
                 "resolution": {"resolved", "resolution", "duration"}, "volume": {"volume", "count"}}
-    if any((p.get("spec") or {}).get("method") == "trend" for p in proposals):
+    volume_trend = methods.for_playbook("volume_trend")
+    if volume_trend is not None and any((p.get("spec") or {}).get("method") == volume_trend.name for p in proposals):
         addressed.add("volume")
     missing = sorted(t for t in required if not (synonyms.get(t, {t}) & addressed))
     return {"covered": not missing and bool(proposals), "missing": missing, "addressed": sorted(addressed)}
@@ -189,12 +190,15 @@ def metric_candidates(grounding: dict, types: dict, scope) -> list[dict]:
             outcome.update(type="duration_hours", end_column=metric["end_column"].rsplit(".", 1)[-1])
         if metric.get("true_value") is not None:
             outcome["value"] = metric["true_value"]
+        segment_method = methods.for_playbook("flag_by_segment" if rate else "measure_by_segment")
+        if segment_method is None:
+            continue
         for segment, st in types.get(asset, {}).items():
             if st != "categorical":
                 continue
             out.append({"question": f"Does {r['term']} differ by {segment}?", "statement": f"{r['term']} differs by {segment}.",
                         "rationale": f"Reviewed measure {r['id']} revision {r.get('revision')}", "priority": "high",
-                        "spec": {"asset": asset, "method": "rate_by_segment" if rate else "numeric_by_segment",
+                        "spec": {"asset": asset, "method": segment_method.name,
                                  "outcome": outcome, "segment": {"type": "column", "column": segment}}, "pack": "reviewed_metric"})
     return out[:12]
 
