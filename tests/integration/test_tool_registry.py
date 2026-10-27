@@ -136,7 +136,7 @@ def test_migration_0061_applies_and_reverts(control_db):
         cfg = Config(str(REPO_ROOT / "alembic.ini"))
         cfg.set_main_option("script_location", str(REPO_ROOT / "migrations"))
         cfg.set_main_option("sqlalchemy.url", url)
-        command.upgrade(cfg, "0061_tool_registry")
+        command.upgrade(cfg, "0065_tool_registry")
         insp = inspect(engine)
         for table in tables:
             assert {c["name"] for c in insp.get_columns(table)} == set(models.Base.metadata.tables[table].columns.keys()) | {

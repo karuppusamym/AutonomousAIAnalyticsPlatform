@@ -49,7 +49,7 @@ signature: {alg: ed25519, key_id: tenant-signing-1, value: ...}
 ## 4a. As built (2026-10-27, tasks T1–T5, backend)
 * **Package** `src/analystos/toolreg/` (`store`, `publish`, `invoke`, `external`, `signing`); contract
   `contracts/tool_manifest.py::ToolManifestV2` (`apiVersion: analystos/tool.v2`, exported as
-  `contracts/tool_manifest.schema.json`); API `api/routers/tools_v2.py`; migration `0061_tool_registry`.
+  `contracts/tool_manifest.schema.json`); API `api/routers/tools_v2.py`; migration `0065_tool_registry`.
 * **Manifest.** As §3, plus `title`, `description` (screened text, data not instructions) and `execution.ref` (what
   exactly runs: metric name + version + definition hash, verified-query id + template hash, dataset artifact id +
   content hash + columns, playbook definition key + version or built-in capability). Schemas are inlined, not `$ref`.
