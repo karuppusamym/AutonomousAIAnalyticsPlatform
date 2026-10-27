@@ -92,10 +92,9 @@ def test_a_tenant_cannot_write_into_another_tenants_workspace(two_tenants):
     from analystos.db.models import AnalysisRun
     from analystos.tenancy import DEFAULT_TENANT_ID, tenant_scope
 
-    with pytest.raises(ProgrammingError, match="row-level security"):
-        with tenant_scope(DEFAULT_TENANT_ID), session_scope() as s:
-            s.add(AnalysisRun(id=new_id("run"), workspace_id=two_tenants["ws_b"], objective="cross-tenant",
-                              requested_by=two_tenants["user_b"]))
+    with pytest.raises(ProgrammingError, match="row-level security"), tenant_scope(DEFAULT_TENANT_ID),             session_scope() as s:
+        s.add(AnalysisRun(id=new_id("run"), workspace_id=two_tenants["ws_b"], objective="cross-tenant",
+                          requested_by=two_tenants["user_b"]))
 
 
 def test_strict_mode_unbound_session_sees_nothing(two_tenants, monkeypatch):
@@ -139,6 +138,5 @@ def test_audit_event_is_append_only(control_db):
     audit("test", "tenancy.audit_probe", decision="allow")
     for stmt in ("UPDATE audit_event SET actor = 'x' WHERE action = 'tenancy.audit_probe'",
                  "DELETE FROM audit_event WHERE action = 'tenancy.audit_probe'"):
-        with pytest.raises(DBAPIError, match="append-only"):
-            with system_scope(), session_scope() as s:
-                s.execute(text(stmt))
+        with pytest.raises(DBAPIError, match="append-only"), system_scope(), session_scope() as s:
+            s.execute(text(stmt))

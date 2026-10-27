@@ -45,14 +45,21 @@ def test_workspace_scoped_tables_derive_from_workspace():
             assert sources[name].parent == "workspace", name
 
 
-def test_platform_private_tables_are_nullable_tenant_tables():
+def test_platform_private_tables_are_nullable_but_not_shared():
     sources = tenant_sources(Base.metadata)
     for name in PLATFORM_PRIVATE_TABLES:
-        assert name in sources and sources[name].nullable, name
+        assert name in sources and sources[name].nullable and not sources[name].shared, name
+
+
+def test_only_optional_workspace_catalogues_share_tenantless_rows():
+    sources = tenant_sources(Base.metadata)
+    assert sources["knowledge_pack"].shared and sources["knowledge_object"].shared
+    assert sources["run_event"].nullable and not sources["run_event"].shared  # pseudo "platform" workspace
+    assert not sources["analysis_run"].nullable  # FK to workspace: always a tenant
 
 
 def test_policy_reads_platform_rows_only_where_shared():
-    shared = _policy_sql("knowledge_pack", TenantSource("workspace", "workspace_id", True), "analystos_app")
+    shared = _policy_sql("knowledge_pack", TenantSource("workspace", "workspace_id", True, shared=True), "analystos_app")
     private = _policy_sql("audit_event", TenantSource("workspace", "workspace_id", True), "analystos_app")
     strict = _policy_sql("analysis_run", TenantSource("workspace", "workspace_id", False), "analystos_app")
     assert "tenant_id IS NULL OR" in shared

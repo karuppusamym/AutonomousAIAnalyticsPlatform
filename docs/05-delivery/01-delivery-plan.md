@@ -40,14 +40,14 @@ dependencies (IdP, pen test, live connector access) bring it to **~12 weeks to a
 ## 3. Waves
 
 ### Wave 0: Bootstrap (week 0–1)
-- [ ] Owner signs ADR-001…012 (or amends them).
-- [ ] Seed this repo from AnalystOS with history; CI green on Linux; mark POSIX-only tests on Windows (S07-T2).
+- [x] ADR-001…014 accepted (owner delegated the decisions, 2026-10-27).
+- [x] Seed this repo from AnalystOS with history (2026-10-27); POSIX-only worker tests marked (S07-T2). CI green on Linux still to confirm in CI.
 - [ ] Freeze donors: sign the Atlas/DataPilot parity checklists; open rows for remaining Atlas ports (secret managers, provider adapters, MCP catalogue screen).
 - [ ] Choose the **pilot domain**, 1–2 real sources, metric owners, and 20–50 golden questions with reference SQL.
 - [ ] Price JEV (tracker N-13) and set the dev model policy (N-14) so live evaluation runs.
 - [ ] Measure class baselines (practitioner protocol) for R1–R6 with the pilot team.
 
-### Wave 1: Foundations (weeks 1–4) — exit: AT-05, AT-06, AT-13, AT-14, AT-15, AT-21 green
+### Wave 1: Foundations (weeks 1–4) — started 2026-10-27: S01-T1…T3 done, T5 partial (see tracker) — exit: AT-05, AT-06, AT-13, AT-14, AT-15, AT-21 green
 S01 (all) · S02-T1…T5 · S05-T1…T3, T6 · S07-T1…T3 · S12-T2 · S04-T1…T2 · S13-T1…T3
 
 ### Wave 2: Core product (weeks 4–7) — exit: AT-01, AT-02, AT-16…AT-20 green; Desk usable end to end

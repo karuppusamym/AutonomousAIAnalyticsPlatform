@@ -31,12 +31,15 @@ GLOBAL_TABLES: dict[str, str] = {
 class TenantSource:
     parent: str | None  # table whose tenant this row inherits; None = only the bound tenant
     fk: str | None  # column on this table that references parent.id
-    nullable: bool  # platform-wide rows (NULL tenant) allowed and readable by every tenant
+    nullable: bool  # rows without a tenant may exist (platform rows, or rows naming a pseudo workspace)
     default_tenant: bool = False  # a root created in system scope falls into the default tenant
+    shared: bool = False  # tenant-less rows are a platform catalogue every tenant may read (never write)
 
 
-# Tables whose platform rows (NULL tenant: failed logins, platform model calls) stay private to the
-# platform. Other nullable tables (knowledge packs shipped with the product) share platform rows read-only.
+# Tables whose tenant-less rows (failed logins, platform model calls) stay private to the platform even
+# though workspace_id is optional. Other optional-workspace tables (knowledge packs shipped with the
+# product) share tenant-less rows read-only. A workspace_id without a foreign key may name a pseudo
+# workspace ("platform" budget events): those rows get no tenant and are visible only to system scope.
 PLATFORM_PRIVATE_TABLES = frozenset({"audit_event", "model_call", "decision", "decision_outcome"})
 
 # Children whose tenant comes from a parent other than workspace.
@@ -69,14 +72,19 @@ def tenant_sources(metadata: MetaData) -> dict[str, TenantSource]:
         if name in out or name in GLOBAL_TABLES or name in CHILD_PARENTS:
             continue
         if "workspace_id" in table.c:
-            out[name] = TenantSource("workspace", "workspace_id", nullable=bool(table.c.workspace_id.nullable))
+            col = table.c.workspace_id
+            optional = bool(col.nullable)
+            pseudo_ok = not col.foreign_keys  # no FK: the id may name no real workspace
+            out[name] = TenantSource("workspace", "workspace_id", nullable=optional or pseudo_ok,
+                                     shared=optional and name not in PLATFORM_PRIVATE_TABLES)
     pending = dict(CHILD_PARENTS)
     while pending:
         progressed = False
         for name, (parent, fk) in list(pending.items()):
             if parent in out and name in tables:
                 fk_nullable = bool(tables[name].c[fk].nullable)
-                out[name] = TenantSource(parent, fk, nullable=out[parent].nullable or fk_nullable)
+                out[name] = TenantSource(parent, fk, nullable=out[parent].nullable or fk_nullable,
+                                         shared=out[parent].shared)
                 del pending[name]
                 progressed = True
             elif name not in tables:
@@ -96,7 +104,7 @@ def unclassified(metadata: MetaData) -> list[str]:
 def attach_tenant_columns(metadata: MetaData) -> None:
     """Add an (unmapped) ``tenant_id`` column to every tenant-owned table that does not declare one.
     Unmapped on purpose: ORM inserts omit it and the database trigger fills it, so no model changes."""
-    for name, src in tenant_sources(metadata).items():
+    for name in tenant_sources(metadata):
         table = metadata.tables[name]
         if "tenant_id" in table.c:
             continue

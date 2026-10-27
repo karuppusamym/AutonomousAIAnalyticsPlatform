@@ -20,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from analystos.tenancy.context import DEFAULT_TENANT_ID
-from analystos.tenancy.schema import PLATFORM_PRIVATE_TABLES, TenantSource
+from analystos.tenancy.schema import TenantSource
 
 _IDENT = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
 CURRENT = "analystos_current_tenant()"
@@ -62,8 +62,7 @@ def _policy_sql(table: str, src: TenantSource | None, role: str) -> str:
         check = f"tenant_id = {CURRENT}"
     else:
         assert src is not None
-        shared = src.nullable and table not in PLATFORM_PRIVATE_TABLES
-        expr = f"tenant_id IS NULL OR tenant_id = {CURRENT}" if shared else f"tenant_id = {CURRENT}"
+        expr = f"tenant_id IS NULL OR tenant_id = {CURRENT}" if src.shared else f"tenant_id = {CURRENT}"
         check = f"tenant_id = {CURRENT}"  # a tenant may read platform rows but never create one
     return (f"CREATE POLICY tenant_isolation ON {_q(table)} TO {_q(role)} "
             f"USING ({expr}) WITH CHECK ({check})")

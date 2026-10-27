@@ -87,7 +87,8 @@ def test_migration_0041_up_down_up(control_db):
 
         command.upgrade(cfg, "0041")
         for table, model in (("definition", Definition), ("monitor", Monitor), ("ask_thread", AskThread)):
-            assert cols(table) == {c.name for c in model.__table__.columns}, table
+            # tenant_id arrives with 0057 (ADR-009); the 0041 schema predates it
+            assert cols(table) == {c.name for c in model.__table__.columns} - {"tenant_id"}, table
         idx = {i["name"]: i for i in inspect(engine).get_indexes("definition")}
         assert "tested" in str(idx["uq_definition_one_draft"].get("dialect_options", {}).get("postgresql_where"))
         command.downgrade(cfg, "0037")
