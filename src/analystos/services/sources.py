@@ -33,6 +33,16 @@ def _credential_in_config(config: dict, depth: int = 0) -> bool:
     return False
 
 
+def _credentials_in(kind: str, config: dict) -> bool:
+    """A REST description's `auth` block names the scheme, header and user only (connectors/rest.py AuthSpec);
+    anything else in it, and every other key, is checked like any source config."""
+    if kind != "rest":
+        return _credential_in_config(config)
+    auth = config.get("auth")
+    extra = set(auth) - {"type", "header", "username"} if isinstance(auth, dict) else auth is not None
+    return bool(extra) or _credential_in_config({k: v for k, v in config.items() if k != "auth"})
+
+
 def _checked_secret_ref(ref: str | None) -> str | None:
     """A reference names a process secret the platform will hand to the source host: only what the operator
     allows (connectors/secrets.py `check_secret_ref`), checked when it is set, not first at connect time."""
@@ -57,7 +67,7 @@ def register_source(session: Session, user: User, workspace_id: str, *, kind: st
     if settings.enabled_kinds and spec.kind not in settings.enabled_kinds:
         raise InvalidInput(f"source kind '{spec.kind}' is disabled by the administrator")
     config = dict(config or {})
-    if _credential_in_config(config):
+    if _credentials_in(spec.kind, config):
         raise InvalidInput("put credentials in a secret reference (env:NAME or file:/path), never in source config")
     missing = [f for f in spec.required if config.get(f) in (None, "")]
     if missing:
@@ -65,6 +75,10 @@ def register_source(session: Session, user: User, workspace_id: str, *, kind: st
     if spec.secret and spec.secret.required and not secret_ref:
         raise InvalidInput(f"{spec.label} needs a secret reference (env:NAME or file:/path) for its {spec.secret.field}")
     secret_ref = _checked_secret_ref(secret_ref)
+    if spec.kind == "rest":  # S02-T8: the description itself is validated (read-only verbs, relative paths)
+        from analystos.connectors.rest import parse_spec
+
+        parse_spec(config)
     mode = kinds.execution_mode_for(spec.kind, config.pop("execution_mode", None) if settings.allow_pushdown else "staged")
     if mode == "staged":  # a snapshot must say which population it is (P4-C12)
         from analystos.connectors.sampling import validate_sampling
@@ -114,11 +128,15 @@ def update_source(session: Session, user: User, workspace_id: str, source_id: st
     if config is not None:
         settings = platform().sources
         new_config = dict(config or {})
-        if _credential_in_config(new_config):
+        if _credentials_in(spec.kind, new_config):
             raise InvalidInput("put credentials in a secret reference (env:NAME or file:/path), never in source config")
         missing = [f for f in spec.required if new_config.get(f) in (None, "")]
         if missing:
             raise InvalidInput(f"{spec.label} needs: {', '.join(missing)}")
+        if spec.kind == "rest":
+            from analystos.connectors.rest import parse_spec
+
+            parse_spec(new_config)
         new_mode = kinds.execution_mode_for(spec.kind, new_config.pop("execution_mode", None) if settings.allow_pushdown else "staged")
         if new_mode == "staged":  # a snapshot must say which population it is (P4-C12)
             from analystos.connectors.sampling import validate_sampling

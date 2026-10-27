@@ -258,6 +258,40 @@ def bi_sync(workspace_ids: list[str] | None = None) -> dict:
 _SELF_BINDING = ("worker", "scheduler", "api", "demo-seed")
 
 
+def certify_connector_main(argv: list[str]) -> int:
+    """`analystos certify-connector --kind postgres --dsn-ref env:NAME [--out ROOT]` (S02-T6). The DSN reference is
+    operator configuration (env:/file:/vault:...), resolved here and never printed or written."""
+    import subprocess
+
+    from analystos.connectors.certify_kit import certify, write_evidence
+    from analystos.connectors.secrets import resolve_platform_secret
+
+    parser = argparse.ArgumentParser(prog="analystos certify-connector")
+    parser.add_argument("--kind", required=True, help="source kind (config/source_kinds.yaml), e.g. postgres")
+    parser.add_argument("--dsn-ref", required=True, help="secret reference holding a SQLAlchemy URL for the read-only identity")
+    parser.add_argument("--schemas", default="", help="comma-separated schemas the metadata crawl reads (default: the kind's)")
+    parser.add_argument("--out", default=str(DATA_ROOT), help="repository root; evidence goes to docs/evidence/connectors/")
+    args = parser.parse_args(argv)
+    dsn = resolve_platform_secret(args.dsn_ref)
+    if not dsn:
+        parser.error("--dsn-ref resolved to nothing")
+    schemas = [s.strip() for s in args.schemas.split(",") if s.strip()] or None
+    report = certify(args.kind, dsn, settings=get_settings(), schemas=schemas)
+    try:
+        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=DATA_ROOT, capture_output=True, text=True,
+                              check=False).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--", "src", "config"], cwd=DATA_ROOT,
+                               capture_output=True, text=True, check=False).stdout.strip()
+        head = f"{head} + uncommitted changes" if head and dirty else head
+    except OSError:
+        head = ""
+    path = write_evidence(report, Path(args.out), commit=head)
+    for c in report.checks:
+        print(f"{'PASS' if c.passed else 'FAIL'}  {c.name:<13} {c.detail}")
+    print(f"{report.kind}: {'CERTIFIED' if report.passed else 'NOT CERTIFIED'} -> {path}")
+    return 0 if report.passed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     """Operator commands (migrate, seed, calibrate, knowledge, bi-sync, ...) are cross-tenant platform
     maintenance run with the owner's credentials: they run in ``system_scope`` (S01-T4)."""
@@ -280,6 +314,8 @@ def _main(argv: list[str]) -> int:
         return schedules_main(argv[1:])
     if argv[:1] == ["audit"]:
         return audit_main(argv[1:])
+    if argv[:1] == ["certify-connector"]:  # S02-T6: live certification kit for one source kind
+        return certify_connector_main(argv[1:])
     if argv[:1] == ["demo-seed"]:  # a ready demo workspace through the running API (`analystos demo-seed --help`)
         from analystos.demo.seed import main as demo_seed
 
@@ -292,12 +328,14 @@ def _main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="analystos")
     parser.add_argument("command", choices=["migrate", "provision-analytics-roles", "seed", "worker", "scheduler", "api",
                                             "export-contracts", "replay-run", "packs", "calibrate", "knowledge", "schedules", "audit",
-                                            "bi-sync", "sandbox-status", "check-semantics", "demo-seed"],
+                                            "bi-sync", "sandbox-status", "check-semantics", "demo-seed",
+                                            "certify-connector"],
                         help="knowledge: `analystos knowledge --help` (reindex, reembed, import, export, ...); "
                              "demo-seed: `analystos demo-seed --help` (a ready demo workspace through the API); "
                              "check-semantics: `analystos check-semantics PATH... [--json]` (offline model validation); "
                              "schedules: `analystos schedules disable-demo [--all] [--workspace W] [--dry-run]`; "
-                             "audit: `analystos audit seal|verify|export [--tenant T | --platform] [--full] [--out DIR]`")
+                             "audit: `analystos audit seal|verify|export [--tenant T | --platform] [--full] [--out DIR]`; "
+                             "certify-connector: `analystos certify-connector --kind K --dsn-ref REF` (S02-T6)")
     parser.add_argument("run_id", nargs="?", help="replay-run: the analysis run id")
     parser.add_argument("--check", action="store_true", help="replay-run: re-execute recorded calls offline and compare")
     parser.add_argument("--out", help="replay-run: write the JSON report to this file; export-contracts: the directory")

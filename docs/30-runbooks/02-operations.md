@@ -149,3 +149,49 @@ event and notification. Without Redis, reservations fail closed (`spend_counters
 * Rolling upgrade from `bound`: deploy the new code everywhere first (workers last is fine: engine activities bind the
   run's tenant without the header), then remove any `ANALYSTOS_TENANCY_MODE=bound` override. A symptom of a missed
   binding is "not found" or an empty list from background work; set `bound` to restore service while you fix it.
+
+## Source credentials and the query worker (S02)
+
+**Secret references.** A source, MCP server or webhook stores a `secret_ref`, never a value. Workspace users
+register these, so a reference can only name what the operator allows (`connectors/secrets.py`):
+
+| Scheme | Allowed when | Configure |
+|---|---|---|
+| `env:NAME` | `NAME` starts with a prefix in `ANALYSTOS_SECRET_ENV_PREFIXES` (default `ANALYSTOS_SOURCE_SECRET_`), or is listed in `ANALYSTOS_SECRET_ENV_NAMES`. Never an `ANALYSTOS_*` platform variable, whatever is listed | put each source password in its own `ANALYSTOS_SOURCE_SECRET_<NAME>` variable |
+| `file:/abs/path` | the resolved path sits below a directory in `ANALYSTOS_SECRET_FILE_DIRS` (default `/run/secrets`) | mount secrets there |
+| `vault:<path>[#field]` | the path starts with `ANALYSTOS_VAULT_PREFIX` (default `secret/data/analystos/`) | `ANALYSTOS_VAULT_ADDR`, `ANALYSTOS_VAULT_TOKEN_REF` (an `env:`/`file:` ref the operator controls), `ANALYSTOS_VAULT_NAMESPACE` |
+| `aws-sm:<name>[#key]` | the name starts with `ANALYSTOS_AWS_SM_PREFIX` (default `analystos/`) | `ANALYSTOS_AWS_REGION`, `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` |
+| `azure-kv:<vault>/<name>[#key]` | the vault is in `ANALYSTOS_AZURE_KV_VAULTS` and the name starts with `ANALYSTOS_AZURE_KV_PREFIX` | `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET`, or a managed identity |
+| `gcp-sm:<project>/<secret>[@version][#key]` | the project is in `ANALYSTOS_GCP_SM_PROJECTS` and the secret starts with `ANALYSTOS_GCP_SM_PREFIX` | `GOOGLE_APPLICATION_CREDENTIALS`, or the metadata server |
+
+A prefix may contain `{tenant}` (for example `ANALYSTOS_VAULT_PREFIX=secret/data/analystos/{tenant}/`): a tenant
+can then only name its own secrets. The policy is checked when a reference is set (403 on register/update) and
+again when it resolves, so tightening it also stops references stored earlier. Secret-manager values are cached in
+memory for at most `ANALYSTOS_SECRET_CACHE_SECONDS` (≤ 5 min) and never logged. The SMTP password
+(`ANALYSTOS_SMTP_PASSWORD_REF`) is operator configuration and is not limited by these rules.
+
+*Upgrading:* a source registered with `env:SERVICENOW_PASSWORD` (the old demo) no longer resolves. Rename the
+variable to `ANALYSTOS_SOURCE_SECRET_SERVICENOW` and update the source's `secret_ref` (or list the old name in
+`ANALYSTOS_SECRET_ENV_NAMES` while you migrate).
+
+**Query worker.** With `ANALYSTOS_QUERY_TRANSPORT=temporal` every gateway statement runs as a `QueryWorkflow` on the
+`<prefix>-query` task queue, served by `analystos worker --queues query` (Helm pool `query`). Run the API and the
+other pools with `ANALYSTOS_PROCESS_ROLE=api` (or the pool name): source credentials then resolve only in roles
+listed in `ANALYSTOS_CREDENTIAL_ROLES` (default `all,query,crawl,elt`; `all` is the single-process default). The
+default transport is `inprocess` in every profile.
+
+**Result handles.** Results above 256 rows or 64 KB (`ANALYSTOS_RESULT_INLINE_MAX_ROWS` / `_BYTES`) are written as
+Parquet to `ANALYSTOS_RESULT_STORE_DIR/tenant/<tenant>/results/<query_id>.parquet` and recorded in `result_handle`
+(tenant RLS). The scheduler's housekeeping deletes files after `ANALYSTOS_RESULT_TTL_HOURS` (default 24). Put the
+directory on an encrypted volume; it holds customer data.
+
+**Scan budget.** `ANALYSTOS_QUERY_MAX_SCAN_BYTES` (platform), a workspace policy's `max_scan_bytes` and a request's
+`budget.max_scan_bytes`: the smallest applies. The gateway estimates first (PostgreSQL `EXPLAIN`, relations read
+whole count their size) and refuses above it (`query_execution.reason_code = budget.max_scan_bytes`). A workspace
+policy's `data_movement: none` refuses multi-source statements.
+
+**Certifying a connector.** `analystos certify-connector --kind postgres --dsn-ref env:ANALYSTOS_CERT_PG_DSN
+--schemas <schema>` runs the kit (validator suite, read-only, timeout, cancel, row cap, metadata, type mapping,
+estimate, session identity) against a live engine with the read-only identity and writes
+`docs/evidence/connectors/<kind>-<date>.md`. A kind is `certified` only while a passing file is younger than 180 days.
+

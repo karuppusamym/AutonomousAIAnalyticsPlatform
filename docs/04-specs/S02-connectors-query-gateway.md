@@ -73,3 +73,71 @@ test, and a multi-source join test (PG + CSV) with lineage on both.
 | S02-T6 | Certification kit + certify PG, MSSQL, Snowflake, BigQuery live | 4d (needs access) |
 | S02-T7 | Multi-source via DuckDB on handles | 3d |
 | S02-T8 | Declarative REST connector | 3d |
+
+## 8. As built (2026-10-27)
+
+What landed, and where it differs from §3–§7. Evidence is in the tracker rows S02-T1…T8 and S02-SEC.
+
+* **Security fix (S02-SEC).** A workspace editor could register `secret_ref: env:<ANY_VAR>` and receive that process
+  variable (for example `OPENROUTER_API_KEY`, `ANALYSTOS_JWT_SECRET`) as the password sent to a host they control.
+  Workspace-registered references (sources, MCP servers) now pass an operator policy in `connectors/secrets.py`:
+  `env:` only under `ANALYSTOS_SECRET_ENV_PREFIXES` (default `ANALYSTOS_SOURCE_SECRET_`) or operator-listed names
+  (never `ANALYSTOS_*`), `file:` only below `ANALYSTOS_SECRET_FILE_DIRS`, manager refs only under their configured
+  prefix (optionally `{tenant}`-scoped). Checked at registration (403) and again at resolution. Webhooks keep their
+  `ANALYSTOS_WEBHOOK_` namespace; the SMTP password is a platform ref. The demo, compose, packs, runbooks and tests
+  use `env:ANALYSTOS_SOURCE_SECRET_SERVICENOW`. The same hole existed for `file:` refs and MCP bearer tokens; both
+  are covered.
+* **T1.** `gateway/protocol.py` (`QueryRequest`, `QueryService`, `InProcessQueryService`, `TemporalQueryService`,
+  `RemoteQueryGateway` for existing `execute(scope, sql)` / `run_sql_for` callers) and `workflows/query_workflow.py`
+  (`QueryWorkflow` + activity `query_gateway_op` on the new `query` queue, cancellation through the heartbeat).
+  Deviations: the transport defaults to `inprocess` in **every** profile (`standard` opts in with
+  `ANALYSTOS_QUERY_TRANSPORT=temporal`); "credentials resolve only in worker:query" is enforced by
+  `ANALYSTOS_PROCESS_ROLE` / `ANALYSTOS_CREDENTIAL_ROLES` (default `all,query,crawl,elt`, because staging and crawls
+  extract staged sources in their own pools); `explain` (Ask's plan view) is not remoted. The Temporal path is covered
+  by unit tests of its pieces only: no live Temporal server was used (the shared one belongs to the lead session).
+* **T2.** `vault:` (KV v1/v2, namespace), `aws-sm:` (SigV4 ported from Atlas, pinned to AWS's published vector),
+  `azure-kv:` (client credentials or managed identity), `gcp-sm:` (service-account JWT or metadata server), `#key`
+  picks a JSON field. Bounded in-memory cache ≤ 5 min. Verified against mocked HTTP transports only: no live
+  Vault/AWS/Azure/GCP account was reachable.
+* **T3.** `gateway/handles.py`: rows stream through a `ResultSink`; past 256 rows / 64 KB the result is written as
+  Parquet (zstd) to `tenant/{t}/results/{qe_id}.parquet` and recorded in `result_handle` (tenant RLS, migration
+  `0061_query_gateway_s02`) with schema, row count, bytes, sha256, expiry and the highest column classification.
+  `open_dataset` / `read_rows` re-check tenant visibility, expiry and the sha256 on every open; the scheduler's
+  housekeeping purges expired files. Deviations: the store is a local directory (`ANALYSTOS_RESULT_STORE_DIR`), not
+  an S3-compatible object store, and files are not encrypted by the platform (use an encrypted volume). The legacy
+  `QueryGateway.execute(scope, sql)` keeps `result_mode="inline"` by default so existing steps are unchanged;
+  `QueryRequest` defaults to `auto`. Consumers on handles today: multi-source joins (T7) and `read_rows` /
+  `open_dataset`; charts, compute steps and statistics still take inline rows.
+* **T4.** `gateway/cost.py` + `QueryGateway.estimate`. PostgreSQL (analytics DB and pushdown):
+  `EXPLAIN (FORMAT JSON, VERBOSE)`; relations read whole (seq / bitmap heap scans) count their `pg_relation_size`,
+  because a scan node's rows are counted after its filter. Budget = min(request, workspace policy `max_scan_bytes`,
+  `ANALYSTOS_QUERY_MAX_SCAN_BYTES`); above it the statement is refused before it runs and audited with
+  `reason_code=budget.max_scan_bytes` and the estimate; an unreadable plan under a budget fails closed. MySQL,
+  BigQuery (dry run) and Snowflake parsers exist and are unit-tested on recorded plans, but those kinds are staged
+  here, so their queries are estimated by the PostgreSQL path. The estimate runs only when a budget applies (an
+  extra round trip otherwise); "actual" is the row count and result bytes, not the bytes the engine scanned.
+  ADBC (§3.4) is **not done**: no ADBC driver is installed in this environment; the SQLAlchemy path streams instead.
+* **T5.** Source-kind catalog `capabilities.session_identity`, driver-bound parameters `%(user)s` (AnalystOS user
+  id), `%(user_email)s`, `%(workspace)s`. PostgreSQL sets transaction-local `app.user` / `app.user_email` /
+  `app.workspace` (live-tested against a source RLS policy). SQL Server (`sp_set_session_context`, read-only) and
+  Snowflake (session variables) are declared but untested (no access; Snowflake is staged-only).
+* **T6.** `connectors/certify_kit.py` + `analystos certify-connector --kind K --dsn-ref REF [--schemas S]`, writing
+  `docs/evidence/connectors/<kind>-<date>.md`. `connectors/certification.py` reads both evidence layouts and
+  certifies only a passing file younger than 180 days. PostgreSQL 16 certified locally on 2026-10-27. Live checks
+  exist for PostgreSQL only; **MSSQL, Snowflake and BigQuery stay blocked** (no live access): the kit runs their
+  validator suite and reports every live check as failed, so they cannot be certified by it.
+* **T7.** A federated statement's legs run through `execute` with `result_mode="handle"` on each source's own scope,
+  identity, budget and audit row; DuckDB joins the Parquet datasets lazily; lineage edges record
+  `query derived_from result_handle`, `result_handle reads table` and `result_handle from_source source` for every
+  leg. Workspace policy `data_movement: none | staged_ok` gates multi-source statements; the default is `staged_ok`
+  so existing cross-source runs keep working (set `none` to forbid). The join runs where the gateway runs
+  (worker:query under the Temporal transport), not in a separate `worker:compute` activity. No Trino engine.
+* **T8.** `connectors/rest.py` (kind `rest`, staged): declarative base URL, typed parameters with fixed values,
+  pagination `page | offset | cursor | next_url` (a short page ends paging; a `next_url` must stay on the base URL),
+  JSON path response mapping, rate limit, auth `bearer | basic | header` from `secret_ref`. GET only, or a POST marked
+  `safe: true` **and** listed in `ANALYSTOS_REST_SAFE_POST_ALLOWLIST`. Every request goes through the outbound SSRF
+  guard (pinned address, no redirects, size cap). Link-header pagination is not supported (the guard returns the body
+  only).
+* **Invariants (§5).** Refusals carry `reason_code` and keep only the hashed + literal-redacted statement. Not done:
+  the import-linter contract forbidding `connectors.*` outside the gateway (crawler, staging and the source service
+  import connectors today), and the network policy separating the query identity from the control-plane DB.

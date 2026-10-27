@@ -544,6 +544,12 @@ def housekeeping() -> dict[str, Any]:
         out["freshness_alerts"] = len(check_freshness())
     except Exception:
         log.exception("pipeline freshness check failed")
+    try:  # S02-T3: result handles past their TTL (files deleted, rows marked purged)
+        from analystos.gateway.handles import purge_expired_results
+
+        out["results_purged"] = purge_expired_results()
+    except Exception:
+        log.exception("result handle purge failed")
     try:  # N-3: approved external deliveries that are due (bounded retries; never fatal to the loop)
         from analystos.services.deliveries import process_due
 

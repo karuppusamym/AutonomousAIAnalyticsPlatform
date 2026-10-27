@@ -8,8 +8,20 @@ the connection first and passes the driver query timeout in the URL.
 """
 from __future__ import annotations
 
+import contextlib
+import threading
+import time
+from typing import Any
+
 from analystos.connectors.naming import is_safe_identifier
-from analystos.core.errors import AnalystOSError, Forbidden, InvalidInput, QueryTimeout, UpstreamUnavailable
+from analystos.core.errors import (
+    AnalystOSError,
+    Forbidden,
+    InvalidInput,
+    QueryTimeout,
+    RunCancelled,
+    UpstreamUnavailable,
+)
 from analystos.engines.base import Limits, ReaderIdentity, ReadOnlyEngine, Rows
 from analystos.gateway.engines import get_engine
 from analystos.gateway.types import ValidatedSQL
@@ -41,18 +53,111 @@ class SessionSQLEngine(ReadOnlyEngine):
         return run_session_sql(identity.url or "", stmt.executable_sql, limits.max_rows, identity.session_sql)
 
 
-def run_postgres(url: str, sql: str, max_rows: int, timeout: int, role: str | None = None) -> Rows:
-    """``role``: staged sources run as the owning workspace's reader role for this transaction only."""
+# Statements in flight, by query execution id: `cancel_running` interrupts one from another thread (psycopg
+# `Connection.cancel()` sends the server a cancel request; a driver without one cannot be cancelled).
+_running: dict[str, Any] = {}
+_cancelled: set[str] = set()
+_running_lock = threading.Lock()
+IdentitySQL = tuple[tuple[str, dict[str, Any]], ...]
+
+
+def cancel_running(query_id: str) -> bool:
+    """Ask the source to cancel ``query_id``. A cancel request only interrupts a statement that is executing, so
+    one that lands during the session preamble would be lost: the id is flagged (checked right before the
+    statement starts) and the request is re-sent until the statement has ended (about 10 s at most)."""
+    with _running_lock:
+        conn = _running.get(query_id)
+        cancel = getattr(conn, "cancel_safe", None) or getattr(conn, "cancel", None)  # psycopg >= 3.2: cancel_safe
+        if conn is None or not callable(cancel):
+            return False
+        _cancelled.add(query_id)
+
+    def still_running() -> bool:
+        with _running_lock:
+            return _running.get(query_id) is conn
+
+    def keep_cancelling() -> None:
+        for _ in range(50):
+            if not still_running():
+                return
+            with contextlib.suppress(Exception):  # the statement may have finished in between
+                cancel()
+            time.sleep(0.2)
+
+    threading.Thread(target=keep_cancelling, daemon=True, name=f"cancel-{query_id[:20]}").start()
+    return True
+
+
+def _raise_if_cancelled(query_id: str | None) -> None:
+    if query_id:
+        with _running_lock:
+            if query_id in _cancelled:
+                raise RunCancelled("The query was cancelled.")
+
+
+def _track(query_id: str | None, conn: Any) -> None:
+    if query_id:
+        with _running_lock:
+            _running[query_id] = conn
+
+
+def _untrack(query_id: str | None) -> bool:
+    """Forget a statement; True when it was cancelled on request."""
+    if not query_id:
+        return False
+    with _running_lock:
+        _running.pop(query_id, None)
+        if query_id in _cancelled:
+            _cancelled.discard(query_id)
+            return True
+    return False
+
+
+def _type_code(d: Any) -> Any:
+    return d[1] if isinstance(d, tuple) else getattr(d, "type_code", None)
+
+
+def _fetch(cur: Any, max_rows: int, sink: Any | None) -> list[Any]:
+    """Without a sink: max_rows + 1 raw rows (the extra one marks truncation). With a sink: JSON-safe batches
+    stream into it until it has max_rows (it records the truncation itself) and nothing is returned."""
+    if sink is None:
+        return cur.fetchmany(max_rows + 1)
+    from analystos.gateway.handles import BATCH_ROWS, PG_TYPE_HINTS
+
+    desc = cur.description or []
+    sink.begin([d[0] for d in desc], [PG_TYPE_HINTS.get(_type_code(d)) for d in desc])
+    while sink.wants_more:
+        batch = cur.fetchmany(BATCH_ROWS)
+        if not batch:
+            break
+        sink.add([[json_safe(v) for v in r] for r in batch])
+    return []
+
+
+def _driver(dbapi: Any) -> Any:
+    return getattr(dbapi, "driver_connection", None) or dbapi
+
+
+def run_postgres(url: str, sql: str, max_rows: int, timeout: int, role: str | None = None, *, sink: Any | None = None,
+                 identity_sql: IdentitySQL = (), query_id: str | None = None) -> Rows:
+    """``role``: staged sources run as the owning workspace's reader role for this transaction only.
+    ``identity_sql``: the source kind's session-identity statements (S02-T5), parameters bound by the driver,
+    run inside the READ ONLY transaction so the source's own row security sees the end user.
+    ``sink``: stream rows into a ResultSink (S02-T3) instead of returning them."""
     import psycopg
 
     if role is not None and not is_safe_identifier(role):
         raise Forbidden("workspace reader role name is not a safe identifier")
 
     engine = get_engine(url)
+    raw_rows: list[Any] = []
+    columns: list[str] = []
+    cancelled = False
     try:
         with engine.connect() as conn:
             dbapi = conn.connection
             cur = dbapi.cursor()
+            _track(query_id, _driver(dbapi))
             try:
                 dbapi.rollback()  # start from a clean transaction (pool pre-ping may have opened one)
                 cur.execute("SET TRANSACTION READ ONLY")
@@ -64,15 +169,21 @@ def run_postgres(url: str, sql: str, max_rows: int, timeout: int, role: str | No
                                         "re-stage the source or run `analystos migrate`") from None
                 cur.execute(f"SET LOCAL statement_timeout = {int(timeout * 1000)}")
                 cur.execute("SET LOCAL idle_in_transaction_session_timeout = 60000")
+                for stmt, params in identity_sql:
+                    cur.execute(stmt, params)
+                _raise_if_cancelled(query_id)
                 cur.execute(sql)
                 columns = [d[0] for d in (cur.description or [])]
-                raw_rows = cur.fetchmany(max_rows + 1)
+                raw_rows = _fetch(cur, max_rows, sink)
             finally:
+                cancelled = _untrack(query_id)
                 try:
                     dbapi.rollback()
                 finally:
                     cur.close()
     except psycopg.errors.QueryCanceled:
+        if cancelled:
+            raise RunCancelled("The query was cancelled.") from None
         raise QueryTimeout(f"The query exceeded the {timeout}s timeout. Aggregate more or filter the data.") from None
     except (psycopg.errors.InsufficientPrivilege, psycopg.errors.ReadOnlySqlTransaction) as exc:
         raise Forbidden(f"The source refused the query: {first_line(exc)}") from None
@@ -80,6 +191,8 @@ def run_postgres(url: str, sql: str, max_rows: int, timeout: int, role: str | No
         raise UpstreamUnavailable(f"The source database is unavailable: {first_line(exc)}") from None
     except psycopg.Error as exc:
         raise InvalidInput(f"The query failed in the source: {first_line(exc)}") from None
+    except AnalystOSError:
+        raise
     except Exception as exc:  # sqlalchemy-wrapped connection errors
         orig = getattr(exc, "orig", None)
         if isinstance(orig, psycopg.OperationalError) or exc.__class__.__name__ == "OperationalError":
@@ -89,21 +202,28 @@ def run_postgres(url: str, sql: str, max_rows: int, timeout: int, role: str | No
     return columns, rows
 
 
-def run_session_sql(url: str, sql: str, max_rows: int, session_sql: list[str] | tuple[str, ...] = ()) -> Rows:
+def run_session_sql(url: str, sql: str, max_rows: int, session_sql: list[str] | tuple[str, ...] = (), *,
+                    sink: Any | None = None, identity_sql: IdentitySQL = (), query_id: str | None = None) -> Rows:
     """Non-postgres pushdown: the catalog's read-only/timeout session statements (if the kind
     has any) run on the same connection first; the driver URL carries the query timeout."""
     engine = get_engine(url)
+    cancelled = False
     try:
         with engine.connect() as conn:
             dbapi = conn.connection
             cur = dbapi.cursor()
+            _track(query_id, _driver(dbapi))
             try:
                 for stmt in session_sql:
                     cur.execute(stmt)
+                for stmt, params in identity_sql:
+                    cur.execute(stmt, params)
+                _raise_if_cancelled(query_id)
                 cur.execute(sql)
                 columns = [d[0] for d in (cur.description or [])]
-                raw_rows = cur.fetchmany(max_rows + 1)
+                raw_rows = _fetch(cur, max_rows, sink)
             finally:
+                cancelled = _untrack(query_id)
                 try:
                     dbapi.rollback()
                 finally:
@@ -111,6 +231,8 @@ def run_session_sql(url: str, sql: str, max_rows: int, session_sql: list[str] | 
     except AnalystOSError:
         raise
     except Exception as exc:  # noqa: BLE001 - driver specific
+        if cancelled:
+            raise RunCancelled("The query was cancelled.") from None
         text_ = first_line(getattr(exc, "orig", None) or exc)
         if "timeout" in text_.lower() or "timed out" in text_.lower():
             raise QueryTimeout("The query exceeded the timeout. Aggregate more or filter the data.") from None

@@ -48,6 +48,16 @@ workers:
       limits: {cpu: "2", memory: 2Gi}
     autoscaling: {enabled: false}
     pdb: {enabled: true, minAvailable: 1}
+  # worker:query (S02-T1): runs gateway statements when config ANALYSTOS_QUERY_TRANSPORT=temporal; the only pool
+  # that needs source credentials then (the API runs with ANALYSTOS_PROCESS_ROLE=api).
+  query:
+    queues: query
+    replicas: 3
+    resources:
+      requests: {cpu: 250m, memory: 1Gi}
+      limits: {cpu: "2", memory: 2Gi}
+    autoscaling: {enabled: false}
+    pdb: {enabled: true, minAvailable: 1}
   elt:
     queues: elt
     replicas: 0

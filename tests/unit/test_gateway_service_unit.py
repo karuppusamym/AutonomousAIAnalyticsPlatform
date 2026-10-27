@@ -51,6 +51,9 @@ class FakeSession:
     def execute(self, stmt):  # noqa: ANN001
         return SimpleNamespace(one=lambda: (1, None, 10))
 
+    def scalar(self, stmt):  # noqa: ANN001 - the workspace policy row (S02 budget / data movement): none
+        return None
+
     def add(self, obj) -> None:  # noqa: ANN001
         self.sink.append(obj)
 
@@ -159,7 +162,7 @@ def test_effective_row_limit_is_minimum(env, scope: DataScope) -> None:
     gw, audit, _, _ = env
     captured: dict[str, Any] = {}
 
-    def fake_run(source, validated, max_rows, timeout):  # noqa: ANN001, ANN202
+    def fake_run(source, validated, max_rows, timeout, **_):  # noqa: ANN001, ANN202
         captured.update(max_rows=max_rows, timeout=timeout, sql=validated.executable_sql)
         return ["number"], [[str(i)] for i in range(max_rows + 1)]
 

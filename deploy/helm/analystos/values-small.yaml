@@ -32,6 +32,7 @@ workers:
   publish: null
   crawl: null
   elt: null
+  query: null          # `all` serves the query queue too
   compute-py: null     # isolated pools (P7-06) are not part of the small install
   compute-ml: null
   all:

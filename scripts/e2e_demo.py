@@ -3,7 +3,9 @@
     python scripts/e2e_demo.py [--api http://localhost:8000] [--out docs/60-delivery/evidence]
 
 Needs the running stack (API, worker or ANALYSTOS_ORCHESTRATOR=local, ServiceNow mock, Superset)
-and OPENROUTER_API_KEY in the API's environment. Writes e2e-<timestamp>.md (readable) and .json
+and OPENROUTER_API_KEY in the API's environment, plus ANALYSTOS_SOURCE_SECRET_SERVICENOW (the mock's password,
+`admin`): the source is registered as env:ANALYSTOS_SOURCE_SECRET_SERVICENOW, and source env refs must use
+the ANALYSTOS_SOURCE_SECRET_ prefix (S02). Writes e2e-<timestamp>.md (readable) and .json
 (raw evidence). Each DoD item is checked against API responses, not assumed.
 """
 from __future__ import annotations

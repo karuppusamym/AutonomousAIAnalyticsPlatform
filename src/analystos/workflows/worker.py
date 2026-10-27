@@ -37,8 +37,10 @@ def build_workers(client: Any, workloads: list[str], *, prefix: str, stack: cont
 
     specs = specs or load_config()[0]
     activities = activities or BY_WORKLOAD
+    from analystos.workflows.query_workflow import QueryWorkflow
+
     workflows = workflows or {"analysis": [AnalysisWorkflow, RecipeComputeWorkflow, IsolatedTaskWorkflow, MLComputeWorkflow],
-                              "crawl": [CrawlWorkflow]}
+                              "crawl": [CrawlWorkflow], "query": [QueryWorkflow]}
     workers = []
     for workload in workloads:
         spec = specs[workload]

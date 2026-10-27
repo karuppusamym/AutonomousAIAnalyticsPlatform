@@ -70,18 +70,26 @@ class DuckDBEngine(ReadOnlyEngine):
             con.close()
 
     # -- local federation ---------------------------------------------------------------------
-    def federate(self, tables: dict[str, tuple[list[str], list[list[Any]]]], stmt: ValidatedSQL, *,
-                 limits: Limits) -> Rows:
-        """Run ``stmt`` over ``tables`` ("schema.table" -> (columns, rows)) in a sandboxed in-memory DB."""
+    def federate(self, tables: dict[str, Any], stmt: ValidatedSQL, *, limits: Limits) -> Rows:
+        """Run ``stmt`` over ``tables`` in a sandboxed in-memory DB. A table is ("schema.table" ->) either
+        (columns, rows) or a pyarrow dataset over a ResultHandle's Parquet file (S02-T7): DuckDB scans the
+        dataset lazily through Arrow, so a leg is never loaded whole and no file access is enabled."""
         import duckdb
         import pyarrow as pa
 
         con = duckdb.connect(":memory:", config=self._config())
         try:
-            for i, (asset, (columns, rows)) in enumerate(sorted(tables.items())):
+            for i, (asset, data_in) in enumerate(sorted(tables.items())):
                 schema, table = asset.split(".", 1)
                 if schema.lower() in RESERVED_SCHEMAS:
                     raise InvalidInput(f"Asset {asset} uses a reserved schema name and cannot be federated")
+                if not isinstance(data_in, tuple):  # a dataset over a handle: a view, scanned when the join runs
+                    leg = f"__leg_{i}"
+                    con.register(leg, data_in)
+                    con.execute(f"CREATE SCHEMA IF NOT EXISTS {_q(schema)}")
+                    con.execute(f"CREATE VIEW {_q(schema)}.{_q(table)} AS SELECT * FROM {_q(leg)}")
+                    continue
+                columns, rows = data_in
                 arrays = []
                 for j, _ in enumerate(columns):
                     values = [r[j] for r in rows]

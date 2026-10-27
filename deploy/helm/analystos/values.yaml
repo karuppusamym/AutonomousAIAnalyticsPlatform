@@ -184,6 +184,16 @@ workers:
   # ELT builds (P4-E04/E06) run dbt Core as a separate executable, which is NOT in the app image: the
   # pool stays at 0 replicas (the queue answers queue_ping only) until an image with dbt
   # (ANALYSTOS_DBT_EXECUTABLE) and ANALYSTOS_ANALYTICS_BUILDER_URL in the Secret is supplied.
+  # worker:query (S02-T1): runs gateway statements when config ANALYSTOS_QUERY_TRANSPORT=temporal; the only pool
+  # that needs source credentials then (the API runs with ANALYSTOS_PROCESS_ROLE=api).
+  query:
+    queues: query
+    replicas: 2
+    resources:
+      requests: {cpu: 250m, memory: 1Gi}
+      limits: {cpu: "2", memory: 2Gi}
+    autoscaling: {enabled: false}
+    pdb: {enabled: true, minAvailable: 1}
   elt:
     queues: elt
     replicas: 0

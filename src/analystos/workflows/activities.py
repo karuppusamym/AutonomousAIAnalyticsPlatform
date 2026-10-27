@@ -147,3 +147,12 @@ BY_WORKLOAD: dict[str, list] = {
     "crawl": [run_crawl, queue_ping],
     "elt": [queue_ping],
 }
+
+
+def _query_activities() -> list:
+    from analystos.workflows.query_workflow import query_gateway_op
+
+    return [query_gateway_op, queue_ping]
+
+
+BY_WORKLOAD["query"] = _query_activities()  # worker:query (S02-T1)

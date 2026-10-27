@@ -67,7 +67,8 @@ def test_every_analystos_variable_is_a_setting():
         names |= {k for k in _env(svc) if k.startswith("ANALYSTOS_")}
     for env_file in (ROOT / "deploy/compose").glob("*.env"):
         names |= {line.split("=", 1)[0] for line in env_file.read_text(encoding="utf-8").splitlines() if line.startswith("ANALYSTOS_")}
-    unknown = sorted(names - fields - NOT_SETTINGS)
+    # source credentials named by secret_ref (S02: env refs must use this namespace) are secrets, not settings
+    unknown = sorted(n for n in names - fields - NOT_SETTINGS if not n.startswith("ANALYSTOS_SOURCE_SECRET_"))
     assert not unknown, f"compose sets variables no setting reads: {unknown}"
 
 

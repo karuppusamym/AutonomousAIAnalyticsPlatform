@@ -15,10 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
-from pydantic import BaseModel
-
 from analystos.core.errors import Forbidden
-from analystos.gateway.types import ValidatedSQL
+from analystos.gateway.types import CostEstimate, ValidatedSQL
 
 Feature = Literal["pushdown", "federate", "materialize", "write", "spark_sql", "python_udf"]
 EngineStatus = Literal["draft", "certified"]
@@ -39,13 +37,6 @@ class ReaderIdentity:
     role: str | None = None  # staged: the workspace reader role, SET LOCAL for the transaction
     session_sql: tuple[str, ...] = ()  # read-only / timeout statements run first on the connection
     path: str | None = None  # file engines: the database file (already confined to the upload dir)
-
-
-class CostEstimate(BaseModel):
-    rows: int | None = None
-    bytes: int | None = None
-    credits: float | None = None
-    basis: str = "unknown"
 
 
 @runtime_checkable

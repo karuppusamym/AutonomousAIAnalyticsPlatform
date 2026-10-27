@@ -76,6 +76,11 @@ class WorkspacePolicyDoc(BaseModel):
     max_rows: int = 50_000
     query_timeout_seconds: int = 30
     max_queries_per_run: int = 200
+    # S02-T4: refuse a statement whose estimated scan exceeds this many bytes (0 = no workspace budget).
+    max_scan_bytes: int = 0
+    # S02-T7 (FR-051): may a run join data from several sources (each leg staged as a handle, joined in
+    # DuckDB)? `none` keeps every statement on one source.
+    data_movement: Literal["none", "staged_ok"] = "staged_ok"
     # Ad-hoc Ask (NL -> SQL outside a run): rolling one-hour statement budgets, repairs included.
     ask_queries_per_user_per_hour: int = 60
     ask_queries_per_workspace_per_hour: int = 600

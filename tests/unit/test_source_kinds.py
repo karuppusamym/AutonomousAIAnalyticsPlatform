@@ -15,7 +15,7 @@ from analystos.core.errors import InvalidInput
 
 REPO = Path(__file__).resolve().parents[2]
 EXPECTED = {"postgres", "redshift", "mysql", "mariadb", "sqlserver", "oracle", "snowflake", "bigquery", "databricks",
-            "trino", "clickhouse", "duckdb", "sqlite", "servicenow", "csv"}
+            "trino", "clickhouse", "duckdb", "sqlite", "servicenow", "csv", "rest"}
 NASTY_PASSWORD = "p@ss:w/rd?#&=% x"
 SAMPLE = {
     "host": "db.example.com", "database": "sales", "username": "ana lyst@corp", "account": "xy12345.eu-west-1",

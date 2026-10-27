@@ -41,6 +41,14 @@ queues:
     heartbeat_seconds: 120
     max_concurrent: 2
     executor: thread
+  query:
+    # worker:query (S02-T1): runs every gateway statement when ANALYSTOS_QUERY_TRANSPORT=temporal; the only pool
+    # that resolves source credentials then (ANALYSTOS_PROCESS_ROLE=query). Short attempts: the gateway's own
+    # statement timeout is far below start_to_close; a cancel reaches the statement through the heartbeat.
+    start_to_close_seconds: 600
+    heartbeat_seconds: 30
+    max_concurrent: 16
+    executor: thread
   # Isolated pools (ADR-0022, P7-06): opt-in (ANALYSTOS_ISOLATED_POOLS), run by `analystos worker --queues compute-py`
   # as a separate deployment with no database or provider credentials and egress to the artifact store only.
   # Each task runs in a child process under its TaskEnvelope budget; `budget` is the default envelope budget.
