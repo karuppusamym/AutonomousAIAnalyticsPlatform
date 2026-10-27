@@ -16,6 +16,13 @@ are step types and step fields:
   when                  the step exists in the plan only when the condition holds (plan inputs).
   gates_roots           while present, steps without dependencies wait for this step.
   skip_when             the step is materialized SKIPPED when the condition holds for the run.
+  params                data the step's behaviour reads (e.g. `prefer_methods` for the investigator);
+                        scalars and lists of scalars only, never code.
+
+A template playbook (S06 §3.8) also declares `inputs`, `outputs`, `default_limits` (contracts.goals.
+RunLimits) and `router` (the intents and tiers the complexity router maps to it). `replan_boundary`
+triggers are `redirect`, `finding_rejected` or a replan reason code (contracts.goals.REPLAN_REASONS);
+a reason code the playbook does not declare falls back to `REASON_TRIGGER`.
 
 The plan dict a playbook builds is exactly the v1 shape (key, agent, title, depends_on, optional),
 so `investigate.v1` reproduces the v1 plan hash for the same inputs.
@@ -79,10 +86,19 @@ class Expansion(BaseModel):
         return self
 
 
+Trigger = Literal["redirect", "finding_rejected", "missing_dataset", "empty_result", "rejected_hypothesis",
+                  "quality_failure", "user_redirect", "budget_downgrade"]
+# A replan reason the playbook declares no boundary for resets what this boundary resets. budget_downgrade
+# resets nothing: it drops the optional steps that have not run (runtime/engine.apply_replan).
+REASON_TRIGGER: dict[str, str | None] = {"user_redirect": "redirect", "rejected_hypothesis": "redirect",
+                                         "missing_dataset": "redirect", "empty_result": "redirect",
+                                         "quality_failure": "redirect", "budget_downgrade": None}
+
+
 class ReplanBoundary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    trigger: Literal["redirect", "finding_rejected"]
+    trigger: Trigger
     reset: Literal["self_and_downstream", "downstream"]
 
 
@@ -110,9 +126,14 @@ class Step(BaseModel):
     gates_roots: bool = False
     replan_boundary: list[ReplanBoundary] = Field(default_factory=list)
     expands: list[Expansion] = Field(default_factory=list)
+    params: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _shape(self) -> Step:
+        for k, v in self.params.items():
+            items = v if isinstance(v, list) else [v]
+            if not all(isinstance(i, (str, int, float, bool)) or i is None for i in items):
+                raise ValueError(f"step {self.key}: param {k} must be a scalar or a list of scalars")
         if not re.fullmatch(r"[a-z_]+", self.key):
             raise ValueError(f"step key {self.key!r} must be lower snake case")
         if self.use is None:
@@ -131,11 +152,42 @@ class Step(BaseModel):
         return self.type == "side_effect" or (self.type == "approval_gate" and self.payload == "plan")
 
 
+class PlaybookInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    type: Literal["question", "metric", "dimension", "period", "tables", "segment", "event", "comparison"]
+    required: bool = False
+    description: str = ""
+
+
+class RouterHints(BaseModel):
+    """How the complexity router (autonomy/complexity.py) picks this playbook: a question matching one
+    of `intents` (case-insensitive regexes) at one of `tiers`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    intents: list[str] = Field(default_factory=list)
+    tiers: list[Literal["low", "medium", "complex"]] = Field(default_factory=list)
+    priority: int = 0  # higher wins when several templates match
+
+    @model_validator(mode="after")
+    def _regexes(self) -> RouterHints:
+        for pattern in self.intents:
+            re.compile(pattern)
+        return self
+
+
 class PlaybookBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     framing: bool = True  # the supervisor frames questions/audience/focus before the plan materializes
     steps: list[Step]
+    inputs: list[PlaybookInput] = Field(default_factory=list)
+    outputs: list[Literal["investigation", "dashboard_draft", "report", "kpi_review", "variance_report",
+                          "funnel_report", "cohort_report", "dq_report", "dashboard"]] = Field(default_factory=list)
+    default_limits: dict[str, Any] = Field(default_factory=dict)  # contracts.goals.RunLimits
+    router: RouterHints | None = None
 
     @model_validator(mode="after")
     def _graph(self) -> PlaybookBody:
@@ -155,6 +207,10 @@ class PlaybookBody(BaseModel):
                 if target is None or target.type != "side_effect":
                     raise ValueError(f"step {s.key}: approval_for must name a side_effect step")
             seen.add(s.key)
+        if self.default_limits:
+            from analystos.contracts.goals import RunLimits
+
+            RunLimits.model_validate(self.default_limits)
         prefixes = [e.prefix for s in self.steps for e in s.expands]
         if len(set(prefixes)) != len(prefixes):
             raise ValueError("an expansion prefix is declared twice")
@@ -222,7 +278,18 @@ class Playbook:
                 children.setdefault(parent, set()).add(s.key)
         return children
 
-    def reset_keys(self, trigger: Literal["redirect", "finding_rejected"]) -> set[str]:
+    def approval_gates(self) -> list[str]:
+        """Steps that wait for a person: approval gates and the side effects they authorize."""
+        return [s.key for s in self.body.steps if s.type in ("approval_gate", "side_effect")]
+
+    def trigger_for(self, reason_code: str) -> str | None:
+        """The boundary trigger a replan reason resets: the playbook's own boundary for the code, else the
+        fallback (`REASON_TRIGGER`); None = reset nothing (budget_downgrade)."""
+        if any(b.trigger == reason_code for s in self.body.steps for b in s.replan_boundary):
+            return reason_code
+        return REASON_TRIGGER.get(reason_code, reason_code)
+
+    def reset_keys(self, trigger: str) -> set[str]:
         """Steps a replan of this kind resets, from the steps declaring a boundary for it."""
         children = self._children()
         out: set[str] = set()
@@ -238,7 +305,7 @@ class Playbook:
                         queue.extend(children.get(k, ()))
         return out
 
-    def removed_prefixes(self, trigger: Literal["redirect", "finding_rejected"]) -> tuple[str, ...]:
+    def removed_prefixes(self, trigger: str) -> tuple[str, ...]:
         """Expanded tasks are removed when the step that expanded them is reset (it expands again)."""
         reset = self.reset_keys(trigger)
         return tuple(p for p, owner in self._owner.items() if owner in reset)

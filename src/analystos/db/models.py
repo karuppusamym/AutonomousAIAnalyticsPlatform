@@ -491,6 +491,9 @@ class AnalysisRun(Base):
     capabilities: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
     # Data-version manifest (P4-03): the version of every analysed asset the run read (evidence.manifest).
     data_manifest: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    # Goal limits (S06 §3.4, contracts.goals.RunLimits): steps, wall clock, scan bytes, LLM USD, rows,
+    # replans and retries. Empty for runs started without a goal (only the workspace policy caps apply).
+    limits: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
     created_at: Mapped[datetime] = _ts()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -2317,6 +2320,7 @@ class GroundingEvaluation(Base):
     created_at: Mapped[datetime] = _ts()
 
 
+from analystos.autonomy.models import Goal, RunPlanVersion  # noqa: E402,F401  (autonomy engine, S06)
 from analystos.context import ledger as _context_ledger  # noqa: E402,F401  (registers the ledger projection hook)
 from analystos.context.models import ContextLedgerChange, ContextLedgerEntry  # noqa: E402,F401  (Context Ledger, S03)
 from analystos.conversations.models import (  # noqa: E402,F401  (conversation memory, S04)

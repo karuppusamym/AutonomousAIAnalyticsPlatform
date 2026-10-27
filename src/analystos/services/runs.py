@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from analystos.contracts.analysis import Filter
+from analystos.contracts.events import RUN_TERMINAL
 from analystos.contracts.policy import ExecutionIdentity
 from analystos.core.errors import Conflict, ContextOverBudget, InvalidInput, NotFound
 from analystos.core.ids import new_id, utcnow
@@ -26,7 +27,7 @@ from analystos.runtime.context import default_router, workspace_call_ctx
 from analystos.runtime.engine import apply_replan
 from analystos.workflows.orchestrator import signal_run, start_run
 
-TERMINAL = {"COMPLETED", "FAILED", "REJECTED", "CANCELLED"}
+TERMINAL = RUN_TERMINAL
 
 
 def create_run(user: User, workspace_id: str, *, objective: str | None, source_ids: list[str] | None = None,
@@ -71,10 +72,15 @@ def start_run_request(user: User, workspace_id: str, *, objective: str | None, s
                       autonomy_level: int | None = None, origin: dict | None = None, playbook: str | None = None,
                       definition: dict | str | None = None, pins: dict | None = None,
                       analysis_context: dict | str | None = None,
-                      idempotency: Any = None) -> tuple[AnalysisRun, bool]:
+                      idempotency: Any = None, limits: dict | None = None, constraints: dict | None = None,
+                      on_created: Any = None) -> tuple[AnalysisRun, bool]:
     """Create a run and its dispatch-outbox row in one transaction (P4-06), then dispatch best-effort;
     the outbox relay retries whatever did not go out. With an idempotency key the claim is part of the
-    same transaction: a duplicate returns the original run (`True` = replayed)."""
+    same transaction: a duplicate returns the original run (`True` = replayed).
+
+    Goal runs (S06) also pass `limits` (budget counters), `constraints` (the goal's scope filters, part
+    of the plan hash) and `on_created(session, run, scope) -> dict`, which writes the goal row in the
+    same transaction; what it returns is added to the idempotency record's response."""
     from analystos.services import dispatch
     from analystos.services.idempotency import begin_in, complete_in
 
@@ -124,10 +130,11 @@ def start_run_request(user: User, workspace_id: str, *, objective: str | None, s
             caps["analysis_context"] = context_snapshot
         run = AnalysisRun(id=new_id("run"), workspace_id=workspace_id, objective=objective, status="NEW", autonomy_level=level,
                           policy_version=ws.policy_version, requested_by=user.id,
-                          scope={**scope.model_dump(exclude={"abac"}), "hash": scope.scope_hash()}, instructions=[], constraints={},
-                          origin=origin, capabilities=caps)
+                          scope={**scope.model_dump(exclude={"abac"}), "hash": scope.scope_hash()}, instructions=[],
+                          constraints=dict(constraints or {}), origin=origin, capabilities=caps, limits=dict(limits or {}))
         s.add(run)
         s.flush()
+        extra = on_created(s, run, scope) if on_created is not None else None
         emit(workspace_id, "run.created", {"objective": objective, "autonomy_level": level, "assets": scope.assets,
                                            "policy": decision.model_dump(),
                                            **({"definition": {k: v for k, v in caps["definition"].items() if k != "manifest"}}
@@ -135,7 +142,8 @@ def start_run_request(user: User, workspace_id: str, *, objective: str | None, s
              run_id=run.id, actor=f"user:{user.id}", session=s)
         outbox_id = dispatch.enqueue(s, run).id
         if idempotency is not None:
-            complete_in(s, idempotency, response={"run_id": run.id}, resource_type="analysis_run", resource_id=run.id)
+            complete_in(s, idempotency, response={"run_id": run.id, **(extra or {})}, resource_type="analysis_run",
+                        resource_id=run.id)
         run_id = run.id
     dispatch.dispatch(outbox_id)  # best effort: a failure stays pending for the relay
     with session_scope() as s:

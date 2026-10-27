@@ -8,6 +8,8 @@ ML/pipeline resources and common concurrency/recovery semantics. It is a design 
 generated schema or evidence of live endpoints; implementation is tracked in P4–P6. The implemented
 brief, readiness, Start-work job kinds, steps, branches, pins and notebooks routes are specified in
 [04-brief-steps-api.md](04-brief-steps-api.md).
+The Goal API v2 (goals, run signals, the SSE event contract, budgets, replan reason codes) is
+specified in [05-goal-api-v2.md](05-goal-api-v2.md) (S06).
 
 | Contract | Model | Spec |
 |---|---|---|
@@ -24,6 +26,7 @@ brief, readiness, Start-work job kinds, steps, branches, pins and notebooks rout
 | Dataset / chart / dashboard | `bi.DatasetDef`, `bi.ChartSpec`, `bi.DashboardSpec` | v1 §32–§34 |
 | Publication unit (what an approval binds to) | `bi.PublishBundle` | v1 §39 |
 | Events | `events.EVENT_TYPES` | v1 §42 |
+| Goal, run limits, signals, complexity decision | `goals.GoalIn`, `RunLimits`, `SignalIn`, `ComplexityDecision` | S06 §3, [05](05-goal-api-v2.md) |
 | Connector | `connectors.base.Connector` protocol | v1 §16 |
 | BI publisher | `publishing.base.BIPublisher` protocol | v1 §32 |
 | Model routing | `config/models.yaml` → `llm.config.ModelsConfig` | v1 §27 |

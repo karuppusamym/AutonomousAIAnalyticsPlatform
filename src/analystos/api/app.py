@@ -25,6 +25,7 @@ from analystos.api.routers import deliveries as deliveries_router
 from analystos.api.routers import desk as desk_router
 from analystos.api.routers import entity_matching as entity_matching_router
 from analystos.api.routers import evidence as evidence_router
+from analystos.api.routers import goals_v2 as goals_v2_router
 from analystos.api.routers import index_advice as index_advice_router
 from analystos.api.routers import investigation_value as investigation_value_router
 from analystos.api.routers import knowledge as knowledge_router
@@ -126,6 +127,7 @@ app.include_router(context_grounding_router.router)
 app.include_router(process_router.router)  # process and task mining over event logs
 app.include_router(desk_router.router)  # Analyst Request Desk (S13)
 app.include_router(conversations_router.router)  # API v2 conversations and memory (S04)
+app.include_router(goals_v2_router.router)  # Goal API v2 (S06): goals, signals, run state, SSE, evidence, plans
 app.include_router(deliveries_router.router)  # approved external email/webhook delivery (N-3)
 app.include_router(data_shape_router.router)  # what the selected tables are good for (patterns, next steps)
 app.include_router(index_advice_router.router)  # index / partitioning / clustering advice, never applied (N-11)

@@ -43,7 +43,8 @@ def sqlite_db(monkeypatch):
         "semantic_model", "semantic_metric", "definition", "schedule", "schedule_run", "dispatch_outbox",
         "idempotency_record", "work_order",
         "model_config_override",  # S05-T3: the router reads a workspace's model layers
-        "context_ledger_entry", "context_ledger_change")]  # S03-T1: owner writes project into the ledger on commit
+        "context_ledger_entry", "context_ledger_change",  # S03-T1: owner writes project into the ledger on commit
+        "goal", "run_plan_version")]  # S06: goals and superseded plan versions
     models.Base.metadata.create_all(engine, tables=tables)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     monkeypatch.setattr(base, "SessionLocal", lambda: factory())

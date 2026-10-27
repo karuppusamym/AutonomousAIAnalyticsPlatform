@@ -1,0 +1,447 @@
+# Golden fixtures of the S06 template playbooks (tests/unit/test_template_playbooks.py).
+# Each entry: a goal question the complexity router must route to the template (one small table,
+# every template enabled), the plan it builds at autonomy 3 and 2, its gates, outputs, default
+# limits and the plan hash at version 1 over scope 'scope-fixture'. A change here is a new
+# playbook version: bump the manifest's version, never edit a published one in place.
+kpi_review:
+  id: playbook.kpi_review
+  version: 1.0.0
+  question: How are our incident KPIs doing this quarter by assignment group?
+  steps_autonomy_3:
+  - context
+  - metadata
+  - profile
+  - quality
+  - hypotheses
+  - insights
+  - verify
+  - dataset
+  - semantic
+  - visualize
+  - finalize
+  steps_autonomy_2:
+  - plan_approval
+  - context
+  - metadata
+  - profile
+  - quality
+  - hypotheses
+  - insights
+  - verify
+  - dataset
+  - semantic
+  - visualize
+  - finalize
+  depends_on:
+    context: []
+    metadata: []
+    profile:
+    - metadata
+    quality:
+    - profile
+    hypotheses:
+    - context
+    - profile
+    - quality
+    insights:
+    - hypotheses
+    - test:*
+    - followups:*
+    verify:
+    - insights
+    dataset:
+    - verify
+    semantic:
+    - dataset
+    visualize:
+    - semantic
+    finalize:
+    - visualize
+  approval_gates:
+  - plan_approval
+  side_effects: []
+  outputs:
+  - kpi_review
+  - dashboard_draft
+  default_limits:
+    max_steps: 30
+    max_duration_s: 1800
+    max_cost_usd: 0.5
+    max_replans: 1
+    max_retries: 6
+  inputs_required:
+  - question
+  plan_hash_autonomy_3: c812472c2b0d63274e0a466b820c40e8656f4a4ea35fb0428785113be0dd7292
+  route:
+    features:
+      table_count: 1
+      estimated_scan_rows: 5000
+    tier: low
+    playbook: playbook.kpi_review
+variance:
+  id: playbook.variance
+  version: 1.0.0
+  question: Explain the month-end variance in incident volume versus the prior month by category
+  steps_autonomy_3:
+  - context
+  - metadata
+  - relationships
+  - profile
+  - quality
+  - hypotheses
+  - insights
+  - verify
+  - dataset
+  - semantic
+  - visualize
+  - finalize
+  steps_autonomy_2:
+  - plan_approval
+  - context
+  - metadata
+  - relationships
+  - profile
+  - quality
+  - hypotheses
+  - insights
+  - verify
+  - dataset
+  - semantic
+  - visualize
+  - finalize
+  depends_on:
+    context: []
+    metadata: []
+    relationships:
+    - metadata
+    profile:
+    - metadata
+    quality:
+    - profile
+    - relationships
+    hypotheses:
+    - context
+    - profile
+    - quality
+    insights:
+    - hypotheses
+    - test:*
+    - followups:*
+    verify:
+    - insights
+    dataset:
+    - verify
+    semantic:
+    - dataset
+    visualize:
+    - semantic
+    finalize:
+    - visualize
+  approval_gates:
+  - plan_approval
+  side_effects: []
+  outputs:
+  - variance_report
+  - report
+  default_limits:
+    max_steps: 40
+    max_duration_s: 2700
+    max_cost_usd: 0.75
+    max_replans: 2
+    max_retries: 8
+  inputs_required:
+  - question
+  - metric
+  - period
+  plan_hash_autonomy_3: 26fd06b9aa4707c714e38efdc1c312944229e85bccfa975e07460f045d35c2e1
+  route:
+    features:
+      table_count: 1
+      estimated_scan_rows: 5000
+    tier: medium
+    playbook: playbook.variance
+funnel:
+  id: playbook.funnel
+  version: 1.0.0
+  question: Where is the drop-off in the incident resolution funnel from opened to resolved?
+  steps_autonomy_3:
+  - context
+  - metadata
+  - relationships
+  - profile
+  - quality
+  - hypotheses
+  - insights
+  - verify
+  - dataset
+  - semantic
+  - visualize
+  - finalize
+  steps_autonomy_2:
+  - plan_approval
+  - context
+  - metadata
+  - relationships
+  - profile
+  - quality
+  - hypotheses
+  - insights
+  - verify
+  - dataset
+  - semantic
+  - visualize
+  - finalize
+  depends_on:
+    context: []
+    metadata: []
+    relationships:
+    - metadata
+    profile:
+    - metadata
+    quality:
+    - profile
+    - relationships
+    hypotheses:
+    - context
+    - profile
+    - quality
+    insights:
+    - hypotheses
+    - test:*
+    - followups:*
+    verify:
+    - insights
+    dataset:
+    - verify
+    semantic:
+    - dataset
+    visualize:
+    - semantic
+    finalize:
+    - visualize
+  approval_gates:
+  - plan_approval
+  side_effects: []
+  outputs:
+  - funnel_report
+  - dashboard_draft
+  default_limits:
+    max_steps: 35
+    max_duration_s: 2400
+    max_cost_usd: 0.6
+    max_replans: 2
+    max_retries: 6
+  inputs_required:
+  - question
+  - events
+  plan_hash_autonomy_3: d97323ef2ecdc832dda546087fb1d5a60ff54910e44de00e880ef36be73de199
+  route:
+    features:
+      table_count: 1
+      estimated_scan_rows: 5000
+    tier: medium
+    playbook: playbook.funnel
+cohort:
+  id: playbook.cohort
+  version: 1.0.0
+  question: What is the retention of caller cohorts by month of first incident?
+  steps_autonomy_3:
+  - context
+  - metadata
+  - relationships
+  - profile
+  - quality
+  - hypotheses
+  - insights
+  - verify
+  - dataset
+  - semantic
+  - visualize
+  - finalize
+  steps_autonomy_2:
+  - plan_approval
+  - context
+  - metadata
+  - relationships
+  - profile
+  - quality
+  - hypotheses
+  - insights
+  - verify
+  - dataset
+  - semantic
+  - visualize
+  - finalize
+  depends_on:
+    context: []
+    metadata: []
+    relationships:
+    - metadata
+    profile:
+    - metadata
+    quality:
+    - profile
+    - relationships
+    hypotheses:
+    - context
+    - profile
+    - quality
+    insights:
+    - hypotheses
+    - test:*
+    - followups:*
+    verify:
+    - insights
+    dataset:
+    - verify
+    semantic:
+    - dataset
+    visualize:
+    - semantic
+    finalize:
+    - visualize
+  approval_gates:
+  - plan_approval
+  side_effects: []
+  outputs:
+  - cohort_report
+  - report
+  default_limits:
+    max_steps: 35
+    max_duration_s: 2400
+    max_cost_usd: 0.6
+    max_replans: 2
+    max_retries: 6
+  inputs_required:
+  - question
+  plan_hash_autonomy_3: fdd67f85016769d4bc292996ad2d8b3bfa73992680e18929ab4a48d9e673de6b
+  route:
+    features:
+      table_count: 1
+      estimated_scan_rows: 5000
+    tier: medium
+    playbook: playbook.cohort
+dq_review:
+  id: playbook.dq_review
+  version: 1.0.0
+  question: 'Run a data quality review: nulls, duplicates and freshness of the incident table'
+  steps_autonomy_3:
+  - metadata
+  - relationships
+  - profile
+  - quality
+  - finalize
+  steps_autonomy_2:
+  - metadata
+  - relationships
+  - profile
+  - quality
+  - finalize
+  depends_on:
+    metadata: []
+    relationships:
+    - metadata
+    profile:
+    - metadata
+    quality:
+    - profile
+    - relationships
+    finalize:
+    - quality
+  approval_gates: []
+  side_effects: []
+  outputs:
+  - dq_report
+  default_limits:
+    max_steps: 10
+    max_duration_s: 900
+    max_cost_usd: 0.05
+    max_replans: 1
+    max_retries: 4
+  inputs_required:
+  - question
+  plan_hash_autonomy_3: 27fd514b20a9d0cd2d8e4e0d1a281054deea90e366c767996c92b9b04f8a3d8e
+  route:
+    features:
+      table_count: 1
+      estimated_scan_rows: 5000
+    tier: low
+    playbook: playbook.dq_review
+dashboard_build:
+  id: playbook.dashboard_build
+  version: 1.0.0
+  question: Build an operational dashboard of incident backlog and SLA breaches
+  steps_autonomy_3:
+  - context
+  - metadata
+  - relationships
+  - profile
+  - quality
+  - dataset
+  - semantic
+  - visualize
+  - publish_request
+  - publish
+  - finalize
+  steps_autonomy_2:
+  - plan_approval
+  - context
+  - metadata
+  - relationships
+  - profile
+  - quality
+  - dataset
+  - semantic
+  - visualize
+  - publish_request
+  - publish
+  - finalize
+  depends_on:
+    context: []
+    metadata: []
+    relationships:
+    - metadata
+    profile:
+    - metadata
+    quality:
+    - profile
+    - relationships
+    dataset:
+    - context
+    - profile
+    - quality
+    semantic:
+    - dataset
+    visualize:
+    - semantic
+    publish_request:
+    - visualize
+    publish:
+    - publish_request
+    finalize:
+    - visualize
+    - publish
+  approval_gates:
+  - plan_approval
+  - publish_request
+  - publish
+  side_effects:
+  - publish
+  outputs:
+  - dashboard
+  - dashboard_draft
+  default_limits:
+    max_steps: 25
+    max_duration_s: 1800
+    max_cost_usd: 0.5
+    max_replans: 1
+    max_retries: 6
+  inputs_required:
+  - question
+  plan_hash_autonomy_3: 45b04f52541458a6cf9126b57b541b0b46cd7de0f9e018ecbe34f467bd066f2e
+  route:
+    features:
+      table_count: 1
+      estimated_scan_rows: 5000
+    tier: low
+    playbook: playbook.dashboard_build

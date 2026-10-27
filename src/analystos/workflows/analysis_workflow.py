@@ -25,6 +25,7 @@ NON_RETRYABLE = ["Forbidden", "PolicyDenied", "SQLRejected", "ApprovalRequired",
 QUICK = dict(start_to_close_timeout=timedelta(minutes=2),
              retry_policy=RetryPolicy(initial_interval=timedelta(seconds=1), maximum_attempts=5))
 NUDGE_BEFORE_STATE = "nudge-cleared-before-state"  # workflow.patched id (a determinism-safe behaviour change)
+BUDGET_DEADLINE = "budget-deadline"  # S06 §3.4: the wait timer never outlasts the run's wall-clock budget
 TASK_RETRY = RetryPolicy(initial_interval=timedelta(seconds=2), backoff_coefficient=2.0,
                          maximum_interval=timedelta(seconds=30), maximum_attempts=3,
                          non_retryable_error_types=NON_RETRYABLE)
@@ -86,6 +87,10 @@ class AnalysisWorkflow:
             if state.get("done"):
                 await workflow.execute_activity("finish_run", args=[run_id, "COMPLETED", None], **quick)
                 return "COMPLETED"
+            if state.get("limited"):  # a budget counter is used up (S06 §3.4): validated partials stand
+                outcome = "EXPIRED" if state.get("expired") else "COMPLETED_WITH_LIMITATIONS"
+                await workflow.execute_activity("finish_run", args=[run_id, outcome, state["limited"]], **quick)
+                return outcome
             if state.get("ready"):
                 results = await asyncio.gather(*[
                     workflow.execute_activity("execute_task", args=[run_id, key], retry_policy=TASK_RETRY,
@@ -97,7 +102,11 @@ class AnalysisWorkflow:
                         workflow.logger.warning("task activity failed after retries: %s", r)
                 continue
             # paused, waiting for a person, or tasks still running elsewhere: wait for a signal (or re-check)
-            await self._wait(300 if state.get("control") == "pause" or state.get("waiting_user") else 15)
+            seconds = 300 if state.get("control") == "pause" or state.get("waiting_user") else 15
+            left = ((state.get("budget") or {}).get("remaining") or {}).get("max_duration_s")
+            if left is not None and workflow.patched(BUDGET_DEADLINE):
+                seconds = max(1, min(seconds, int(left) + 1))  # wake when the wall-clock budget runs out
+            await self._wait(seconds)
 
 
 @workflow.defn(name="RecipeComputeWorkflow")

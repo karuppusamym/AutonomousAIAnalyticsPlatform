@@ -89,7 +89,12 @@ EVENT_TYPES |= {"conversation.created", "conversation.branched", "conversation.m
 
 EVENT_TYPES |= {"context.binding_saved", "context.binding_validated", "context.evaluation_saved", "context.meaning_recheck", "context.golden_saved"}
 
-RUN_TERMINAL = {"COMPLETED", "FAILED", "REJECTED", "CANCELLED"}
+# Autonomy engine (S06): goals, remaining budget, budget exhaustion, typed replans
+EVENT_TYPES |= {"goal.created", "goal.signal", "run.budget", "run.limited"}
+
+# COMPLETED_WITH_LIMITATIONS: a budget ran out; validated partial results stand (S06 §3.4, AT-04).
+# EXPIRED: the run outlived its wall-clock limit while waiting for a person (architecture §5.2).
+RUN_TERMINAL = {"COMPLETED", "FAILED", "REJECTED", "CANCELLED", "COMPLETED_WITH_LIMITATIONS", "EXPIRED"}
 RUN_STATUSES = ["NEW", "PLANNING", "READY", "RUNNING", "WAITING_TOOL", "WAITING_USER", "PAUSED",
                 "EVALUATING", "VERIFYING", *sorted(RUN_TERMINAL)]
 TASK_STATUSES = ["NEW", "READY", "RUNNING", "WAITING_USER", "COMPLETED", "FAILED", "SKIPPED", "CANCELLED", "INVALIDATED"]

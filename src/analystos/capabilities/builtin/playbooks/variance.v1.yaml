@@ -1,0 +1,80 @@
+# Template (S06 §3.8): month-end variance. Contribution decomposition and trend first, so the review
+# explains *where* a total moved; findings are verified before the report.
+apiVersion: analystos/v1
+kind: Playbook
+id: playbook.variance
+version: 1.0.0
+summary: Month-end variance (decompose a change in a total by its components, verified findings, a variance report)
+determinism: model
+side_effect: write_internal
+cost_class: llm_small
+certification: {status: tested, evidence: tests/integration/test_template_playbooks.py}
+tags: [template, variance, month_end]
+spec:
+  framing: true
+  inputs:
+    - {name: question, type: question, required: true}
+    - {name: metric, type: metric, required: true, description: "The total whose change is explained"}
+    - {name: period, type: period, required: true, description: "The closing period"}
+    - {name: comparison, type: comparison, description: "prior period (default), budget or forecast"}
+    - {name: dimensions, type: dimension, description: "Components to decompose by"}
+  outputs: [variance_report, report]
+  default_limits: {max_steps: 40, max_duration_s: 2700, max_cost_usd: 0.75, max_replans: 2, max_retries: 8}
+  router:
+    intents:
+      - 'variance'
+      - 'month[- ]end'
+      - 'budget (vs\.?|versus) actuals?'
+      - 'actuals? (vs\.?|versus) (budget|plan|forecast)'
+      - '(vs\.?|versus|against) (the )?(plan|budget|forecast|prior (month|period|year))'
+      - 'bridge'
+      - 'what drove the (change|movement)'
+    tiers: [medium, complex]
+    priority: 20
+  steps:
+    - key: plan_approval
+      use: agent.supervisor
+      behaviour: plan_approved
+      title: Wait for plan approval
+      type: approval_gate
+      payload: plan
+      when: "run.autonomy_level <= 2"
+      gates_roots: true
+    - {key: context, use: agent.context, title: "Load business context, the metric and the comparison basis"}
+    - {key: metadata, use: agent.metadata, title: Discover technical metadata of selected tables}
+    - key: relationships
+      use: agent.metadata
+      behaviour: discover_relationships
+      title: Discover and validate relationships
+      after: [metadata]
+      optional: true
+    - {key: profile, use: agent.profiler, title: Profile selected tables, after: [metadata]}
+    - key: quality
+      use: agent.data_quality
+      title: Detect data-quality issues in the closing period
+      after: [profile, relationships]
+      optional: true
+    - key: hypotheses
+      use: agent.investigator
+      title: Decompose the variance into testable component hypotheses
+      after: [context, profile, quality]
+      params: {prefer_method_tags: [segment, time_series]}
+      replan_boundary:
+        - {trigger: redirect, reset: self_and_downstream}
+        - {trigger: empty_result, reset: self_and_downstream}
+      expands:
+        - {prefix: "test:", use: agent.data_scientist}
+        - {prefix: "followups:", use: agent.investigator, behaviour: follow_ups}
+    - key: insights
+      use: agent.insight
+      title: Turn supported components into evidence-backed findings
+      after: [hypotheses, "test:*", "followups:*"]
+    - key: verify
+      use: agent.critic
+      title: REV verification of every finding
+      after: [insights]
+      replan_boundary: [{trigger: finding_rejected, reset: downstream}]
+    - {key: dataset, use: agent.sql, title: Build the variance dataset, after: [verify]}
+    - {key: semantic, use: agent.semantic, title: Define and validate the metric and its components, after: [dataset]}
+    - {key: visualize, use: agent.visualization, title: Chart the variance bridge, after: [semantic]}
+    - {key: finalize, use: agent.supervisor, title: Write the variance report, after: [visualize]}

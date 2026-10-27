@@ -241,6 +241,10 @@ class RunContext:
         used = counted() if after is None else int(after) - 1  # statements before this one
         if used >= self.policy.max_queries_per_run:
             raise BudgetExceeded(f"per-run query budget ({self.policy.max_queries_per_run}) exhausted")
+        if (getattr(self.run, "limits", None) or {}).get("max_scan_bytes") is not None:  # a goal's scan budget (S06 §3.4)
+            from analystos.autonomy.budget import check_scan
+
+            check_scan(self.run.id, self.run.limits, 0)
 
     def run_sql(self, source_id: str | None = None, *, federated: bool = False):
         """Governed SQL runner for skills and agents: tool gate (``sql.execute``), per-run query budget,

@@ -1,0 +1,76 @@
+# Template (S06 §3.8): build a dashboard from the selected tables and publish it under a hash-bound
+# approval. The publication is a side effect: it runs only with an approved approval in its input, the
+# engine re-checks cancel right before it, and the publisher calls `verify_for_execution`.
+apiVersion: analystos/v1
+kind: Playbook
+id: playbook.dashboard_build
+version: 1.0.0
+summary: Dashboard build (dataset, KPIs, executive and operational dashboards, approved publication)
+determinism: model
+side_effect: write_external
+cost_class: llm_small
+certification: {status: tested, evidence: tests/integration/test_template_playbooks.py}
+tags: [template, dashboard]
+spec:
+  framing: true
+  inputs:
+    - {name: question, type: question, required: true, description: "What the dashboard is for"}
+    - {name: metrics, type: metric}
+    - {name: dimensions, type: dimension}
+    - {name: audience, type: segment, description: "executive, operational or both"}
+  outputs: [dashboard, dashboard_draft]
+  default_limits: {max_steps: 25, max_duration_s: 1800, max_cost_usd: 0.5, max_replans: 1, max_retries: 6}
+  router:
+    intents:
+      - '(build|create|make|design) (an? |the )?(\w+ )?dashboards?'
+      - 'dashboard (for|of|on)'
+      - 'publish (an? |the )?dashboard'
+    tiers: [low, medium, complex]
+    priority: 25
+  steps:
+    - key: plan_approval
+      use: agent.supervisor
+      behaviour: plan_approved
+      title: Wait for plan approval
+      type: approval_gate
+      payload: plan
+      when: "run.autonomy_level <= 2"
+      gates_roots: true
+    - {key: context, use: agent.context, title: Load business context and the dashboard's audience}
+    - {key: metadata, use: agent.metadata, title: Discover technical metadata of selected tables}
+    - key: relationships
+      use: agent.metadata
+      behaviour: discover_relationships
+      title: Discover and validate relationships
+      after: [metadata]
+      optional: true
+    - {key: profile, use: agent.profiler, title: Profile selected tables, after: [metadata]}
+    - key: quality
+      use: agent.data_quality
+      title: Detect data-quality issues
+      after: [profile, relationships]
+      optional: true
+    - key: dataset
+      use: agent.sql
+      title: Build the dashboard dataset
+      after: [context, profile, quality]
+      replan_boundary: [{trigger: redirect, reset: self_and_downstream}]
+    - {key: semantic, use: agent.semantic, title: Define and validate KPIs, after: [dataset]}
+    - {key: visualize, use: agent.visualization, title: Design charts and executive + operational dashboards, after: [semantic]}
+    - key: publish_request
+      use: agent.publisher
+      title: Governance review and publication approval request
+      type: approval_gate
+      payload: bundle
+      approval_for: publish
+      after: [visualize]
+      skip_when: {if: "run.origin.publish == 'skip'", reason: publication not requested for this goal}
+    - key: publish
+      use: agent.publisher
+      behaviour: publish
+      title: Publish approved bundle to the BI destination
+      type: side_effect
+      after: [publish_request]
+      optional: true
+      skip_when: {if: "run.origin.publish == 'skip'", reason: publication not requested for this goal}
+    - {key: finalize, use: agent.supervisor, title: Consolidate the dashboard build, after: [visualize, publish]}
