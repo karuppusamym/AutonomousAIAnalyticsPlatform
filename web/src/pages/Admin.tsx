@@ -7,8 +7,10 @@ import { fmtDate, fmtMs, fmtUsd } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import { PromptsView, SettingsEditor, TokenSavingsView } from "./AdminSettings";
 import { CapabilityRegistry } from "./Registry";
+import { DataTools, McpClients, McpServers } from "../components/ToolRegistry";
 
-type Tab = "capabilities" | "agents" | "tools" | "skills" | "models" | "settings" | "savings" | "prompts" | "usage";
+type Tab = "capabilities" | "agents" | "tools" | "skills" | "models" | "settings" | "savings" | "prompts" | "usage"
+  | "data-tools" | "mcp-servers" | "mcp-clients";
 
 export type AdminSection = "registry" | "settings" | "usage";
 
@@ -19,9 +21,10 @@ export type AdminSection = "registry" | "settings" | "usage";
 const SECTIONS: Record<AdminSection, { title: string; subtitle: string; tabs: { id: Tab; label: string }[] }> = {
   registry: {
     title: "Capability registry",
-    subtitle: "Every installed capability (playbooks, agents, methods, tools, connectors, plugins and MCP tools) with certification, side effects and per-workspace enablement.",
+    subtitle: "Every installed capability (playbooks, agents, methods, tools, connectors, plugins and MCP tools) with certification, side effects and per-workspace enablement; signed data tools published for other agents; external MCP servers and MCP clients.",
     tabs: [{ id: "capabilities", label: "Capabilities" }, { id: "agents", label: "Agents" }, { id: "tools", label: "Tools" }, { id: "skills", label: "Skills" },
-      { id: "prompts", label: "Prompts" }],
+      { id: "prompts", label: "Prompts" }, { id: "data-tools", label: "Data tools" }, { id: "mcp-servers", label: "MCP servers" },
+      { id: "mcp-clients", label: "MCP clients" }],
   },
   settings: {
     title: "Platform settings",
@@ -66,6 +69,9 @@ export function AdminPage({ section = "registry" }: { section?: AdminSection }) 
             {tab === "savings" && <TokenSavingsView />}
             {tab === "prompts" && <PromptsView />}
             {tab === "usage" && <UsageView />}
+            {tab === "data-tools" && <DataTools />}
+            {tab === "mcp-servers" && <McpServers />}
+            {tab === "mcp-clients" && <McpClients />}
           </>
         )}
       </div>

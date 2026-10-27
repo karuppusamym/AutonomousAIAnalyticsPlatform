@@ -2501,6 +2501,164 @@ export interface CapabilityInvocation {
   [k: string]: unknown;
 }
 
+// ----------------------------------------------------------------------------------- tool registry (S10)
+/** A registry tool version as listed (GET /v2/tools): toolreg/store.py `summary`. */
+export interface RegistryTool {
+  tool_id: string;
+  version: string;
+  kind: "data_product" | "playbook" | "external_mcp" | "builtin" | "agent" | string;
+  owner: string;
+  status: "certified" | "quarantined" | "refused" | "deprecated" | "retired" | string;
+  side_effect: "none" | "write_internal" | "write_external" | string;
+  title: string;
+  /** Screened text from the source or a third-party server: shown as data, never as instructions. */
+  description: string;
+  exposure: { rest?: boolean; mcp?: boolean; grants_required?: string[] };
+  data_classification_max?: string | null;
+}
+
+/** The signed v2 manifest (contracts/tool_manifest.py). */
+export interface ToolManifestV2 {
+  apiVersion: string;
+  tool_id: string;
+  version: string;
+  kind: string;
+  owner: string;
+  title: string;
+  description: string;
+  input_schema: Dict;
+  output_schema: Dict;
+  side_effect: string;
+  permissions: string[];
+  data_classification_max: string;
+  execution: { via: string; source?: string | null; ref: Dict };
+  limits: { timeout_s: number; max_rows: number; rate_per_min: number };
+  exposure: { rest: boolean; mcp: boolean; grants_required: string[] };
+  signature: { alg: string; key_id: string; value: string } | null;
+}
+
+export interface ToolHealth {
+  status: string;
+  /** "valid", or why the runtime refuses the manifest: unsigned | tampered | key | invalid */
+  signature: string;
+  source_current: boolean | null;
+  calls_24h: number;
+  error_rate_24h: number | null;
+  last_ok_at: string | null;
+  invocable: boolean;
+}
+
+export interface ToolVersionRow {
+  id: string;
+  tool_id: string;
+  version: string;
+  kind: string;
+  owner: string;
+  status: string;
+  status_reason: string | null;
+  side_effect: string;
+  manifest: ToolManifestV2;
+  manifest_hash: string;
+  source: Dict;
+  screening: { flags?: string[]; screened_at?: string; rescreen?: boolean; classified_by?: string; read_only_hint?: boolean | null } & Dict;
+  created_by: string;
+  created_at: string | null;
+}
+
+export interface RegistryToolDetail extends ToolVersionRow {
+  health: ToolHealth;
+  versions: { version: string; status: string; status_reason: string | null; created_at: string | null }[];
+}
+
+export interface ToolPublished extends ToolVersionRow {
+  created: boolean;
+}
+
+export interface ToolUsage {
+  tool_id: string;
+  days: number;
+  calls: number;
+  by_status: Record<string, number>;
+  by_channel: Record<string, number>;
+  top_callers: [string, number][];
+  latency_ms_p50: number | null;
+  cost_usd: number;
+  recent: { at: string | null; version: string | null; caller: string; channel: string; status: string; reason: string | null;
+    latency_ms: number; row_count: number | null; query_id: string | null }[];
+}
+
+export interface ToolInvocationResult {
+  tool_id: string;
+  version: string;
+  kind: string;
+  status: "ok" | "error" | "approval_required" | string;
+  deprecated?: boolean;
+  approval_id?: string;
+  result?: unknown;
+  [k: string]: unknown;
+}
+
+export interface ToolSigningKey {
+  key_id: string;
+  alg: string;
+  public_key: string;
+  status: "active" | "retired" | "revoked" | string;
+  created_at: string | null;
+  retired_at: string | null;
+}
+
+export type ToolPublishBody = Schemas["ToolPublishIn"];
+
+/** A registered external MCP server (GET /api/workspaces/{ws}/mcp/servers, mcp.py `_server_out`). */
+export interface McpServerRow {
+  id: string;
+  workspace_id: string;
+  name: string;
+  url: string;
+  transport: string;
+  status: "registered" | "ready" | "error" | string;
+  allowed: boolean;
+  has_secret: boolean;
+  config: Dict;
+  tools: { name: string; description: string; refused: boolean; flags: string[]; hash: string; read_only_hint: boolean | null }[];
+  last_refreshed_at: string | null;
+  last_error: string | null;
+}
+
+/** What one admission did (POST /v2/mcp-servers/{id}:admit). */
+export interface McpAdmission {
+  server: string;
+  server_id: string;
+  quarantined: string[];
+  rescreened: string[];
+  refused: string[];
+  retired: string[];
+  unchanged: string[];
+}
+
+export interface McpGrantRow {
+  workspace_id: string;
+  role: "viewer" | "analyst" | string;
+  tools: string[];
+  quotas: Record<string, number>;
+  tool_patterns: string[];
+  rate_per_min: number | null;
+  expires_at: string | null;
+}
+
+/** An MCP / API client of the platform (GET /api/admin/mcp/clients). */
+export interface McpClientRow {
+  client_id: string;
+  name: string;
+  status: "active" | "revoked" | string;
+  service_user_id: string;
+  created_at: string | null;
+  last_used_at: string | null;
+  grants: McpGrantRow[];
+}
+
+export type McpGrantBody = Schemas["GrantIn"];
+
 // ----------------------------------------------------------------------------------- build (P4-E04/E06, P4-U05)
 export interface BuildTarget {
   id: string;
@@ -3824,6 +3982,47 @@ export const api = {
   invokeCapability: (ws: string, id: string, args: Dict, approvalId?: string) =>
     post("/api/workspaces/{workspace_id}/capabilities/{capability_id}/invoke",
       { path: { workspace_id: ws, capability_id: id }, body: approvalId ? { arguments: args, approval_id: approvalId } : { arguments: args } }) as Promise<CapabilityInvocation>,
+  // tool, agent and data-product registry (S10): v2 API, toolreg/
+  listRegistryTools: (ws: string, filter: { kind?: string; q?: string; include_quarantined?: boolean } = {}) =>
+    get("/v2/tools", { query: { workspace_id: ws, ...filter } }) as Promise<RegistryTool[]>,
+  getRegistryTool: (ws: string, toolId: string) =>
+    get("/v2/tools/{tool_id}", { path: { tool_id: toolId }, query: W(ws) }) as Promise<RegistryToolDetail>,
+  registryToolUsage: (ws: string, toolId: string, days = 7) =>
+    get("/v2/tools/{tool_id}/usage", { path: { tool_id: toolId }, query: { workspace_id: ws, days } }) as Promise<ToolUsage>,
+  publishTool: (body: ToolPublishBody) => post("/v2/tools:publish", { body }) as Promise<ToolPublished>,
+  invokeRegistryTool: (ws: string, ref: string, args: Dict, approvalId?: string) =>
+    post("/v2/tools/{tool_id}:invoke", { path: { tool_id: ref }, body: { workspace_id: ws, arguments: args, approval_id: approvalId ?? null } }) as
+      Promise<ToolInvocationResult>,
+  deprecateRegistryTool: (ws: string, toolId: string, opts: { version?: string; reason?: string; retire?: boolean } = {}) =>
+    post("/v2/tools/{tool_id}:deprecate", { path: { tool_id: toolId }, body: { workspace_id: ws, version: opts.version ?? null,
+      reason: opts.reason ?? null, retire: !!opts.retire } }) as Promise<{ tool_id: string; status: string; versions: string[] }>,
+  classifyRegistryTool: (ws: string, toolId: string, sideEffect: string) =>
+    post("/v2/tools/{tool_id}:classify", { path: { tool_id: toolId }, body: { workspace_id: ws, side_effect: sideEffect } }) as
+      Promise<ToolVersionRow>,
+  toolSigningKeys: (ws: string) => get("/v2/tool-keys", { query: W(ws) }) as Promise<ToolSigningKey[]>,
+  rotateToolSigningKey: (ws: string, revokePrevious: boolean) =>
+    post("/v2/tool-keys:rotate", { body: { workspace_id: ws, revoke_previous: revokePrevious, resign: true } }) as
+      Promise<{ key_id: string; public_key: string; resigned: number }>,
+  // external MCP servers (P4-X05) and their admission into the registry (S10-T4)
+  listMcpServers: (ws: string) => get("/api/workspaces/{workspace_id}/mcp/servers", { path: W(ws) }) as Promise<McpServerRow[]>,
+  registerMcpServer: (ws: string, body: Schemas["ServerIn"]) =>
+    post("/api/workspaces/{workspace_id}/mcp/servers", { path: W(ws), body }) as Promise<McpServerRow>,
+  allowMcpServer: (ws: string, serverId: string, allowed: boolean) =>
+    post("/api/workspaces/{workspace_id}/mcp/servers/{server_id}/allow", { path: { workspace_id: ws, server_id: serverId }, body: { allowed } }) as
+      Promise<McpServerRow>,
+  admitMcpServer: (ws: string, serverId: string) =>
+    post("/v2/mcp-servers/{server_id}:admit", { path: { server_id: serverId }, body: W(ws) }) as Promise<McpAdmission>,
+  // MCP / API clients of the platform and their grants (P4-X06, S10-T3), platform admins only
+  listMcpClients: () => get("/api/admin/mcp/clients", {}) as Promise<McpClientRow[]>,
+  createMcpClient: (name: string) =>
+    post("/api/admin/mcp/clients", { body: { name } }) as Promise<{ client_id: string; name: string; token: string; note: string }>,
+  revokeMcpClient: (clientId: string) =>
+    post("/api/admin/mcp/clients/{client_id}/revoke", { path: { client_id: clientId } }) as Promise<{ client_id: string; status: string }>,
+  setMcpGrant: (clientId: string, ws: string, body: McpGrantBody) =>
+    put("/api/admin/mcp/clients/{client_id}/grants/{workspace_id}", { path: { client_id: clientId, workspace_id: ws }, body }) as
+      Promise<McpGrantRow & { client_id: string }>,
+  deleteMcpGrant: (clientId: string, ws: string) =>
+    del("/api/admin/mcp/clients/{client_id}/grants/{workspace_id}", { path: { client_id: clientId, workspace_id: ws } }) as Promise<void>,
   /** P4-T09: accept or dismiss a finding (labels the decisions behind it for calibration). */
   findingOutcome: (insightId: string, signal: "accept" | "dismiss") =>
     post("/api/insights/{insight_id}/outcome", { path: { insight_id: insightId }, body: { signal } }) as

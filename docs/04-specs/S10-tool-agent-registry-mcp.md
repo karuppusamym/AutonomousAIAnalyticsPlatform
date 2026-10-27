@@ -93,7 +93,8 @@ signature: {alg: ed25519, key_id: tenant-signing-1, value: ...}
   not signed per tenant; what the registry runs (published playbook/data-product tools, admitted external tools) is.
 * **Cost.** The data-product paths make no model call, so `tool_invocation.cost_usd` is 0 for them; the column is there
   for paths that do.
-* **Not built.** Registry UI (manifest view, usage, health, deprecate screens), registering built-in tools and agents as
+* **UI** (2026-10-27): Settings → Capability registry gains three tabs, *Data tools* (list, publish-as-tool, signed manifest and health, versions, usage, try it, deprecate/retire, signing keys), *MCP servers* (register, allow, admit, quarantine review and classification) and *MCP clients* (clients, grants with patterns/rate/expiry, and the MCP catalogue of what a workspace offers and which client reaches each tool). The registry screen is for platform admins (IA budget): workspace owners who are not admins publish, admit and classify through the API.
+* **Not built.** Registering built-in tools and agents as
   registry rows (they stay in the capability registry), an external MCP server outside the test double, AT-22 as a
   full end-to-end scenario.
 
