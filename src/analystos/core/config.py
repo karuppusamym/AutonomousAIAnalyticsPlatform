@@ -10,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PACKAGE_DIR = Path(__file__).resolve().parents[1]
@@ -213,6 +213,14 @@ class Settings(BaseSettings):
     web_url: str = "http://localhost:5173"  # where the OIDC callback returns the browser
     agents_dir: Path = DATA_ROOT / "config" / "agents"
     artifact_dir: Path = STATE_ROOT / "var" / "artifacts"
+    # Nightly audit-chain exports (S01-T5): gzipped JSONL, never overwritten. Point it at WORM storage
+    # (an object-lock bucket mount) in production; empty disables the export.
+    audit_export_dir: Path | None = STATE_ROOT / "var" / "audit"
+
+    @field_validator("audit_export_dir", mode="before")
+    @classmethod
+    def _no_export_dir(cls, value: object) -> object:
+        return None if isinstance(value, str) and value.strip().lower() in ("", "none", "off") else value
     upload_dir: Path = STATE_ROOT / "var" / "uploads"  # CSV/Parquet sources may only read below this directory
 
     # Gateway defaults (workspace policy may tighten, never loosen beyond these ceilings).

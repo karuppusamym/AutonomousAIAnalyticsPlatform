@@ -532,6 +532,12 @@ def housekeeping() -> dict[str, Any]:
     from analystos.services.stale_work import sweep_quietly
 
     out["stale_work"] = sweep_quietly()  # Ask turns / ML experiments a dead process left running
+    try:  # S01-T5: seal recent audit rows into each tenant's hash chain
+        from analystos.governance.audit_chain import seal_all
+
+        out["audit_sealed"] = seal_all()
+    except Exception:
+        log.exception("audit sealing failed")
     try:  # P6-03 operational alert: a destination whose good version is older than its pipeline's freshness
         from analystos.services.pipelines import check_freshness
 
@@ -572,6 +578,17 @@ def nightly_verification_sweep() -> None:
 
 
 @platform_loop
+def nightly_audit_chain() -> None:
+    """S01-T5 once a day: seal every audit row, verify every tenant's hash chain, export new links."""
+    from analystos.governance.audit_chain import maybe_run_nightly
+
+    try:
+        maybe_run_nightly()
+    except Exception:
+        log.exception("audit chain nightly failed")
+
+
+@platform_loop
 def run_scheduler(poll_seconds: float = 15.0, *, once: bool = False, stop: threading.Event | None = None,
                   configure: bool = True) -> None:
     """The schedule/monitor loop: `analystos scheduler`, or a thread of the API process in the lite
@@ -590,6 +607,7 @@ def run_scheduler(poll_seconds: float = 15.0, *, once: bool = False, stop: threa
         housekeeping()
         nightly_calibration()
         nightly_verification_sweep()
+        nightly_audit_chain()
         if once:
             return
         if stop is None:

@@ -1,4 +1,4 @@
-"""analystos CLI: migrate | provision-analytics-roles | seed | demo-seed | worker | scheduler | api | export-contracts | replay-run | packs | calibrate | knowledge | check-semantics"""
+"""analystos CLI: migrate | provision-analytics-roles | seed | demo-seed | worker | scheduler | api | export-contracts | replay-run | packs | calibrate | knowledge | check-semantics | audit"""
 from __future__ import annotations
 
 import argparse
@@ -212,6 +212,34 @@ def schedules_main(argv: list[str]) -> int:
     return 0
 
 
+def audit_main(argv: list[str]) -> int:
+    """`analystos audit seal|verify|export`: the tamper-evident audit chain (S01-T5). Exit 4 when a chain is broken."""
+    parser = argparse.ArgumentParser(prog="analystos audit")
+    parser.add_argument("command", choices=["seal", "verify", "export"])
+    who = parser.add_mutually_exclusive_group()
+    who.add_argument("--tenant", help="one tenant's chain (default: every chain, the platform chain included)")
+    who.add_argument("--platform", action="store_true", help="only the platform chain (events without a tenant)")
+    parser.add_argument("--full", action="store_true", help="seal: also rows older than the sealing window")
+    parser.add_argument("--out", help="export: directory (default ANALYSTOS_AUDIT_EXPORT_DIR)")
+    args = parser.parse_args(argv)
+    from analystos.governance import audit_chain as ac
+
+    targets = [args.tenant] if args.tenant else [None] if args.platform else ac.chains()
+    if args.command == "seal":
+        result: object = {ac.chain_key(t): ac.seal(t, full=args.full)["sealed"] for t in targets}
+    elif args.command == "verify":
+        result = [ac.verify_and_record(t, "cli") for t in targets]
+    else:
+        out = args.out or get_settings().audit_export_dir
+        if not out:
+            print("no export directory: pass --out or set ANALYSTOS_AUDIT_EXPORT_DIR", file=sys.stderr)
+            return 2
+        result = [ac.export(t, Path(out), actor="cli") for t in targets]
+    print(json.dumps(result, indent=2, default=str))
+    broken = args.command == "verify" and any(not r["ok"] for r in result)  # type: ignore[union-attr]
+    return 4 if broken else 0
+
+
 def bi_sync(workspace_ids: list[str] | None = None) -> dict:
     """Superset roles per workspace and users from workspace membership (P4-02)."""
     from analystos.db.base import session_scope
@@ -250,6 +278,8 @@ def _main(argv: list[str]) -> int:
         return knowledge_main(argv[1:])
     if argv[:1] == ["schedules"]:
         return schedules_main(argv[1:])
+    if argv[:1] == ["audit"]:
+        return audit_main(argv[1:])
     if argv[:1] == ["demo-seed"]:  # a ready demo workspace through the running API (`analystos demo-seed --help`)
         from analystos.demo.seed import main as demo_seed
 
@@ -261,12 +291,13 @@ def _main(argv: list[str]) -> int:
         return check_semantics(rest, as_json="--json" in argv[1:])
     parser = argparse.ArgumentParser(prog="analystos")
     parser.add_argument("command", choices=["migrate", "provision-analytics-roles", "seed", "worker", "scheduler", "api",
-                                            "export-contracts", "replay-run", "packs", "calibrate", "knowledge", "schedules",
+                                            "export-contracts", "replay-run", "packs", "calibrate", "knowledge", "schedules", "audit",
                                             "bi-sync", "sandbox-status", "check-semantics", "demo-seed"],
                         help="knowledge: `analystos knowledge --help` (reindex, reembed, import, export, ...); "
                              "demo-seed: `analystos demo-seed --help` (a ready demo workspace through the API); "
                              "check-semantics: `analystos check-semantics PATH... [--json]` (offline model validation); "
-                             "schedules: `analystos schedules disable-demo [--all] [--workspace W] [--dry-run]`")
+                             "schedules: `analystos schedules disable-demo [--all] [--workspace W] [--dry-run]`; "
+                             "audit: `analystos audit seal|verify|export [--tenant T | --platform] [--full] [--out DIR]`")
     parser.add_argument("run_id", nargs="?", help="replay-run: the analysis run id")
     parser.add_argument("--check", action="store_true", help="replay-run: re-execute recorded calls offline and compare")
     parser.add_argument("--out", help="replay-run: write the JSON report to this file; export-contracts: the directory")

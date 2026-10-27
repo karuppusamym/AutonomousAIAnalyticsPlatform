@@ -54,6 +54,7 @@ CHILD_PARENTS: dict[str, tuple[str, str]] = {
     "source_column": ("source_asset", "asset_id"),
     "user_identity": ("app_user", "user_id"),
     "mcp_client": ("app_user", "service_user_id"),
+    "audit_chain": ("audit_event", "event_id"),
 }
 ROOTS = ("workspace", "app_user")  # carry tenant_id as a mapped column; created in system scope -> default tenant
 DIRECT = ("tenant_member",)  # tenant_id is part of the row's identity, always given explicitly

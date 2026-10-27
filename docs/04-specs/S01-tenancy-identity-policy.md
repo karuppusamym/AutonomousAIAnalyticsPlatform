@@ -42,6 +42,27 @@ and make the audit log physically append-only.
     Isolated-worker callbacks act for the tenant of the token's workspace. CLI maintenance commands run in system scope.
   * The spec's invariant "never inferred from the data" is met in this form: the tenant travels explicitly (header,
     request, token) where the caller has it; where a platform loop picks an item, the item's own row is the authority.
+* **T5, audit hash chain** (`governance/audit_chain.py`, migration `0058_audit_chain`):
+  * A separate append-only table `audit_chain(event_id, chain, seq, prev_hash, hash)` seals `audit_event` rows,
+    one chain per tenant (`platform` for tenant-less rows): `hash = sha256(prev_hash + "
+" + canonical_json(event))`,
+    genesis 64 zeros. This differs from the plan's `prev_hash`/`hash` columns on `audit_event`: chaining inside every
+    audited transaction would serialize a tenant's writes on one lock, and `audit_event` stays strictly immutable.
+  * Sealing is asynchronous: every scheduler iteration seals rows created within an hour before each chain's head;
+    the nightly pass seals everything (late commits), verifies every chain and exports new links. Verify and
+    export seal first. Sealers are serialized per chain by an advisory lock; batches of 2,000 rows.
+  * Only the sealer (system scope) writes the chain: the application role has SELECT only, and UPDATE/DELETE are
+    refused by the append-only trigger. The chain row's tenant comes from its event, so tenants read only their chain.
+  * `verify` streams the chain and names the first bad link: `bad_genesis`, `gap`, `broken_link`, `missing_event`,
+    `wrong_chain` or `altered`; it also counts events left unsealed past the window. A chain pruned by retention
+    starts at its first remaining link (`anchored_at`).
+  * Export: gzipped JSONL per chain under `ANALYSTOS_AUDIT_EXPORT_DIR/<chain>/<chain>-<from>-<to>.jsonl.gz`, never
+    overwritten; each export and each verification is itself audited (with the file SHA-256 and head hash), so the
+    chain anchors its exports. Each line verifies offline without AnalystOS code.
+  * API: `GET /api/tenants/{t}/audit?after_seq=&limit=&action=` (JSON lines, `X-Next-After-Seq`) and
+    `POST /api/tenants/{t}/audit/verify`, for the tenant's `tenant_admin`/`tenant_auditor` or a platform admin, for
+    the tenant the request acts for (another id is 404). CLI: `analystos audit seal|verify|export [--tenant T | --platform]`
+    (verify exits 4 on a broken chain).
 * The request tenant is bound by `TenantMiddleware` (token → home tenant, or `X-Tenant-Id` if the user is a member,
   else 403) before any route code runs, and it reaches every session the request opens.
 * Platform rows (NULL tenant) are readable by tenants only for shared catalogs (knowledge packs). They stay private for

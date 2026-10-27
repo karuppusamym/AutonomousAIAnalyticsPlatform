@@ -27,6 +27,7 @@ NOT_A_CHILD_ID = {
     "name": "a metric name, queried inside the workspace_id query parameter (semantic service filters by it)",
     "capability_id": "a platform-wide registry entry, not a workspace child; enablement is per workspace",
     "user_id": "a platform user; membership changes are owner-only in the path's workspace",
+    "tenant_id": "above workspaces (ADR-009): must equal the tenant the request acts for, else 404 (tenants.py)",
 }
 # Routes whose child id is never read (a fixed answer for any id), or that no user session can reach.
 WORKER_TOKEN = ("isolated-worker route (P7-06): authenticated only by a scoped task token bound to its workspace, "

@@ -1021,6 +1021,22 @@ class AuditEvent(Base):
     created_at: Mapped[datetime] = _ts()
 
 
+class AuditChain(Base):
+    """Tamper-evident seal over ``audit_event`` (spec S01-T5). One hash chain per tenant (``chain`` is the
+    tenant id, or ``platform`` for tenant-less rows): ``hash = sha256(prev_hash + "
+" + canonical event)``.
+    Written only by the sealer in system scope (``governance/audit_chain.py``); append-only like the events."""
+
+    __tablename__ = "audit_chain"
+    event_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("audit_event.id", ondelete="RESTRICT"), primary_key=True)
+    chain: Mapped[str] = mapped_column(String(40))
+    seq: Mapped[int] = mapped_column(BigInteger)
+    prev_hash: Mapped[str] = mapped_column(String(64))
+    hash: Mapped[str] = mapped_column(String(64))
+    sealed_at: Mapped[datetime] = _ts()
+    __table_args__ = (UniqueConstraint("chain", "seq", name="uq_audit_chain_seq"),)
+
+
 # ------------------------------------------------------------------------------------------ Phase 3
 class Schedule(Base):
     """Recurring work (§37). Executes with the owner's CURRENT permissions, re-checked at fire time."""
@@ -2276,3 +2292,5 @@ from analystos.db import column_presence  # noqa: E402,F401  (registers the abse
 from analystos.tenancy.schema import attach_tenant_columns  # noqa: E402
 
 attach_tenant_columns(Base.metadata)  # tenant_id on every tenant-owned table (ADR-009)
+# The audit sealer finds a tenant's unsealed events by (tenant, time window) (S01-T5, migration 0058).
+Index("ix_audit_event_tenant_created", AuditEvent.__table__.c.tenant_id, AuditEvent.__table__.c.created_at)

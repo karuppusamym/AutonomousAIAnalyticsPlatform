@@ -6,7 +6,8 @@ What it installs (ADR-009):
 * BEFORE INSERT triggers that fill ``tenant_id`` from the parent row or the bound tenant;
 * row-level security policies for the restricted role (the owner identity stays unrestricted and is
   used only inside ``system_scope``);
-* an append-only ``audit_event`` (no UPDATE/DELETE for anyone without the maintenance switch).
+* an append-only ``audit_event`` and ``audit_chain`` (no UPDATE/DELETE for anyone without the maintenance
+  switch; the restricted role cannot write the chain at all, only the sealer in system scope can).
 
 Run by migration ``0057_tenancy`` (with a frozen table list) and by the test fixture after
 ``create_all`` (with the live metadata).
@@ -124,19 +125,30 @@ def install(conn: Connection, sources: Mapping[str, TenantSource], role: str = "
     install_audit_immutability(conn, role)
 
 
+AUDIT_TABLES = ("audit_event", "audit_chain")
+
+
 def install_audit_immutability(conn: Connection, role: str) -> None:
-    """audit_event is append-only. Retention jobs set ``app.audit_maintenance = 'on'`` in their own
-    transaction (owner identity) and are themselves audited."""
+    """audit_event and its hash chain are append-only. Retention jobs set ``app.audit_maintenance = 'on'``
+    in their own transaction (owner identity) and are themselves audited. Only the sealer (system scope)
+    writes the chain: the restricted role may read it, never insert into it."""
     conn.execute(text(
         "CREATE OR REPLACE FUNCTION audit_event_immutable() RETURNS trigger LANGUAGE plpgsql AS $fn$\n"
         "BEGIN\n"
         "  IF current_setting('app.audit_maintenance', true) = 'on' THEN RETURN COALESCE(NEW, OLD); END IF;\n"
-        "  RAISE EXCEPTION 'audit_event is append-only (% refused)', TG_OP USING ERRCODE = 'insufficient_privilege';\n"
+        "  RAISE EXCEPTION '% is append-only (% refused)', TG_TABLE_NAME, TG_OP USING ERRCODE = 'insufficient_privilege';\n"
         "END $fn$"))
-    conn.execute(text("DROP TRIGGER IF EXISTS audit_event_immutable ON audit_event"))
-    conn.execute(text("CREATE TRIGGER audit_event_immutable BEFORE UPDATE OR DELETE ON audit_event "
-                      "FOR EACH ROW EXECUTE FUNCTION audit_event_immutable()"))
-    conn.execute(text(f"REVOKE UPDATE, DELETE, TRUNCATE ON audit_event FROM {_q(role)}"))
+    present = {r[0] for r in conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+                                               "AND tablename = ANY(:t)"), {"t": list(AUDIT_TABLES)})}
+    for table in AUDIT_TABLES:
+        if table not in present:
+            continue
+        conn.execute(text(f"DROP TRIGGER IF EXISTS audit_event_immutable ON {_q(table)}"))
+        conn.execute(text(f"CREATE TRIGGER audit_event_immutable BEFORE UPDATE OR DELETE ON {_q(table)} "
+                          "FOR EACH ROW EXECUTE FUNCTION audit_event_immutable()"))
+        conn.execute(text(f"REVOKE UPDATE, DELETE, TRUNCATE ON {_q(table)} FROM {_q(role)}"))
+    if "audit_chain" in present:
+        conn.execute(text(f"REVOKE INSERT ON audit_chain FROM {_q(role)}"))
 
 
 def rls_status(conn: Connection, tables: list[str]) -> dict[str, dict[str, bool]]:

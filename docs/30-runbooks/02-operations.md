@@ -140,6 +140,12 @@ event and notification. Without Redis, reservations fail closed (`spend_counters
   * Scheduler and sweeps: claims, relays and sweeps are platform loops (system scope); each claimed item (schedule
     run, delivery, dispatch, crawl, run step) runs as its owner.
   * CLI maintenance commands (`migrate`, `seed`, `calibrate`, `knowledge`, `bi-sync`, ...) run in system scope.
+* Audit hash chain (S01-T5): the scheduler seals new audit rows into one SHA-256 chain per tenant and runs a nightly
+  pass (seal all, verify every chain, export new links to `ANALYSTOS_AUDIT_EXPORT_DIR`). Mount that directory on
+  object-lock (WORM) storage in production. Manual: `analystos audit verify [--tenant T]` (exit 4 = broken chain; the
+  output names the first bad link), `analystos audit export --out DIR`. A broken chain is audited as
+  `audit.chain_broken` and logged at error level: treat it as a security incident (who had owner credentials?).
+  Tenants check their own chain with `POST /api/tenants/{t}/audit/verify` (tenant admin or auditor).
 * Rolling upgrade from `bound`: deploy the new code everywhere first (workers last is fine: engine activities bind the
   run's tenant without the header), then remove any `ANALYSTOS_TENANCY_MODE=bound` override. A symptom of a missed
   binding is "not found" or an empty list from background work; set `bound` to restore service while you fix it.
