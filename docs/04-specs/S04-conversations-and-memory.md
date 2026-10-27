@@ -68,7 +68,7 @@ AT-18; `test_branch_restores_state`; `test_summary_numbers_cite_turns`; `test_pe
 
 ## 7. As built (2026-10-27, T1–T6)
 Code: `src/analystos/conversations/` (`service`, `state`, `corrections`, `summaries`, `retention`, `ledger`, `models`),
-`api/routers/conversations.py` (prefix `/v2`), MCP tools in `mcp/server.py`, migration `0061_conversations`.
+`api/routers/conversations.py` (prefix `/v2`), MCP tools in `mcp/server.py`, migration `0062_conversations`.
 Tests: `tests/unit/test_conversations.py`, `tests/integration/test_conversations.py` (Postgres, RLS, strict tenancy).
 
 Deviations and decisions:
