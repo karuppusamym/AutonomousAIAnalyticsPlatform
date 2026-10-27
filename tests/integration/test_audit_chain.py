@@ -172,10 +172,12 @@ def test_nightly_runs_once_a_day(control_db, tmp_path):
     from analystos.governance import audit_chain as ac
     from analystos.tenancy import system_scope
 
-    with system_scope():
-        first = ac.maybe_run_nightly(out_dir=tmp_path)
+    from analystos.core.ids import utcnow
+
+    with system_scope():  # "a day later" than any pass an in-process scheduler of another test already ran
+        first = ac.maybe_run_nightly(now=utcnow() + timedelta(days=2), out_dir=tmp_path)
         assert first is not None and set(first["broken"]) <= _broken_by_tests()
-        assert ac.maybe_run_nightly(out_dir=tmp_path) is None
+        assert ac.maybe_run_nightly(out_dir=tmp_path) is None  # the pass just ran
 
 
 def _broken_by_tests() -> set[str]:

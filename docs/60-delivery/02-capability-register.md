@@ -1,5 +1,22 @@
 # Capability register (evidence)
 
+## 2026-10-27 — S13 Analyst Request Desk (T1–T4, T6 backend)
+
+New package `src/analystos/desk/`: requests from the UI/API (`POST /api/requests`) and MCP (`request.create`) are
+deduplicated, triaged R1–R9 by the `request_triage` ladder (rules first; a typed decision and a small model only when
+no rule is confident, limited to R1–R9 and unable to lower an export or a confident escalation), then answered by the
+existing governed paths (Ask for R1/R2, an investigation run for R3/R6, a reviewed definition for R7) or escalated
+with an SLA, an assignee and a data pack. Every state change is a `request_event` and a `request.*` UI event; the
+tables are tenant-owned with RLS (migration `0060_request_desk`). Value metrics on `GET /api/value`.
+Tests: `tests/unit/test_request_desk.py` (state machine, triage rules and ladder, floors, dedupe, value math with
+fixture baselines, review/SLA/answer/accept flows, R3/R7 routes, MCP tool) and
+`tests/integration/test_request_desk.py` on Postgres 16 with RLS (2026-10-27, Windows dev host): AT-19 — 20 seeded
+R1/R2 requests over staged ServiceNow data with a fake model transport, 18 auto-answered with numbers equal to an
+independent reference query on the analytics plane, 2 escalated with a refusal, assignee, SLA and inspector link,
+none answered wrongly; dedupe through the API; escalated request answered, accepted and measured; another tenant gets
+404 on read, actions, value and intake. Not built: certify-on-close (T5), nightly rollup, Teams/Slack/email intake,
+R4/R5 schedule/monitor proposals, UI.
+
 ## 2026-10-26 — ASK-BRIEF-01 Ask-to-investigation handoff
 
 Ask's Investigate why action opens an inline editable objective, initially the original question.

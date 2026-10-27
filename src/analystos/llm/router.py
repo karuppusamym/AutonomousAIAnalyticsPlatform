@@ -383,8 +383,11 @@ def platform_ladder(config: ModelsConfig, platform: Any, purpose: str) -> list[s
         rungs = ladder_for_mode(default, llm.purpose_modes[purpose])
     else:
         rungs = default
-    if purpose in config.routing and config.routing[purpose] == "decision" and not platform.features.jev_decisions:
-        rungs = ladder_for_mode(rungs, "off")
+    if not platform.features.jev_decisions:
+        if purpose in config.routing and config.routing[purpose] == "decision":
+            rungs = ladder_for_mode(rungs, "off")
+        else:  # a chat purpose with a typed decision rung before its chat rung keeps the chat rung
+            rungs = [r for r in rungs if r != "decision"]
     return rungs
 
 
@@ -465,10 +468,15 @@ class ModelRouter:
         return 0.0, "missing_price"
 
     # ------------------------------------------------------------------ routing
-    def candidates(self, purpose: str, ctx: CallContext) -> tuple[str, ProfileConfig, list[str]]:
+    def candidates(self, purpose: str, ctx: CallContext, *, profile: str | None = None) -> tuple[str, ProfileConfig, list[str]]:
         """The purpose's first tier: the small models (cheap first), or under `always_large` the large tier
-        followed by the small one."""
+        followed by the small one. `profile` names the profile of a ladder rung other than the purpose's
+        routed one (the `decision` rung of a chat purpose)."""
         llm = self.settings
+        if profile is not None:  # the profile of a ladder rung other than the purpose's routed one
+            if profile not in self.config.profiles:
+                raise KeyError(f"No model profile '{profile}'")
+            return self._resolve(profile, self.config.profiles[profile], ctx)
         narrowing = self._narrowing(ctx)
         override = (narrowing.routing.get(purpose) if narrowing is not None else None) or llm.routing_overrides.get(purpose)
         if override and override in self.config.profiles:
@@ -625,12 +633,12 @@ class ModelRouter:
         raise ApprovalRequired(message, details={"purpose": purpose, "model": cheapest, "estimated_usd": estimates[cheapest],
                                                  "limit_usd": limit, "decision": "approval_required"})
 
-    def available(self, purpose: str, ctx: CallContext | None = None) -> bool:
+    def available(self, purpose: str, ctx: CallContext | None = None, *, profile: str | None = None) -> bool:
         ctx = ctx or CallContext()
         try:
             if self.mode(purpose, ctx) == "off":
                 return False
-            _, profile, models = self.candidates(purpose, ctx)
+            _, profile, models = self.candidates(purpose, ctx, profile=profile)
         except (KeyError, ModelRouteUnavailable):
             return False
         provider = self.config.providers.get(profile.provider)
@@ -902,13 +910,14 @@ class ModelRouter:
 
     # ------------------------------------------------------------------ decisions (JEV)
     def decide(self, purpose: str, state: dict[str, Any], questions: dict[str, Any], *,
-               ctx: CallContext | None = None) -> DecisionResponse:
+               ctx: CallContext | None = None, profile: str | None = None) -> DecisionResponse:
         """Typed decision via TypeSafe Jev. Only trusted, redacted text goes into `state`:
-        objective, registry/catalog descriptions, computed statistics — never raw result rows."""
+        objective, registry/catalog descriptions, computed statistics — never raw result rows.
+        `profile` = the decision profile of a chat purpose's `decision` rung (e.g. request_triage)."""
         ctx = ctx or CallContext()
         if self.mode(purpose, ctx) == "off":
             raise LLMDisabled(f"decision model for '{purpose}' is turned off by the administrator")
-        profile_name, profile, models = self.candidates(purpose, ctx)
+        profile_name, profile, models = self.candidates(purpose, ctx, profile=profile)
         if not models:
             raise self._no_route(purpose, profile_name, profile, ctx)
         base_url, key = self._provider(profile)

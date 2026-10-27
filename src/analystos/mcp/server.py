@@ -67,6 +67,18 @@ TOOL_DEFS: dict[str, dict[str, Any]] = {
                                     "Never executes it.",
                      "schema": {"type": "object", "properties": {"workspace_id": _ws_prop(), "sql": {"type": "string"}},
                                 "required": ["sql"]}, "read_only": True},
+    "request.create": {"description": "Ask the analyst Request Desk for something (a number, an explanation, a definition, "
+                                      "a report). It is triaged R1-R9 and answered by the governed paths, or escalated to an "
+                                      "analyst; returns the request with its state and, when answered, the answer.",
+                       "schema": {"type": "object", "properties": {"workspace_id": _ws_prop(),
+                                                                   "text": {"type": "string", "minLength": 3, "maxLength": 4000},
+                                                                   "priority": {"type": "string",
+                                                                                "enum": ["low", "normal", "high", "urgent"]}},
+                                  "required": ["text"]}, "read_only": False},
+    "request.status": {"description": "A Request Desk request created by this client: state, class and answer.",
+                       "schema": {"type": "object", "properties": {"workspace_id": _ws_prop(),
+                                                                   "request_id": {"type": "string"}},
+                                  "required": ["request_id"]}, "read_only": True},
 }
 
 
@@ -161,9 +173,33 @@ def _tool_validate_sql(principal: G.ClientPrincipal, ws: str, args: dict[str, An
             return {"accepted": False, "code": exc.code, "reason": exc.message, "executed": False}
 
 
+_REQUEST_FIELDS = ("id", "workspace_id", "state", "class", "priority", "channel", "duplicate_of", "conversation_id",
+                   "run_ids", "answer", "sla_due_at", "created_at", "first_answer_at", "closed_at")
+
+
+def _tool_request_create(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
+    from analystos.desk.service import submit
+
+    with session_scope() as s:
+        user = _service_user(s, principal)
+        s.expunge(user)
+    out = submit(user, ws, str(args.get("text") or ""), channel="mcp", priority=str(args.get("priority") or "normal"))
+    return {k: out.get(k) for k in _REQUEST_FIELDS}
+
+
+def _tool_request_status(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
+    from analystos.desk.service import get_request
+
+    with session_scope() as s:
+        out = get_request(s, _service_user(s, principal), str(args.get("request_id") or ""))
+        if out["workspace_id"] != ws:
+            raise NotFound("request not found")
+        return {k: out.get(k) for k in _REQUEST_FIELDS}
+
+
 TOOL_IMPLS: dict[str, Callable[[G.ClientPrincipal, str, dict[str, Any]], dict[str, Any]]] = {
     "ask": _tool_ask, "investigate": _tool_investigate, "get_finding_evidence": _tool_finding_evidence,
-    "validate_sql": _tool_validate_sql,
+    "validate_sql": _tool_validate_sql, "request.create": _tool_request_create, "request.status": _tool_request_status,
 }
 
 

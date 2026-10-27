@@ -124,6 +124,7 @@ ladders:
   # Stream E: the glossary scan's rules find terms and code sets; the model only drafts a definition for a
   # candidate the rules could not define (validated, screened; a person approves every draft).
   glossary_suggestion: [cache, rules, llm_small]
+  request_triage: [cache, rules, decision, llm_small]
   # Data shape: rules name the patterns of a table (event log, time series, ML candidate); the model only proposes an event
   # log for a table the rules left unexplained, and code verifies the mapping against the profile.
   data_shape_proposal: [cache, rules, llm_small]
@@ -166,6 +167,7 @@ routing:
   metadata_enrichment: low_cost
   domain_classification_assist: low_cost
   glossary_suggestion: low_cost
+  request_triage: low_cost
   data_shape_proposal: low_cost
   verification: independent_model_family
   # JEV decision purposes
@@ -192,6 +194,7 @@ escalation:
     metadata_enrichment: never   # batch crawl prompts; the deterministic semantics already ran
     domain_classification_assist: never  # proposals only; the catalog keeps its rule classification
     glossary_suggestion: never   # drafts only; a person approves every glossary term
+    request_triage: never
     data_shape_proposal: never   # proposals only; code verifies and a person confirms
     decision_structured: never   # the DecisionService falls back to its rules backend
     agent_actions: never         # declarative agents have default_actions
