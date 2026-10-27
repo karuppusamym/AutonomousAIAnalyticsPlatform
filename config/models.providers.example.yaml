@@ -37,6 +37,28 @@ providers:
     region: eu
     model_map:
       anthropic/claude-sonnet-5: anthropic.claude-sonnet-5-v1:0
+  onprem_vllm:                   # OpenAI-compatible (S05-T1): vLLM, Ollama, LM Studio, TGI, Groq, Together, LiteLLM
+    kind: chat
+    type: openai_compatible
+    base_url_env: VLLM_URL       # e.g. http://vllm:8000/v1 (Ollama: http://ollama:11434/v1); no base_url needed
+    api_key_env: VLLM_KEY        # omit for a server without a key
+    egress: internal             # reachable without leaving the installation
+    region: eu                   # unset = unknown: excluded under any residency rule
+    model_map:                   # allowlisted id -> the name the server serves it under
+      qwen/qwen3-32b: qwen3-32b
+    capabilities:                # declared: a compatible server cannot be asked
+      json_mode: true
+      tools: false
+      context_window: 32768
+  litellm:                       # a LiteLLM proxy in front of several providers, one virtual key
+    kind: chat
+    type: openai_compatible
+    base_url: http://litellm:4000
+    api_key_env: LITELLM_KEY
+    region: eu
+    model_map:
+      deepseek/deepseek-v4-flash: deepseek-v4-flash
+    capabilities: {json_mode: true, tools: true, context_window: 65536}
 
 profiles:
   reasoning_strong:

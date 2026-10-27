@@ -27,6 +27,7 @@ from analystos.api.routers import investigation_value as investigation_value_rou
 from analystos.api.routers import knowledge as knowledge_router
 from analystos.api.routers import mcp as mcp_router
 from analystos.api.routers import ml as ml_router
+from analystos.api.routers import models_admin as models_admin_router
 from analystos.api.routers import pilot as pilot_router
 from analystos.api.routers import pipelines as pipelines_router
 from analystos.api.routers import process as process_router
@@ -97,6 +98,7 @@ for r in (auth.router, workspaces.router, analysis.router, artifacts.router, adm
           capabilities.router, registries_router.router, semantic_router.router):
     app.include_router(r)
 app.include_router(mcp_router.router)
+app.include_router(models_admin_router.router)  # model gateway admin (S05)
 app.include_router(decisions_router.router)
 app.include_router(builds_router.router)
 app.include_router(ask_router.router)

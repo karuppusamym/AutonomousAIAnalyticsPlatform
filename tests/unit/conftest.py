@@ -41,7 +41,8 @@ def sqlite_db(monkeypatch):
         "verification_record", "verification_dependency", "verification_sweep",
         # P7-03 / P4-06: a run binding reads semantic versions; definitions, pins, outbox, idempotency, work orders
         "semantic_model", "semantic_metric", "definition", "schedule", "schedule_run", "dispatch_outbox",
-        "idempotency_record", "work_order")]
+        "idempotency_record", "work_order",
+        "model_config_override")]  # S05-T3: the router reads a workspace's model layers
     models.Base.metadata.create_all(engine, tables=tables)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     monkeypatch.setattr(base, "SessionLocal", lambda: factory())

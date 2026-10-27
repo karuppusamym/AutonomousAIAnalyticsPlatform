@@ -318,5 +318,8 @@ def test_bedrock_endpoint_must_pass_the_egress_guard():
 
 def test_example_provider_config_is_valid():
     config = _config("models.providers.example.yaml")
-    assert {p.type for p in config.providers.values()} >= {"anthropic", "azure_openai", "bedrock", "openrouter"}
+    assert {p.type for p in config.providers.values()} >= {"anthropic", "azure_openai", "bedrock", "openrouter",
+                                                           "openai_compatible"}
+    vllm = config.providers["onprem_vllm"]
+    assert vllm.capabilities.context_window == 32768 and vllm.capabilities.tools is False and vllm.region == "eu"
     assert config.ladders and config.decisions  # inherited from models.yaml through `extends`

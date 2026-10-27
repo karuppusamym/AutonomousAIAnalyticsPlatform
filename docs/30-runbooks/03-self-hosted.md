@@ -97,7 +97,7 @@ Acceptance still open: the §62 scenario on an air-gapped install with a real lo
 | `type` | Wire API | Key |
 |---|---|---|
 | `openrouter` (default) | chat completions + Decisions API | `api_key_env` |
-| `openai_compatible` | `<base_url>/chat/completions` (vLLM, Ollama, TGI, OpenAI) | optional `api_key_env` |
+| `openai_compatible` | `<base_url>/chat/completions` (vLLM, Ollama, LM Studio, llama.cpp server, TGI, Groq, Together, Fireworks, a LiteLLM proxy) | optional `api_key_env` |
 | `azure_openai` | `<base_url>/openai/deployments/<deployment>/chat/completions?api-version=` | `api-key` header from `api_key_env` |
 | `anthropic` | Messages API (`/v1/messages`), system blocks with cache breakpoints, usage incl. cache reads | `x-api-key` from `api_key_env` |
 | `bedrock` | Converse via boto3 (AWS credential chain); without boto3 a clear `bedrock_unavailable` error; the boto3 endpoint host must pass the same egress allowlist | none in config |
@@ -106,6 +106,71 @@ Acceptance still open: the §62 scenario on an air-gapped install with a real lo
 `egress: internal`; an Azure OpenAI resource behind a private endpoint may, with an explicit `private_link: true`.
 
 A literal `api_key:` in a models file fails validation. Budgets, allowlists, redaction, caching and call records are the same for every provider.
+
+### 4.1 OpenAI-compatible endpoints (S05-T1)
+
+An OpenAI-compatible server cannot be asked what it supports, so the provider declares it:
+
+```yaml
+providers:
+  onprem_vllm:
+    type: openai_compatible
+    base_url_env: VLLM_URL            # base_url, base_url_env or both (the env var wins when set)
+    api_key_env: VLLM_KEY             # omit for a server without a key (Ollama, LM Studio)
+    egress: internal                  # inside the installation: allowed on an air-gapped install
+    region: eu                        # unset = unknown, which is excluded under any residency rule
+    model_map: {local/sqlcoder-ft: sqlcoder-7b-ft-v3}   # allowlisted id -> the name the server serves
+    capabilities: {json_mode: true, tools: false, context_window: 16384}
+```
+
+* `json_mode: false` drops `response_format` (the prompt still asks for JSON; the router parses and
+  validates the answer). `tools: false` drops tool fields. `context_window` caps `max_tokens` to what fits
+  after the prompt; a prompt that leaves no room is refused before any connection and the next model is tried.
+* A model may override its provider's declaration (`models.<id>.capabilities`).
+* No base URL in the environment or the file: calls fail with "provider … has no base URL (set VLLM_URL)".
+* Check one with `POST /api/admin/models/providers/{id}/test` (one billable ping through the router; it
+  writes a `model_call` row). `GET /api/admin/models/providers` lists health: key present, last success and
+  error, cooldown, today's spend, and 24 h calls, error rate and latency p50/p95.
+
+Recipes (all `type: openai_compatible`): vLLM `http://vllm:8000/v1`; Ollama `http://ollama:11434/v1`
+(no key); LM Studio `http://<host>:1234/v1`; Groq `https://api.groq.com/openai/v1`; Together
+`https://api.together.xyz/v1`; a LiteLLM proxy `http://litellm:4000` with its master or virtual key in
+`api_key_env`. Hosted ones stay `egress: internet` and need a `region` to pass a residency rule.
+
+### 4.2 Layered model configuration (S05-T3)
+
+Effective configuration = models file ⊕ platform settings ⊕ tenant override ⊕ workspace override. The file
+and platform settings belong to the platform administrator and define what exists (providers, profiles,
+allowlist, prices). A tenant override, then a workspace override, may only narrow:
+
+| Field | Rule |
+|---|---|
+| `allowlist` | intersection; a model the layer above does not allow is refused |
+| `residency` | region or list of regions; may only shrink; unknown or other regions are excluded (AT-15) |
+| `budgets` (`per_run_usd`, `per_day_usd`, `per_user_day_usd`) | each takes the minimum; raising one is refused |
+| `purposes.<p>.mode` / `.ladder` | `off`/`rules_only`, `auto`, `always`/`model_first`; may drop model rungs or put rules first, never add a model rung or move the model earlier |
+| `purposes.<p>.profile` | any file profile of the same kind: a chat purpose can never be moved onto the decision model (JEV), nor a decision purpose off it |
+| `profile_models.<profile>` | reorder or drop the profile's models, never add one |
+
+`providers` and `profiles` cannot appear in an override. When no allowed model serves a purpose the call
+fails closed (`model_unavailable` with the reason in the effective view) and only a `rules` rung answers.
+
+API (platform administrators, the tenant's `tenant_admin` members, and workspace owners for their workspace):
+
+```text
+GET  /api/admin/models/effective?workspace=<id>     resolved config, `sources` (layer of each value),
+                                                    `excluded_models` (layer + reason), `violations`, ETag
+GET  /api/admin/models/config?scope=tenant|workspace&workspace=<id>   the scope's document + history
+PUT  /api/admin/models/config?scope=tenant|workspace&workspace=<id>   If-Match: "<version>" ("0" first)
+     {"document": {...}, "note": "..."}             -> new version (412 stale, 428 missing, 422 widening)
+POST /api/admin/models/config/rollback {"version": n, "scope": "...", "workspace": "<id>"}
+```
+
+Versions are append-only (`model_config_override`, tenant row-level security) and audited
+(`models.config.updated`, `models.config.rolled_back`); a rollback is re-checked against today's upper layers.
+The router reads a workspace's layers on every call (cached 5 s per workspace); if they cannot be read and
+were never read in that process, workspace model calls fail closed. Budgets are resolved and shown; the hard
+spend caps enforced today are still the platform daily cap and the workspace monthly budget.
 
 ## 5. Single sign-on (OIDC) and ABAC
 

@@ -16,7 +16,6 @@ reconstructed and re-executed offline with `analystos.llm.replay.ReplayTransport
 """
 from __future__ import annotations
 
-import dataclasses
 import json
 import os
 import re
@@ -374,6 +373,21 @@ def mode_of(ladder: list[str]) -> str:
     return "auto" if det_at is not None and det_at < model_at else "always"
 
 
+def platform_ladder(config: ModelsConfig, platform: Any, purpose: str) -> list[str]:
+    """A purpose's ladder from the file and the platform settings (no tenant/workspace layers)."""
+    llm = platform.llm
+    default = config.default_ladder(purpose)
+    if purpose in llm.ladders:
+        rungs = list(llm.ladders[purpose])
+    elif purpose in llm.purpose_modes:
+        rungs = ladder_for_mode(default, llm.purpose_modes[purpose])
+    else:
+        rungs = default
+    if purpose in config.routing and config.routing[purpose] == "decision" and not platform.features.jev_decisions:
+        rungs = ladder_for_mode(rungs, "off")
+    return rungs
+
+
 def _price_error(cost_source: str, model: str, config: ModelsConfig) -> str | None:
     if cost_source != "missing_price":
         return None
@@ -384,7 +398,8 @@ class ModelRouter:
     def __init__(self, config: ModelsConfig | None = None, *, sink: UsageSink | None = None,
                  transport: Transport | None = None, api_key_lookup: Callable[[str], str | None] | None = None,
                  max_retries: int = 2, settings_provider: Callable[[], Any] | None = None,
-                 cache: ResponseCache | None = None, air_gapped: bool | None = None) -> None:
+                 cache: ResponseCache | None = None, air_gapped: bool | None = None,
+                 layers_provider: Callable[[str], Any] | None = None) -> None:
         self.config = config or load_models_config()
         self.sink = sink or NullSink()
         self.air_gapped = _air_gapped() if air_gapped is None else air_gapped
@@ -393,6 +408,9 @@ class ModelRouter:
         self.api_key_lookup = api_key_lookup or (lambda env: (os.getenv(env) or "").strip() or None)
         self.max_retries = max_retries
         self.settings_provider = settings_provider or _default_settings
+        # Tenant/workspace model layers (S05-T3). The control-plane default goes with the default settings
+        # provider; a router given its own settings (tests, replay) has no layers unless given them too.
+        self.layers_provider = layers_provider or (_default_layers if settings_provider is None else _no_layers)
         self.cache = cache if cache is not None else ResponseCache(None)
 
     # ------------------------------------------------------------------ admin settings
@@ -400,26 +418,29 @@ class ModelRouter:
     def settings(self):
         return self.settings_provider().llm
 
-    def ladder(self, purpose: str) -> list[str]:
+    def ladder(self, purpose: str, ctx: CallContext | None = None) -> list[str]:
         """The purpose's execution ladder (spec v3 §4.1): admin `ladders` override, else the admin
         mode applied to the models.yaml default, else the default. JEV purposes lose their decision
-        rung when the jev feature flag is off."""
-        platform = self.settings_provider()
-        llm = platform.llm
-        default = self.config.default_ladder(purpose)
-        if purpose in llm.ladders:
-            rungs = list(llm.ladders[purpose])
-        elif purpose in llm.purpose_modes:
-            rungs = ladder_for_mode(default, llm.purpose_modes[purpose])
-        else:
-            rungs = default
-        if purpose in self.config.routing and self.config.routing[purpose] == "decision" and not platform.features.jev_decisions:
-            rungs = ladder_for_mode(rungs, "off")
+        rung when the jev feature flag is off. With a workspace `ctx`, the tenant/workspace layers
+        (S05-T3) may then only narrow it."""
+        rungs = platform_ladder(self.config, self.settings_provider(), purpose)
+        narrowing = self._narrowing(ctx)
+        if narrowing is not None and purpose in narrowing.ladders:
+            from analystos.llm.layers import narrow_ladder
+
+            rungs = narrow_ladder(rungs, narrowing.ladders[purpose])[0]
         return rungs
 
-    def mode(self, purpose: str) -> str:
+    def mode(self, purpose: str, ctx: CallContext | None = None) -> str:
         """off | auto | always, derived from the ladder (ADR-0012: the increment-3 modes are ladder presets)."""
-        return mode_of(self.ladder(purpose))
+        return mode_of(self.ladder(purpose, ctx))
+
+    def _narrowing(self, ctx: CallContext | None) -> Any:
+        """The workspace's resolved tenant/workspace layers (llm.layers.EffectiveModels), or None for a
+        platform-level call. A provider that cannot read them raises (fail closed)."""
+        if ctx is None or not ctx.workspace_id:
+            return None
+        return self.layers_provider(ctx.workspace_id)
 
     def record_skip(self, purpose: str, ctx: CallContext | None, *, estimated_tokens: int, reason: str,
                     rung: str = "rules") -> None:
@@ -448,7 +469,8 @@ class ModelRouter:
         """The purpose's first tier: the small models (cheap first), or under `always_large` the large tier
         followed by the small one."""
         llm = self.settings
-        override = llm.routing_overrides.get(purpose)
+        narrowing = self._narrowing(ctx)
+        override = (narrowing.routing.get(purpose) if narrowing is not None else None) or llm.routing_overrides.get(purpose)
         if override and override in self.config.profiles:
             profile_name, profile = override, self.config.profiles[override]
         else:
@@ -477,25 +499,48 @@ class ModelRouter:
         models = self.settings.profile_escalation_models.get(profile_name) or profile.escalation_models
         return self._allowed(list(models), profile, ctx)
 
-    def _resolve(self, profile_name: str, profile: ProfileConfig, ctx: CallContext) -> tuple[str, ProfileConfig, list[str]]:
-        """Admin profile models, then platform allowlist - disabled models, workspace allowlist, family exclusions."""
+    def _resolve(self, profile_name: str, profile: ProfileConfig, ctx: CallContext, *,
+                 residency: bool = True) -> tuple[str, ProfileConfig, list[str]]:
+        """Admin profile models (narrowed by the tenant/workspace layers), then platform allowlist - disabled
+        models, layer and workspace allowlists, family exclusions, residency."""
         llm = self.settings
         if llm.profile_models.get(profile_name):
             profile = profile.model_copy(update={"models": list(llm.profile_models[profile_name])})
-        return profile_name, profile, self._allowed(profile.models, profile, ctx)
+        narrowing = self._narrowing(ctx)
+        if narrowing is not None and profile_name in narrowing.profile_models:
+            # a layer may reorder or drop the profile's models, never add one
+            profile = profile.model_copy(update={"models": [m for m in narrowing.profile_models[profile_name]
+                                                            if m in profile.models]})
+        return profile_name, profile, self._allowed(profile.models, profile, ctx, residency=residency)
 
-    def _allowed(self, candidates: list[str], profile: ProfileConfig, ctx: CallContext) -> list[str]:
+    def _regions(self, ctx: CallContext) -> set[str] | None:
+        """Regions a model may run in for this call: the workspace policy's data_residency and the
+        tenant/workspace layers' residency, intersected. None = no residency rule."""
+        wanted: set[str] | None = None
+        if ctx.data_residency:
+            wanted = {ctx.data_residency.strip().lower()}
+        narrowing = self._narrowing(ctx)
+        if narrowing is not None and narrowing.regions is not None:
+            layer = set(narrowing.regions)
+            wanted = layer if wanted is None else wanted & layer
+        return wanted
+
+    def _allowed(self, candidates: list[str], profile: ProfileConfig, ctx: CallContext, *, residency: bool = True) -> list[str]:
         llm = self.settings
         allowed = set(self.config.allowlist) - set(llm.disabled_models)
         if ctx.allowed_models:
             allowed &= set(ctx.allowed_models)
+        narrowing = self._narrowing(ctx)
+        if narrowing is not None and narrowing.layer_allowlist is not None:
+            allowed &= set(narrowing.layer_allowlist)
         excluded = set(profile.exclude_families) | set(ctx.exclude_families)
         models = [m for m in candidates if m in allowed and family(m) not in excluded]
         if self._policy_block(profile, ctx):
             return []
-        if ctx.data_residency:
-            want = ctx.data_residency.strip().lower()
-            models = [m for m in models if (self.config.region_of(m, profile.provider) or "").strip().lower() == want]
+        regions = self._regions(ctx) if residency else None
+        if regions is not None:
+            # unknown region (neither the model nor its provider declares one) fails closed (AT-15)
+            models = [m for m in models if (self.config.region_of(m, profile.provider) or "").strip().lower() in regions]
         return models
 
     def _policy_block(self, profile: ProfileConfig, ctx: CallContext) -> str | None:
@@ -517,12 +562,13 @@ class ModelRouter:
         blocked = self._policy_block(profile, ctx)
         if blocked is not None:
             return ModelPolicyBlocked(f"{head}: {blocked}", details={**details, "allowed_providers": ctx.allowed_providers})
-        if ctx.data_residency:
-            unfiltered = dataclasses.replace(ctx, data_residency=None)
-            if self._resolve(profile_name, profile, unfiltered)[2]:
-                return ModelResidencyBlocked(
-                    f"{head}: no model of profile {profile_name} has a known region matching the workspace data_residency "
-                    f"'{ctx.data_residency}' (unknown regions fail closed)", details={**details, "data_residency": ctx.data_residency})
+        regions = self._regions(ctx)
+        if regions is not None and self._resolve(profile_name, profile, ctx, residency=False)[2]:
+            wanted = ", ".join(sorted(regions)) or "none (the layers' residency rules do not overlap)"
+            return ModelResidencyBlocked(
+                f"{head}: no model of profile {profile_name} has a known region matching the data_residency "
+                f"'{wanted}' (unknown regions fail closed)",
+                details={**details, "data_residency": ctx.data_residency, "regions": sorted(regions)})
         return ModelRouteUnavailable(f"{head}: every model is excluded by the platform or workspace model allowlist",
                                      details=details)
 
@@ -531,10 +577,12 @@ class ModelRouter:
         no route (policy, residency, allowlist), no API key in this process, or a 402 cooldown.
         None when the purpose is available."""
         ctx = ctx or CallContext()
-        if self.mode(purpose) == "off":
-            return LLMDisabled(f"model use for '{purpose}' is turned off by the administrator", details={"purpose": purpose})
         try:
+            if self.mode(purpose, ctx) == "off":
+                return LLMDisabled(f"model use for '{purpose}' is turned off by the administrator", details={"purpose": purpose})
             profile_name, profile, models = self.candidates(purpose, ctx)
+        except ModelRouteUnavailable as exc:
+            return exc
         except KeyError:
             return ModelRouteUnavailable(f"no model profile is configured for purpose '{purpose}'", details={"purpose": purpose})
         if not models:
@@ -579,11 +627,11 @@ class ModelRouter:
 
     def available(self, purpose: str, ctx: CallContext | None = None) -> bool:
         ctx = ctx or CallContext()
-        if self.mode(purpose) == "off":
-            return False
         try:
+            if self.mode(purpose, ctx) == "off":
+                return False
             _, profile, models = self.candidates(purpose, ctx)
-        except KeyError:
+        except (KeyError, ModelRouteUnavailable):
             return False
         provider = self.config.providers.get(profile.provider)
         keyed = provider is not None and (provider.api_key_env is None or bool(self.api_key_lookup(provider.api_key_env)))
@@ -595,6 +643,9 @@ class ModelRouter:
         provider = self.config.providers.get(profile.provider)
         if provider is None:
             raise ModelRouteUnavailable(f"provider '{profile.provider}' is not configured")
+        if provider.type != "bedrock" and not provider.url():
+            raise ModelRouteUnavailable(f"provider '{profile.provider}' has no base URL (set {provider.base_url_env})",
+                                        details={"provider": profile.provider, "env": provider.base_url_env})
         if provider.api_key_env is None:
             return provider.url(), ""
         key = self.api_key_lookup(provider.api_key_env)
@@ -609,6 +660,9 @@ class ModelRouter:
         provider = self.config.providers[profile.provider]
         if provider.type == "openrouter":
             return self.transport.chat(base_url=base_url, api_key=key, payload=payload, timeout=timeout)
+        if provider.type == "openai_compatible":
+            return adapter_for(provider).chat(self.transport, provider, key or None, payload, timeout,
+                                              capabilities=self.config.capabilities_of(payload["model"], profile.provider))
         return adapter_for(provider).chat(self.transport, provider, key or None, payload, timeout)
 
     # ------------------------------------------------------------------ spend reservations
@@ -649,7 +703,7 @@ class ModelRouter:
         because a check further downstream failed (e.g. SQL the gateway still rejects after repairs);
         EscalationUnavailable when the policy or profile has no large tier."""
         ctx = ctx or CallContext()
-        if self.mode(purpose) == "off":
+        if self.mode(purpose, ctx) == "off":
             raise LLMDisabled(f"model use for '{purpose}' is turned off by the administrator")
         profile_name, profile, models = self.candidates(purpose, ctx)
         escalation = self.escalation_tier(purpose, ctx, profile_name, profile, models)
@@ -852,7 +906,7 @@ class ModelRouter:
         """Typed decision via TypeSafe Jev. Only trusted, redacted text goes into `state`:
         objective, registry/catalog descriptions, computed statistics — never raw result rows."""
         ctx = ctx or CallContext()
-        if self.mode(purpose) == "off":
+        if self.mode(purpose, ctx) == "off":
             raise LLMDisabled(f"decision model for '{purpose}' is turned off by the administrator")
         profile_name, profile, models = self.candidates(purpose, ctx)
         if not models:
@@ -930,6 +984,16 @@ def _air_gapped() -> bool:
     return bool(get_settings().air_gapped)
 
 
+def _no_layers(_workspace_id: str) -> None:
+    return None
+
+
+def _default_layers(workspace_id: str) -> Any:
+    from analystos.services.model_config import narrowing_for
+
+    return narrowing_for(workspace_id)
+
+
 def _default_settings():
     try:
         from analystos.services.platform_settings import get
@@ -942,4 +1006,5 @@ def _default_settings():
 
 
 __all__ = ["MODEL_RUNGS", "JSON_INSTRUCTION", "ApprovalRequired", "BudgetExceeded", "CallContext", "DecisionResponse", "ModelResponse",
-           "ModelRouter", "cached_prompt_tokens", "ladder_for_mode", "mode_of", "normalize_messages", "parse_json_text", "wire_messages"]
+           "ModelRouter", "cached_prompt_tokens", "ladder_for_mode", "mode_of", "normalize_messages", "parse_json_text",
+           "platform_ladder", "wire_messages"]

@@ -1193,6 +1193,25 @@ class PlatformSetting(Base):
     created_at: Mapped[datetime] = _ts()
 
 
+class ModelConfigOverride(Base):
+    """Append-only versions of a tenant's or a workspace's model configuration override (S05-T3). The
+    document only narrows the layer above (analystos.llm.layers); `scope_key` is "tenant:<id>" or
+    "workspace:<id>" so versions are unique per scope even where workspace_id is NULL."""
+
+    __tablename__ = "model_config_override"
+    __table_args__ = (UniqueConstraint("scope_key", "version", name="uq_model_config_override_version"),)
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    scope_key: Mapped[str] = mapped_column(String(100), index=True)
+    scope: Mapped[str] = mapped_column(String(20))  # tenant | workspace
+    tenant_id: Mapped[str | None] = _tenant_column()
+    workspace_id: Mapped[str | None] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True, nullable=True)
+    version: Mapped[int] = mapped_column(Integer)
+    document: Mapped[dict[str, Any]] = mapped_column(JSON)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = _ts()
+
+
 class CrawlRun(Base):
     """One metadata crawl of a source (META-005/006): what was seen, what changed, what it cost."""
 

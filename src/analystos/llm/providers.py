@@ -5,8 +5,11 @@ response shape back. An adapter maps that shape to a provider's wire API and the
 routing, budgets, redaction, caching and the call record are the same whichever provider answers:
 
   openrouter         the router's own transport path (unchanged)
-  openai_compatible  `<base_url>/chat/completions`; covers vLLM, Ollama, LM Studio, TGI and OpenAI itself.
-                     Bearer key when `api_key_env` is set, none for a local endpoint
+  openai_compatible  `<base_url>/chat/completions`; covers vLLM, Ollama, LM Studio, llama.cpp server, TGI,
+                     Groq, Together, Fireworks and a LiteLLM proxy. Bearer key when `api_key_env` is set,
+                     none for a local endpoint. Such a server cannot be asked what it supports, so the
+                     provider declares `capabilities` (json_mode, tools, context_window): a request is
+                     shaped to fit them instead of being rejected by the server
   azure_openai       `<base_url>/openai/deployments/<deployment>/chat/completions?api-version=...`, `api-key` header
   anthropic          the Messages API (`<base_url>/v1/messages`): system turns lifted into `system`,
                      cache_control blocks kept, usage mapped back (cache reads included)
@@ -22,7 +25,7 @@ from typing import Any, Protocol
 from urllib.parse import urlsplit
 
 from analystos.core.errors import EgressBlocked, ModelRouteUnavailable
-from analystos.llm.config import ProviderConfig
+from analystos.llm.config import ModelCapabilities, ProviderConfig
 
 OPENROUTER_ONLY_FIELDS = ("usage", "reasoning")  # `usage: {include: true}` and `reasoning: {effort}` are OpenRouter extensions
 
@@ -57,13 +60,46 @@ def _as_logical(body: dict, logical_model: str) -> dict:
     return {**body, "model": logical_model}
 
 
+CHARS_PER_TOKEN = 3.6  # the router's own estimate (context budgets); conservative for a window check
+MIN_COMPLETION_TOKENS = 64
+
+
+def fit_capabilities(body: dict, caps: ModelCapabilities, logical_model: str) -> dict:
+    """Shape an OpenAI-style body to what the endpoint declared. `json_mode: false` drops
+    response_format (the prompt still asks for JSON and the router still parses and validates it);
+    `tools: false` drops tool fields; `context_window` caps max_tokens to what fits after the prompt,
+    and a prompt that leaves no room is refused before any connection (the router tries the next model)."""
+    out = dict(body)
+    if caps.json_mode is False:
+        out.pop("response_format", None)
+    if caps.tools is False:
+        for k in ("tools", "tool_choice", "parallel_tool_calls"):
+            out.pop(k, None)
+    if caps.context_window:
+        prompt = int(sum(len(str(m.get("content") or "")) for m in out.get("messages") or []) / CHARS_PER_TOKEN) + 1
+        room = caps.context_window - prompt
+        if room < MIN_COMPLETION_TOKENS:
+            raise ModelRouteUnavailable(
+                f"prompt of ~{prompt} tokens does not fit the declared context_window {caps.context_window} of "
+                f"{logical_model}", details={"model": logical_model, "prompt_tokens": prompt,
+                                             "context_window": caps.context_window})
+        if int(out.get("max_tokens") or 0) > room or not out.get("max_tokens"):
+            out["max_tokens"] = room
+    return out
+
+
 class OpenAICompatibleAdapter:
-    def chat(self, transport: Any, provider: ProviderConfig, api_key: str | None, payload: dict, timeout: float) -> dict:
+    """`capabilities` is what the router resolved for this model (ModelsConfig.capabilities_of: the
+    model's own declaration over the provider's); the provider's alone when called directly."""
+
+    def chat(self, transport: Any, provider: ProviderConfig, api_key: str | None, payload: dict, timeout: float,
+             capabilities: ModelCapabilities | None = None) -> dict:
         model = payload["model"]
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        body = _poster(transport, provider).post(f"{provider.url()}/chat/completions", headers=headers,
-                                                  payload=_openai_body(payload, provider, model), timeout=timeout)
-        return _as_logical(body, model)
+        body = fit_capabilities(_openai_body(payload, provider, model), capabilities or provider.capabilities, model)
+        out = _poster(transport, provider).post(f"{provider.url()}/chat/completions", headers=headers,
+                                                payload=body, timeout=timeout)
+        return _as_logical(out, model)
 
 
 class AzureOpenAIAdapter:
@@ -191,4 +227,5 @@ def needs_key(provider: ProviderConfig) -> bool:
 
 
 __all__ = ["ADAPTERS", "AnthropicAdapter", "AzureOpenAIAdapter", "BedrockAdapter", "BedrockUnavailable",
-           "OpenAICompatibleAdapter", "adapter_for", "anthropic_request", "anthropic_response", "needs_key"]
+           "OpenAICompatibleAdapter", "adapter_for", "anthropic_request", "anthropic_response", "fit_capabilities",
+           "needs_key"]
