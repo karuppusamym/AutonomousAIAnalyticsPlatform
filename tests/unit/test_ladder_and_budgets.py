@@ -46,7 +46,9 @@ def test_every_routed_purpose_has_a_valid_default_ladder_matching_its_profile():
     for purpose, rungs in cfg.ladders.items():
         assert len(rungs) == len(set(rungs)) and rungs[0] == "cache"
         model_rungs = [r for r in rungs if r in ("decision", "llm_small", "llm_large")]
-        assert model_rungs == [cfg.model_rung(cfg.routing[purpose])], purpose
+        routed = cfg.model_rung(cfg.routing[purpose])
+        # A chat purpose may put a typed decision rung (the decision profile) before its own chat rung.
+        assert model_rungs in ([routed], ["decision", routed]) and len(model_rungs) == len(set(model_rungs)), purpose
 
 
 def test_deterministic_first_is_the_default_for_every_purpose_with_a_rule_path():

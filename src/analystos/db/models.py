@@ -2273,6 +2273,7 @@ class GroundingEvaluation(Base):
 
 
 from analystos.db import column_presence  # noqa: E402,F401  (registers the absent-column filter, P7-20)
+from analystos.desk.models import ClassBaseline, Request, RequestEvent  # noqa: E402,F401  (Request Desk, S13)
 from analystos.tenancy.schema import attach_tenant_columns  # noqa: E402
 
 attach_tenant_columns(Base.metadata)  # tenant_id on every tenant-owned table (ADR-009)

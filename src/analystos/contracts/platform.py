@@ -27,7 +27,8 @@ DETERMINISTIC_CAPABLE = {"planning", "hypothesis_generation", "follow_up_generat
                          "hypothesis_priority", "chart_selection", "feedback_classification", "stop_check", "agent_actions",
                          "pipeline_proposal",
                          "ask_route", "clarify_needed", "metric_match", "join_path_choice", "semantic_query",
-                         "ml_spec_proposal", "analyst_planning", "analyst_synthesis", "glossary_suggestion", "data_shape_proposal"}
+                         "ml_spec_proposal", "analyst_planning", "analyst_synthesis", "glossary_suggestion", "data_shape_proposal",
+                         "request_triage"}
 
 
 class LLMSettings(BaseModel):
@@ -66,6 +67,7 @@ class LLMSettings(BaseModel):
         "follow_up_generation",  # objective + tested results + catalog; the same round asks the same question
         "glossary_suggestion",  # screened candidate names, types and profile shape; the same scan asks the same
         "data_shape_proposal",  # column names, types and distinct counts only; the same catalog asks the same
+        "request_triage",  # the request text and the R1-R9 options; the same request is classified the same
     ])
     max_prompt_tokens: int = Field(16000, ge=500, le=400_000)  # estimated input tokens per call; larger prompts are refused (deterministic fallback)
     downgrade_below_budget_fraction: float = Field(0.25, ge=0.0, le=1.0)  # when a run has less budget left, chat purposes use the low_cost profile
