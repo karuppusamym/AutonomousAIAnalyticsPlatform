@@ -47,7 +47,7 @@ def setup_world(snow_url: str):
         s.flush()
         src = register_source(s, admin, ws.id, kind="servicenow", name="SN",
                               config={"instance_url": snow_url, "username": "admin", "tables": ["incident"]},
-                              secret_ref="env:SERVICENOW_PASSWORD")
+                              secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
         s.flush()
         ws_id, src_id = ws.id, src.id
         s.expunge(admin)

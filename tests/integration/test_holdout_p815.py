@@ -98,12 +98,12 @@ def test_a_governed_run_locks_before_it_reads_the_held_out_rows(control_db, reta
     from analystos.skills import sqlbuild as sb
 
     url = retail_pg["url"]
-    monkeypatch.setenv("P815_PG_PASSWORD", url.password or "")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_P815_PG_PASSWORD", url.password or "")
     with session_scope() as s:
         admin = s.scalar(select(User).where(User.email == get_settings().bootstrap_admin_email))
         ws = create_workspace(s, admin, name="p815 holdout", objective=OBJECTIVE)
         s.flush()
-        src = register_source(s, admin, ws.id, kind="postgres", name="p815 shop", secret_ref="env:P815_PG_PASSWORD",
+        src = register_source(s, admin, ws.id, kind="postgres", name="p815 shop", secret_ref="env:ANALYSTOS_SOURCE_SECRET_P815_PG_PASSWORD",
                               config={"host": url.host, "port": url.port or 5432, "database": url.database,
                                       "username": url.username, "schemas": [SOURCE_SCHEMA], "execution_mode": "staged"})
         s.flush()

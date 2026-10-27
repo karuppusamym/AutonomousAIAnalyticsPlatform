@@ -48,8 +48,8 @@ def world(control_db, servicenow_url):
     from analystos.services.sources import discover_source, register_source, select_assets
     from analystos.services.workspaces import create_workspace
 
-    saved = os.environ.get("SERVICENOW_PASSWORD")
-    os.environ["SERVICENOW_PASSWORD"] = "admin"
+    saved = os.environ.get("ANALYSTOS_SOURCE_SECRET_SERVICENOW")
+    os.environ["ANALYSTOS_SOURCE_SECRET_SERVICENOW"] = "admin"
     get_settings.cache_clear()
     with session_scope() as s:
         admin = s.scalar(select(User).where(User.email == get_settings().bootstrap_admin_email))
@@ -58,7 +58,7 @@ def world(control_db, servicenow_url):
         src = register_source(s, admin, ws.id, kind="servicenow", name="SN activity",
                               config={"instance_url": servicenow_url, "username": "admin", "page_size": 10_000,
                                       "tables": ["u_task_activity", "sc_task"]},
-                              secret_ref="env:SERVICENOW_PASSWORD")
+                              secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
         s.flush()
         ws_id, src_id = ws.id, src.id
         s.expunge(admin)
@@ -67,9 +67,9 @@ def world(control_db, servicenow_url):
     crawl = crawl_source(admin, src_id, mode="full", profile=True)
     yield {"ws": ws_id, "source": src_id, "loaded": loaded, "crawl": crawl}
     if saved is None:
-        os.environ.pop("SERVICENOW_PASSWORD", None)
+        os.environ.pop("ANALYSTOS_SOURCE_SECRET_SERVICENOW", None)
     else:
-        os.environ["SERVICENOW_PASSWORD"] = saved
+        os.environ["ANALYSTOS_SOURCE_SECRET_SERVICENOW"] = saved
     get_settings.cache_clear()
 
 

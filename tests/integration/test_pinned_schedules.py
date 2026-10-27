@@ -101,9 +101,9 @@ def world(control_db, servicenow_url):
     from analystos.services.sources import discover_source, register_source, select_assets
     from analystos.services.workspaces import add_member, create_workspace
 
-    saved = {k: os.environ.get(k) for k in ("OPENROUTER_API_KEY", "SERVICENOW_PASSWORD", "ANALYSTOS_SUPERSET_URL")}
+    saved = {k: os.environ.get(k) for k in ("OPENROUTER_API_KEY", "ANALYSTOS_SOURCE_SECRET_SERVICENOW", "ANALYSTOS_SUPERSET_URL")}
     os.environ.pop("OPENROUTER_API_KEY", None)
-    os.environ["SERVICENOW_PASSWORD"] = "admin"
+    os.environ["ANALYSTOS_SOURCE_SECRET_SERVICENOW"] = "admin"
     os.environ["ANALYSTOS_SUPERSET_URL"] = "http://127.0.0.1:9"
     get_settings.cache_clear()
     default_router.cache_clear()
@@ -114,7 +114,7 @@ def world(control_db, servicenow_url):
         add_member(s, admin, ws.id, "approver@analystos.local", "approver")
         src = register_source(s, admin, ws.id, kind="servicenow", name="SN",
                               config={"instance_url": servicenow_url, "username": "admin", "tables": ["incident"]},
-                              secret_ref="env:SERVICENOW_PASSWORD")
+                              secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
         s.flush()
         ws_id, src_id = ws.id, src.id
         s.expunge(admin)

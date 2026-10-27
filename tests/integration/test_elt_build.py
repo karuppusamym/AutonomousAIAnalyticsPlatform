@@ -55,7 +55,7 @@ def world(control_db):
     """A staged ServiceNow source, a completed investigate run (no models, no publication), one of its
     KPIs approved in the semantic model, playbook.elt_build enabled and a designated target schema."""
     os.environ.pop("OPENROUTER_API_KEY", None)
-    os.environ["SERVICENOW_PASSWORD"] = "admin"
+    os.environ["ANALYSTOS_SOURCE_SECRET_SERVICENOW"] = "admin"
     from analystos.connectors.servicenow_mock import app
 
     port = _free_port()
@@ -84,7 +84,7 @@ def world(control_db):
         add_member(s, admin, ws.id, "approver@analystos.local", "approver")
         src = register_source(s, admin, ws.id, kind="servicenow", name="SN",
                               config={"instance_url": f"http://127.0.0.1:{port}", "username": "admin", "tables": ["incident"]},
-                              secret_ref="env:SERVICENOW_PASSWORD")
+                              secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
         s.flush()
         ws_id, src_id = ws.id, src.id
         src_schema = src.staging_schema or staging_schema_for(src.id)

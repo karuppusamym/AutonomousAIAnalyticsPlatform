@@ -58,7 +58,7 @@ def _records() -> list[dict]:
 
 @pytest.fixture(scope="module")
 def world(control_db):
-    os.environ["SERVICENOW_PASSWORD"] = "admin"
+    os.environ["ANALYSTOS_SOURCE_SECRET_SERVICENOW"] = "admin"
     from analystos.connectors.servicenow_mock import app
 
     original = copy.deepcopy(_records())
@@ -85,9 +85,9 @@ def world(control_db):
         s.flush()
         add_member(s, admin, ws.id, "approver@analystos.local", "approver")
         a = register_source(s, admin, ws.id, kind="servicenow", name="SN incremental", config={**base, "incremental": inc},
-                            secret_ref="env:SERVICENOW_PASSWORD")
+                            secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
         b = register_source(s, admin, ws.id, kind="servicenow", name="SN reference", config=dict(base),
-                            secret_ref="env:SERVICENOW_PASSWORD")
+                            secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
         s.flush()
         ids = {"ws": ws.id, "a": a.id, "b": b.id}
         s.expunge(admin)

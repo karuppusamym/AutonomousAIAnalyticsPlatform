@@ -161,8 +161,8 @@ def mysql_server():
 
 @pytest.fixture()
 def mysql_config(mysql_server, monkeypatch) -> dict:
-    monkeypatch.setenv("DP_MYSQL_RO_PASSWORD", mysql_server["ro_pw"])
-    monkeypatch.setenv("DP_MYSQL_ROOT_PASSWORD", mysql_server["root_pw"])
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_DP_MYSQL_RO_PASSWORD", mysql_server["ro_pw"])
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_DP_MYSQL_ROOT_PASSWORD", mysql_server["root_pw"])
     return {"host": "127.0.0.1", "port": mysql_server["port"], "database": "shop", "username": "ro",
             "exclude": ["*.audit_*"]}
 
@@ -170,7 +170,7 @@ def mysql_config(mysql_server, monkeypatch) -> dict:
 def test_mysql_test_and_discovery(mysql_config) -> None:
     from analystos.connectors.registry import build_connector
 
-    con = build_connector(SimpleNamespace(kind="mysql", config=mysql_config, secret_ref="env:DP_MYSQL_RO_PASSWORD"))
+    con = build_connector(SimpleNamespace(kind="mysql", config=mysql_config, secret_ref="env:ANALYSTOS_SOURCE_SECRET_DP_MYSQL_RO_PASSWORD"))
     assert con.execution_mode == "staged" and con.dialect == "postgres" and con.source_dialect == "mysql"
     probe = con.test()
     assert probe.ok, probe.message
@@ -194,8 +194,8 @@ def test_mysql_test_and_discovery(mysql_config) -> None:
 def test_mysql_bad_password_is_a_clear_secret_free_error(mysql_config, monkeypatch) -> None:
     from analystos.connectors.generic_sql import GenericSQLConnector
 
-    monkeypatch.setenv("DP_MYSQL_WRONG", "definitely-wrong-pw")
-    res = GenericSQLConnector("mysql", mysql_config, "env:DP_MYSQL_WRONG").test()
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_DP_MYSQL_WRONG", "definitely-wrong-pw")
+    res = GenericSQLConnector("mysql", mysql_config, "env:ANALYSTOS_SOURCE_SECRET_DP_MYSQL_WRONG").test()
     assert not res.ok and "authentication failed" in res.message
     assert "definitely-wrong-pw" not in res.message
 
@@ -203,7 +203,7 @@ def test_mysql_bad_password_is_a_clear_secret_free_error(mysql_config, monkeypat
 def test_mysql_session_is_read_only_even_for_root(mysql_config) -> None:
     from analystos.connectors.generic_sql import GenericSQLConnector
 
-    root = GenericSQLConnector("mysql", dict(mysql_config, username="root"), "env:DP_MYSQL_ROOT_PASSWORD")
+    root = GenericSQLConnector("mysql", dict(mysql_config, username="root"), "env:ANALYSTOS_SOURCE_SECRET_DP_MYSQL_ROOT_PASSWORD")
     with root._get_engine().connect() as conn, pytest.raises(Exception, match="READ ONLY"):  # noqa: PT011
         conn.execute(text("INSERT INTO shop.audit_log VALUES (2, 'nope')"))
     root.close()
@@ -216,9 +216,9 @@ def test_mysql_extract_stage_and_gateway_query(mysql_config, dp_settings, dp_ses
     from analystos.staging.loader import StagingLoader
 
     source_id = _register_source(dp_session_factory, dp_workspace, kind="mysql", config=mysql_config,
-                                 secret_ref="env:DP_MYSQL_RO_PASSWORD", mode=execution_mode_for("mysql", None))
+                                 secret_ref="env:ANALYSTOS_SOURCE_SECRET_DP_MYSQL_RO_PASSWORD", mode=execution_mode_for("mysql", None))
     schema = staging_schema_for(source_id)
-    con = build_connector(SimpleNamespace(kind="mysql", config=mysql_config, secret_ref="env:DP_MYSQL_RO_PASSWORD",
+    con = build_connector(SimpleNamespace(kind="mysql", config=mysql_config, secret_ref="env:ANALYSTOS_SOURCE_SECRET_DP_MYSQL_RO_PASSWORD",
                                           execution_mode="staged"))
     assets = con.discover()
     loader = StagingLoader(dp_settings)
@@ -379,11 +379,11 @@ def pg_generic_source(dp_control_url, dp_session_factory, dp_workspace, monkeypa
         ):
             conn.execute(text(stmt))
     url = make_url(dp_control_url)
-    monkeypatch.setenv("DP_GENERIC_PG_PASSWORD", url.password or "")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_DP_GENERIC_PG_PASSWORD", url.password or "")
     config = {"host": url.host, "port": url.port or 5432, "database": url.database, "username": url.username,
               "include": ["gsales", "ghr"], "exclude": ["ghr", "*.secret_*"]}
     source_id = _register_source(dp_session_factory, dp_workspace, kind="postgres", config=config,
-                                 secret_ref="env:DP_GENERIC_PG_PASSWORD", mode=execution_mode_for("postgres", None))
+                                 secret_ref="env:ANALYSTOS_SOURCE_SECRET_DP_GENERIC_PG_PASSWORD", mode=execution_mode_for("postgres", None))
     yield {"source_id": source_id, "config": config}
     with admin.begin() as conn:
         conn.execute(text("DROP SCHEMA IF EXISTS gsales CASCADE"))
@@ -394,7 +394,7 @@ def pg_generic_source(dp_control_url, dp_session_factory, dp_workspace, monkeypa
 def test_postgres_generic_discovery_with_filters(pg_generic_source) -> None:
     from analystos.connectors.generic_sql import GenericSQLConnector
 
-    con = GenericSQLConnector("postgres", pg_generic_source["config"], "env:DP_GENERIC_PG_PASSWORD")
+    con = GenericSQLConnector("postgres", pg_generic_source["config"], "env:ANALYSTOS_SOURCE_SECRET_DP_GENERIC_PG_PASSWORD")
     assert con.execution_mode == "pushdown" and con.dialect == "postgres" and con.schemas is None
     assert con.test().ok
     assets = {a.source_name: a for a in con.discover()}
@@ -409,7 +409,7 @@ def test_postgres_generic_discovery_with_filters(pg_generic_source) -> None:
     assert assets["gsales.orders"].row_count == 3 and assets["gsales.order_totals"].kind == "view"
     with pytest.raises(InvalidInput, match="pushdown"):
         next(con.extract(assets["gsales.orders"], max_rows=10))
-    capped = GenericSQLConnector("postgres", dict(pg_generic_source["config"], max_tables=1), "env:DP_GENERIC_PG_PASSWORD")
+    capped = GenericSQLConnector("postgres", dict(pg_generic_source["config"], max_tables=1), "env:ANALYSTOS_SOURCE_SECRET_DP_GENERIC_PG_PASSWORD")
     assert len(capped.discover()) == 1 and capped.truncated
 
 

@@ -23,27 +23,34 @@ from analystos.staging.loader import pg_type_for
 
 
 def test_resolve_secret_env(monkeypatch) -> None:
-    monkeypatch.setenv("DP_TEST_SECRET", "hunter2")
-    assert resolve_secret("env:DP_TEST_SECRET") == "hunter2"
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_DP_TEST", "hunter2")
+    assert resolve_secret("env:ANALYSTOS_SOURCE_SECRET_DP_TEST") == "hunter2"
     assert resolve_secret(None) is None
     assert resolve_secret("") is None
 
 
-def test_resolve_secret_file(tmp_path: Path) -> None:
+def test_resolve_secret_file(tmp_path: Path, monkeypatch) -> None:
+    from analystos.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "secret_file_dirs", str(tmp_path))
     f = tmp_path / "pw"
     f.write_text("s3cret\n", encoding="utf-8")
     assert resolve_secret(f"file:{f}") == "s3cret"
 
 
-@pytest.mark.parametrize("ref", ["plain-password", "vault:x", "env:", "env:1BAD", "file:relative/path", "env:DP_TEST_MISSING_VAR"])
+@pytest.mark.parametrize("ref", ["plain-password", "smb:x", "env:", "env:1BAD", "file:relative/path",
+                                 "env:ANALYSTOS_SOURCE_SECRET_DP_TEST_MISSING"])
 def test_resolve_secret_rejects(ref: str, monkeypatch) -> None:
-    monkeypatch.delenv("DP_TEST_MISSING_VAR", raising=False)
+    monkeypatch.delenv("ANALYSTOS_SOURCE_SECRET_DP_TEST_MISSING", raising=False)
     with pytest.raises(InvalidInput) as info:
         resolve_secret(ref)
     assert "plain-password" not in info.value.message or ref != "plain-password"
 
 
-def test_resolve_secret_error_never_contains_value(tmp_path: Path) -> None:
+def test_resolve_secret_error_never_contains_value(tmp_path: Path, monkeypatch) -> None:
+    from analystos.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "secret_file_dirs", str(tmp_path))
     with pytest.raises(InvalidInput) as info:
         resolve_secret(f"file:{tmp_path / 'missing'}")
     assert "missing" in info.value.message
@@ -210,8 +217,8 @@ def test_sqlserver_connector_config_and_url() -> None:
 
 
 def test_postgres_connector_url_and_validation(monkeypatch) -> None:
-    monkeypatch.setenv("DP_PG_PW", "pw/with:chars")
-    con = PostgresConnector({"host": "h", "database": "d", "username": "r", "schemas": ["public", "pg_catalog"]}, "env:DP_PG_PW")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_DP_PG_PW", "pw/with:chars")
+    con = PostgresConnector({"host": "h", "database": "d", "username": "r", "schemas": ["public", "pg_catalog"]}, "env:ANALYSTOS_SOURCE_SECRET_DP_PG_PW")
     assert con.schemas == ["public"]
     assert con.sqlalchemy_url().startswith("postgresql+psycopg://r:pw%2Fwith%3Achars@h:5432/d")
     with pytest.raises(InvalidInput):

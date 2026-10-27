@@ -65,12 +65,12 @@ def two_sources(dp_control_url, dp_settings, dp_session_factory, dp_workspace, t
 
     _plant(dp_control_url, tmp_path)
     url = make_url(dp_control_url)
-    monkeypatch.setenv("XSRC_PG_PASSWORD", url.password or "")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_XSRC_PG_PASSWORD", url.password or "")
     settings = dp_settings.model_copy(update={"upload_dir": tmp_path})
     ws = dp_workspace["workspace_id"]
     specs = {
         "postgres": ({"host": url.host, "port": url.port or 5432, "database": url.database, "username": url.username,
-                      "schemas": ["xops"]}, "env:XSRC_PG_PASSWORD"),
+                      "schemas": ["xops"]}, "env:ANALYSTOS_SOURCE_SECRET_XSRC_PG_PASSWORD"),
         "duckdb": ({"path": "crm.duckdb"}, None),
     }
     ids: dict[str, str] = {}

@@ -102,7 +102,7 @@ def test_prompt_tokens_per_run_with_every_chat_purpose_on(control_db, servicenow
     from analystos.services import platform_settings
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-000000000000000000000000")
-    monkeypatch.setenv("SERVICENOW_PASSWORD", "admin")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_SERVICENOW", "admin")
     monkeypatch.setenv("ANALYSTOS_SUPERSET_URL", "http://127.0.0.1:9")
     monkeypatch.setattr(router_mod, "HttpTransport", CountingTransport)
     original = router_mod.ModelRouter.complete
@@ -141,7 +141,7 @@ def test_prompt_tokens_per_run_with_every_chat_purpose_on(control_db, servicenow
             s.flush()
             src = register_source(s, admin, ws.id, kind="servicenow", name="SN",
                                   config={"instance_url": servicenow_url, "username": "admin", "tables": ["incident", "change_request"]},
-                                  secret_ref="env:SERVICENOW_PASSWORD")
+                                  secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
             s.flush()
             ws_id, src_id = ws.id, src.id
             s.expunge(admin)

@@ -62,7 +62,7 @@ def configure(suffix: str) -> Plane:
         "ANALYSTOS_JWT_SECRET": "load-test-secret-load-test-secret-123456",
         "ANALYSTOS_ENV": os.environ.get("ANALYSTOS_ENV", "dev"),
         "OPENROUTER_API_KEY": "",
-        "SERVICENOW_PASSWORD": "admin",
+        "ANALYSTOS_SOURCE_SECRET_SERVICENOW": "admin",
         "PYTHONPATH": str(ROOT / "src"),
     }
     os.environ.update(env)

@@ -268,7 +268,7 @@ For a machine where Docker is not available. Tested here on Linux with the Windo
    py -3.11 -m venv .venv
    .venv\Scripts\pip install -e ".[reports]"
    $env:ANALYSTOS_PROFILE = "lite"          # local orchestrator, in-process scheduler, no Redis/Temporal/Superset
-   $env:SERVICENOW_PASSWORD = "admin"        # the mock source's development credential
+   $env:ANALYSTOS_SOURCE_SECRET_SERVICENOW = "admin"        # the mock source's development credential
    .venv\Scripts\analystos migrate
    .venv\Scripts\analystos seed
    ```
@@ -293,7 +293,7 @@ notebooks are refused with the reason; investigations, Ask, recipes, schedules a
 With the stack up (full profile) and a Python 3.11 venv on the host (`pip install -e ".[dev]"`):
 
 ```powershell
-$env:SERVICENOW_PASSWORD = "admin"
+$env:ANALYSTOS_SOURCE_SECRET_SERVICENOW = "admin"
 .venv\Scripts\python scripts\e2e_demo.py        # v1 §62: ServiceNow → findings → dashboards → approval → Superset
 .venv\Scripts\python scripts\e2e_phase3.py      # schedules, reports, monitors (uses the workspace of the latest e2e report)
 .venv\Scripts\python scripts\e2e_increment3.py  # any database, crawler, token economy

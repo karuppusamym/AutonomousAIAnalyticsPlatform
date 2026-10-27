@@ -13,7 +13,7 @@ workspace:
 source:
   kind: servicenow
   name: ServiceNow
-  secret_ref: env:SERVICENOW_PASSWORD
+  secret_ref: env:ANALYSTOS_SOURCE_SECRET_SERVICENOW
   username: admin
   tables: [incident, change_request, sys_user_group, cmdb_ci]
   select: [incident, change_request]

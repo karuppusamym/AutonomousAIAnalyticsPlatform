@@ -104,13 +104,13 @@ def test_verdicts_void_when_a_dependency_changes(control_db, pg_orders, monkeypa
     from analystos.services.workspaces import add_member, create_workspace
 
     url = pg_orders["url"]
-    monkeypatch.setenv("P701_PG_PASSWORD", url.password or "")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_P701_PG_PASSWORD", url.password or "")
     with session_scope() as s:
         admin = s.scalar(select(User).where(User.email == get_settings().bootstrap_admin_email))
         ws = create_workspace(s, admin, name="p701 verification", objective=OBJECTIVE)
         s.flush()
         add_member(s, admin, ws.id, "approver@analystos.local", "approver")
-        src = register_source(s, admin, ws.id, kind="postgres", name="p701 shop", secret_ref="env:P701_PG_PASSWORD",
+        src = register_source(s, admin, ws.id, kind="postgres", name="p701 shop", secret_ref="env:ANALYSTOS_SOURCE_SECRET_P701_PG_PASSWORD",
                               config={"host": url.host, "port": url.port or 5432, "database": url.database,
                                       "username": url.username, "schemas": [SOURCE_SCHEMA], "execution_mode": "staged"})
         s.flush()

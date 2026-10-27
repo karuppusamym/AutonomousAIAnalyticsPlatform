@@ -71,6 +71,7 @@ _EMAIL = re.compile(r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@([A-Za-z0-9](?:[A-Za-z0-
 # Webhook signing secrets live in their own namespace, so an editor cannot point a destination at another
 # secret (a source password) and learn about it from the signatures or the error text.
 _SECRET_REF = re.compile(r"^env:ANALYSTOS_WEBHOOK_[A-Z0-9_]+$")
+WEBHOOK_ENV_PREFIXES = ("ANALYSTOS_WEBHOOK_",)  # re-checked when the secret resolves
 MIN_SECRET_LENGTH = 16
 _LOCAL_SUFFIXES = (".localhost", ".local", ".internal", ".localdomain", ".home.arpa")
 _RETRYABLE_HTTP = {408, 425, 429}
@@ -447,7 +448,7 @@ class WebhookTransport:
         from analystos.connectors.secrets import resolve_secret
         from analystos.tools import http as outbound
 
-        secret = resolve_secret(config.get("secret_ref"))
+        secret = resolve_secret(config.get("secret_ref"), purpose="webhook", env_prefixes_override=WEBHOOK_ENV_PREFIXES)
         if not secret or len(secret) < MIN_SECRET_LENGTH:
             raise InvalidInput(f"the webhook signing secret must be at least {MIN_SECRET_LENGTH} characters")
         settings = _settings()
@@ -471,7 +472,7 @@ class SmtpTransport:
         self.factory = factory or smtplib.SMTP
 
     def send(self, config: dict[str, Any], message: OutboundMessage) -> dict[str, Any]:
-        from analystos.connectors.secrets import resolve_secret
+        from analystos.connectors.secrets import resolve_platform_secret
 
         s = _settings()
         if not s.smtp_host or not s.smtp_from:
@@ -487,7 +488,7 @@ class SmtpTransport:
             maintype, _, subtype = mime.partition("/")
             msg.add_attachment(content, maintype=maintype or "application", subtype=subtype or "octet-stream",
                                filename=filename)
-        password = resolve_secret(s.smtp_password_ref) if s.smtp_password_ref else None
+        password = resolve_platform_secret(s.smtp_password_ref) if s.smtp_password_ref else None
         if s.smtp_username and not s.smtp_starttls:
             raise PolicyDenied("refusing to send SMTP credentials without TLS: set ANALYSTOS_SMTP_STARTTLS=true")
         try:

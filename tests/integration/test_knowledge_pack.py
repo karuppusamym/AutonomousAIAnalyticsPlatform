@@ -302,12 +302,12 @@ def test_mcp_provider_calls_atlas_through_the_governed_mcp_client(two_workspaces
 
     a, _ = two_workspaces
     token = "atlas-mock-" + "y" * 16
-    monkeypatch.setenv("ATLAS_MOCK_TOKEN", token)
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_ATLAS_MOCK_TOKEN", token)
     app, calls = _atlas_double(token)
     with serve(app) as base:
         with session_scope() as s:
             admin = _admin(s)
-            srv = mc.register_server(s, admin, a, name="atlas", url=f"{base}/mcp", secret_ref="env:ATLAS_MOCK_TOKEN",
+            srv = mc.register_server(s, admin, a, name="atlas", url=f"{base}/mcp", secret_ref="env:ANALYSTOS_SOURCE_SECRET_ATLAS_MOCK_TOKEN",
                                      config={"result_max_chars": 48_000, "lift_json_blocks": True})
             sid = srv.id
         with session_scope() as s:

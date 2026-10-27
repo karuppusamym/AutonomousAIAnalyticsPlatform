@@ -152,7 +152,7 @@ def _is_network_entry(entry: str) -> bool:
 def _bearer(server: McpServer) -> dict[str, str]:
     from analystos.connectors.secrets import resolve_secret
 
-    token = resolve_secret(server.secret_ref)
+    token = resolve_secret(server.secret_ref, purpose="mcp")
     return {"Authorization": f"Bearer {token}"} if token else {}
 
 
@@ -340,6 +340,9 @@ def _validate_secret_ref(ref: str | None) -> str | None:
         return None
     if not re.match(r"^(env:[A-Za-z_][A-Za-z0-9_]*|file:/\S+)$", ref.strip()):
         raise InvalidInput("secret_ref must look like 'env:NAME' or 'file:/path' (a reference, never a value)")
+    from analystos.connectors.secrets import check_secret_ref
+
+    check_secret_ref(ref.strip())  # only process secrets the operator allows workspaces to name (S02)
     return ref.strip()
 
 

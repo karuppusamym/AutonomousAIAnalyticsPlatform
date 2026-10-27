@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p var/logs
 [ -f .env ] && { set -a; . ./.env; set +a; }
-export SERVICENOW_PASSWORD="${SERVICENOW_PASSWORD:-admin}"
+export ANALYSTOS_SOURCE_SECRET_SERVICENOW="${ANALYSTOS_SOURCE_SECRET_SERVICENOW:-admin}"
 pkill -f "analystos.connectors.servicenow_mock" 2>/dev/null || true
 pkill -f "analystos worker" 2>/dev/null || true
 pkill -f "uvicorn analystos.api.app" 2>/dev/null || true

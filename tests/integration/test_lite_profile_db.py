@@ -99,7 +99,7 @@ def world(api, servicenow_url, runtime, tmp_path, monkeypatch):
     from analystos.services.sources import discover_source, register_source, select_assets
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)  # every agent takes its deterministic path
-    monkeypatch.setenv("SERVICENOW_PASSWORD", "admin")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_SERVICENOW", "admin")
     default_router.cache_clear()
     root = tmp_path / "packs"
     shutil.copytree(registry.PACKS_DIR, root)
@@ -118,7 +118,7 @@ def world(api, servicenow_url, runtime, tmp_path, monkeypatch):
         owner = s.scalar(select(User).where(User.email == "analyst@analystos.local"))
         src = register_source(s, owner, ws, kind="servicenow", name="SN",
                               config={"instance_url": servicenow_url, "username": "admin", "tables": ["incident"]},
-                              secret_ref="env:SERVICENOW_PASSWORD")
+                              secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
         s.flush()
         src_id = src.id
         s.expunge(owner)

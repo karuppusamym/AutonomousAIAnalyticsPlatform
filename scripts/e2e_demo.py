@@ -102,7 +102,7 @@ def main() -> int:
     src = analyst.post(f"/api/workspaces/{wid}/sources", {"kind": "servicenow", "name": "ServiceNow",
                                                           "config": {"instance_url": args.servicenow, "username": "admin",
                                                                      "tables": ["incident", "change_request", "sys_user_group", "cmdb_ci"]},
-                                                          "secret_ref": "env:SERVICENOW_PASSWORD"})
+                                                          "secret_ref": "env:ANALYSTOS_SOURCE_SECRET_SERVICENOW"})
     disc = analyst.post(f"/api/workspaces/{wid}/sources/{src['id']}/discover")
     sel = analyst.put(f"/api/workspaces/{wid}/sources/{src['id']}/selection", {"assets": ["incident", "change_request"]})
     check["2_servicenow_source_added"] = len(disc["assets"]) >= 2

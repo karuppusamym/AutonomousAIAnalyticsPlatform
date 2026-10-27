@@ -67,7 +67,7 @@ def _wait(run_id: str, statuses: set[str], timeout: float = 600) -> str:
 
 def test_full_run_without_models(control_db, servicenow_url, monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.setenv("SERVICENOW_PASSWORD", "admin")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_SERVICENOW", "admin")
     monkeypatch.setenv("ANALYSTOS_SUPERSET_URL", "http://127.0.0.1:9")  # force the preview destination
     # P4-S03: the whole flow runs without Neo4j. The graph is off (the default) and even its URI is dead.
     monkeypatch.setenv("ANALYSTOS_GRAPH_ENABLED", "false")
@@ -93,7 +93,7 @@ def test_full_run_without_models(control_db, servicenow_url, monkeypatch):
             add_member(s, admin, ws.id, "approver@analystos.local", "approver")
             src = register_source(s, admin, ws.id, kind="servicenow", name="SN",
                                   config={"instance_url": servicenow_url, "username": "admin", "tables": ["incident", "change_request"]},
-                                  secret_ref="env:SERVICENOW_PASSWORD")
+                                  secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
             s.flush()
             ws_id, src_id = ws.id, src.id
             s.expunge(admin)
@@ -145,7 +145,7 @@ def test_full_run_without_models(control_db, servicenow_url, monkeypatch):
 def test_phase3_schedule_monitor_report(control_db, servicenow_url, monkeypatch):
     """Scheduled re-analysis with diff + report, monitors -> alerts -> investigation, idempotent firing."""
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.setenv("SERVICENOW_PASSWORD", "admin")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_SERVICENOW", "admin")
     monkeypatch.setenv("ANALYSTOS_SUPERSET_URL", "http://127.0.0.1:9")
     from analystos.core.config import get_settings
     from analystos.runtime.context import default_router
@@ -167,7 +167,7 @@ def test_phase3_schedule_monitor_report(control_db, servicenow_url, monkeypatch)
             s.flush()
             src = register_source(s, admin, ws.id, kind="servicenow", name="SN",
                                   config={"instance_url": servicenow_url, "username": "admin", "tables": ["incident"]},
-                                  secret_ref="env:SERVICENOW_PASSWORD")
+                                  secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
             s.flush()
             ws_id, src_id = ws.id, src.id
             s.expunge(admin)
@@ -259,7 +259,7 @@ def test_replan_after_visualize_supersedes_bundle_artifacts(control_db, servicen
     superseded plan version into the publish bundle. The oracle is the event log: every bundle
     entry must have been (re)created after the replan."""
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.setenv("SERVICENOW_PASSWORD", "admin")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_SERVICENOW", "admin")
     monkeypatch.setenv("ANALYSTOS_SUPERSET_URL", "http://127.0.0.1:9")
     from analystos.core.config import get_settings
     from analystos.runtime.context import default_router
@@ -281,7 +281,7 @@ def test_replan_after_visualize_supersedes_bundle_artifacts(control_db, servicen
             s.flush()
             src = register_source(s, admin, ws.id, kind="servicenow", name="SN",
                                   config={"instance_url": servicenow_url, "username": "admin", "tables": ["incident"]},
-                                  secret_ref="env:SERVICENOW_PASSWORD")
+                                  secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
             s.flush()
             ws_id, src_id = ws.id, src.id
             s.expunge(admin)

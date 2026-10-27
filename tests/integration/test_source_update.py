@@ -31,7 +31,7 @@ def world(control_db):
         add_member(s, owner, ws.id, viewer.email, "viewer")
         src = register_source(s, owner, ws.id, kind="postgres", name="warehouse",
                               config={"host": "db.example", "database": "app", "username": "reader"},
-                              secret_ref="env:PGPASS")
+                              secret_ref="env:ANALYSTOS_SOURCE_SECRET_PGPASS")
         s.flush()
         ids = {"ws": ws.id, "src": src.id}
         for u in (owner, editor, viewer):
@@ -108,7 +108,7 @@ def test_clearing_a_required_secret_is_refused_and_leaves_it_set(world):
 
     with pytest.raises(InvalidInput, match="secret reference"), session_scope() as s:
         update_source(s, s.merge(world["editor"]), world["ws"], world["src"], clear_secret_ref=True)
-    assert _get(world).secret_ref == "env:PGPASS"  # the rejected clear did not partially apply
+    assert _get(world).secret_ref == "env:ANALYSTOS_SOURCE_SECRET_PGPASS"  # the rejected clear did not partially apply
     with pytest.raises(InvalidInput, match="nothing to change"), session_scope() as s:
         update_source(s, s.merge(world["editor"]), world["ws"], world["src"])
     with pytest.raises(NotFound), session_scope() as s:

@@ -330,7 +330,7 @@ def test_connector_transport_errors_are_upstream_unavailable() -> None:
 
 
 def test_connector_password_comes_from_secret_ref(client: TestClient, monkeypatch) -> None:
-    monkeypatch.setenv("SN_TEST_PASSWORD", "admin")
-    con = ServiceNowConnector({"instance_url": BASE, "username": "admin", "tables": ["cmdb_ci"]}, "env:SN_TEST_PASSWORD",
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_SN_TEST", "admin")
+    con = ServiceNowConnector({"instance_url": BASE, "username": "admin", "tables": ["cmdb_ci"]}, "env:ANALYSTOS_SOURCE_SECRET_SN_TEST",
                               http_client=client)
     assert con.discover()[0].row_count == 40

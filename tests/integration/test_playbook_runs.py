@@ -101,7 +101,7 @@ def world(api, servicenow_url, monkeypatch):
     from analystos.services import runs
     from analystos.services.sources import discover_source, register_source, select_assets
 
-    monkeypatch.setenv("SERVICENOW_PASSWORD", "admin")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_SERVICENOW", "admin")
     monkeypatch.setattr(runs, "start_run", lambda run_id: f"manual-{run_id}")  # the test drives the engine
     admin, analyst, viewer = (_login(api, f"{u}@analystos.local") for u in ("admin", "analyst", "approver"))
     r = api.post("/api/workspaces", headers=analyst, json={"name": "playbooks", "objective": "Document the incident table"})
@@ -112,7 +112,7 @@ def world(api, servicenow_url, monkeypatch):
         owner = s.scalar(select(User).where(User.email == "analyst@analystos.local"))
         src = register_source(s, owner, ws, kind="servicenow", name="SN",
                               config={"instance_url": servicenow_url, "username": "admin", "tables": ["incident"]},
-                              secret_ref="env:SERVICENOW_PASSWORD")
+                              secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
         s.flush()
         src_id = src.id
         s.expunge(owner)

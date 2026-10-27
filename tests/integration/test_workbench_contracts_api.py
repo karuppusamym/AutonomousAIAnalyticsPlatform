@@ -89,7 +89,7 @@ def world(api, servicenow_url):
     from analystos.db.models import User
     from analystos.services.sources import discover_source, register_source, select_assets
 
-    os.environ["SERVICENOW_PASSWORD"] = "admin"
+    os.environ["ANALYSTOS_SOURCE_SECRET_SERVICENOW"] = "admin"
     admin, analyst, viewer = (_login(api, f"{u}@analystos.local") for u in ("admin", "analyst", "approver"))
     r = api.post("/api/workspaces", headers=analyst, json={"name": "workbench", "objective": "Find the drivers of SLA breaches"})
     ws = r.json()["id"]
@@ -101,7 +101,7 @@ def world(api, servicenow_url):
         owner = s.scalar(select(User).where(User.email == "analyst@analystos.local"))
         src = register_source(s, owner, ws, kind="servicenow", name="SN",
                               config={"instance_url": servicenow_url, "username": "admin", "tables": ["incident"]},
-                              secret_ref="env:SERVICENOW_PASSWORD")
+                              secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
         s.flush()
         src_id = src.id
         s.expunge(owner)
