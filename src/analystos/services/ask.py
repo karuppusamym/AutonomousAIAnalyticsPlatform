@@ -217,6 +217,7 @@ class AdhocContext:
     thread_id: str | None = None  # compiled contexts are reused within a thread (CTX-005)
     on_stage: Callable[[str, str, dict[str, Any]], None] | None = None
     semantic_catalog: dict[str, Any] | None = None
+    conversation_memory: dict[str, Any] | None = None  # S04: clarifications that apply to this user and conversation
 
     @property
     def router(self):
@@ -277,11 +278,13 @@ def _turn_for(session: Session, user: User, turn_id: str, workspace_id: str | No
     return turn
 
 
-def create_thread(session: Session, user: User, workspace_id: str, title: str | None = None) -> dict[str, Any]:
+def create_thread(session: Session, user: User, workspace_id: str, title: str | None = None, *, channel: str = "ui",
+                  request_id: str | None = None) -> dict[str, Any]:
     require_role(session, user, workspace_id, "viewer")
     get_workspace(session, workspace_id)
     thread = AskThread(id=new_id("ask"), workspace_id=workspace_id, user_id=user.id,
-                       title=(title or "").strip()[:300] or NEW_THREAD_TITLE, archived=False, revision=1)
+                       title=(title or "").strip()[:300] or NEW_THREAD_TITLE, archived=False, revision=1,
+                       channel=channel, request_id=request_id, legal_hold=False)
     session.add(thread)
     session.flush()
     return {**row(thread), "turns": []}
@@ -487,9 +490,12 @@ def ask_in_thread(user: User, thread_id: str, question: str, parameters: dict[st
     if mode not in MODES:
         raise InvalidInput(f"mode must be one of {', '.join(MODES)}")
     started = time.perf_counter()
+    from analystos.conversations import service as conversations
+    from analystos.conversations.state import last_seq
+
     with session_scope() as s:
         thread = _thread_for(s, s.merge(user), thread_id)
-        seq = (s.scalar(select(func.max(AskTurn.seq)).where(AskTurn.thread_id == thread.id)) or 0) + 1
+        seq = last_seq(s, thread) + 1  # a branch continues its parent's numbering after the branch point
         turn = AskTurn(id=new_id("askt"), thread_id=thread.id, workspace_id=thread.workspace_id, user_id=user.id, seq=seq,
                        question=question, parameters=dict(parameters or {}), status="running", attempts=[], stages=[],
                        decisions=[], provenance={}, promotions=[])
@@ -511,10 +517,10 @@ def ask_in_thread(user: User, thread_id: str, question: str, parameters: dict[st
             ctx = adhoc_context(s, user, workspace_id)
         ctx.turn_id, ctx.thread_id, ctx.on_stage = turn_id, thread_id, stage
         with session_scope() as s:
-            previous = s.scalar(select(AskTurn).where(AskTurn.thread_id == thread_id, AskTurn.seq < seq,
-                                                     AskTurn.status == "answered").order_by(AskTurn.seq.desc()).limit(1))
+            previous = conversations.previous_answer(s, s.get(AskThread, thread_id), seq)
             ctx.previous_answer = ({"id": previous.id, "sql": previous.sql,
                                     "rules": (previous.provenance or {}).get("rules", {})} if previous else None)
+            ctx.conversation_memory = _conversation_memory(s, user.id, workspace_id, thread_id, stage)
         if not ctx.scope.assets:
             out = {"status": "refused", "refusal": refusal("no_scope", "No selected, ready tables are in your scope.")}
         elif mode == "analyst":
@@ -541,6 +547,35 @@ def ask_in_thread(user: User, thread_id: str, question: str, parameters: dict[st
 
         record_quietly("ask_thread", workspace_id, thread_id, user.id)
     return out_turn
+
+
+def _conversation_memory(session: Session, user_id: str, workspace_id: str, thread_id: str,
+                         stage: Callable[..., None]) -> dict[str, Any] | None:
+    """S04: what this user's corrections say (session, personal, approved team), for the generation prompt. A
+    personal or session meaning that differs from the team definition is said out loud, never applied silently."""
+    from analystos.conversations.corrections import for_prompt, memory
+
+    mem = memory(session, user_id, workspace_id, thread_id)
+    if not mem["items"]:
+        return None
+    names = {"session": "this conversation", "personal": "your saved meanings", "workspace": "team definition"}
+    layers = [names[k] for k in names if any(i["scope"] == k for i in mem["items"])]
+    stage("memory", f"Applying {len(mem['items'])} clarification(s) from {', '.join(layers)}",
+          {"terms": [i["term"] for i in mem["items"]]})
+    for o in mem["overrides"]:
+        stage("memory", f"Using your meaning of '{o['term']}', not the team definition", {"override": o})
+    return {"clarifications": for_prompt(mem), "overrides": mem["overrides"]}
+
+
+def _record_state(session: Session, turn: AskTurn, actor: str) -> None:
+    """S04: the message moves the conversation state on (result handle, tables read). Never fails the turn."""
+    from analystos.conversations.state import on_turn
+
+    try:
+        with session.begin_nested():
+            on_turn(session, turn, actor)
+    except Exception:  # noqa: BLE001 - the answer stands; the next message writes the state again
+        log.warning("conversation state after ask turn %s failed", turn.id, exc_info=True)
 
 
 def _mark_failed(turn_id: str, stages: list[dict[str, Any]] | None = None) -> None:
@@ -583,6 +618,7 @@ def _persist_turn(user: User, thread_id: str, workspace_id: str, turn_id: str, o
                                             "mode": mode, "steps": len((analysis or {}).get("steps") or []) or None},
              actor=f"user:{user.id}", session=s)
         s.flush()
+        _record_state(s, turn, f"user:{user.id}")
         if status != "answered":
             _suggest_terms(s, workspace_id, turn)
         else:  # N-8: measured results and cited documents as separate citation kinds; conflicts flagged

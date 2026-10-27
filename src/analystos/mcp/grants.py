@@ -28,7 +28,8 @@ from analystos.governance.policy import get_workspace
 # Context Service (S03-T5): read-only, access-filtered ledger tools; `context.read` grants all four
 CONTEXT_TOOLS = ("context.search", "context.get", "context.compile", "context.changes")
 CONTEXT_READ = "context.read"
-TOOLS = ("ask", "investigate", "get_finding_evidence", "validate_sql", "request.create", "request.status", *CONTEXT_TOOLS)
+TOOLS = ("ask", "investigate", "get_finding_evidence", "validate_sql", "request.create", "request.status",
+         "conversation.start", "conversation.say", "conversation.summary", *CONTEXT_TOOLS)
 GRANTABLE = (*TOOLS, CONTEXT_READ)
 # P7-11: a workspace's published query tools and tested/certified read-only HTTP tools, granted by name
 # (`query.<key>`, `http.<capability id>`) or by family (`query.*`, `http.*`)
@@ -39,6 +40,8 @@ TOOL_MIN_ROLE = {"ask": "analyst", "investigate": "analyst", "validate_sql": "an
                  "get_finding_evidence": "viewer", RESOURCE_READ: "viewer",
                  # Request Desk (S13): a request may run Ask or start an investigation, so it needs the grant those need
                  "request.create": "analyst", "request.status": "viewer",
+                 # Conversations (S04): start/say create Desk requests (so the request grant's role); a summary is a read
+                 "conversation.start": "analyst", "conversation.say": "analyst", "conversation.summary": "viewer",
                  **{t: "viewer" for t in (*CONTEXT_TOOLS, CONTEXT_READ)}}
 DEFAULT_DAILY_QUOTA = 1000
 
