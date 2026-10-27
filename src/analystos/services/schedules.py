@@ -548,6 +548,12 @@ def housekeeping() -> dict[str, Any]:
 
     out["conversation_summaries"] = len(summaries.summarize_idle_quietly())  # S04: idle 30 min -> summary
     out["conversation_retention"] = retention.apply_retention_quietly()  # S04: at most hourly; skips legal holds
+    try:  # S13: Request Desk queue items past their SLA, flagged once each (as each workspace's tenant)
+        from analystos.desk.rollup import sweep_sla_all
+
+        out["desk_sla_breaches"] = sweep_sla_all()
+    except Exception:
+        log.exception("desk SLA sweep failed")
     try:  # N-3: approved external deliveries that are due (bounded retries; never fatal to the loop)
         from analystos.services.deliveries import process_due
 
@@ -593,6 +599,17 @@ def nightly_audit_chain() -> None:
 
 
 @platform_loop
+def nightly_desk_value() -> None:
+    """S13 once a day: roll the Request Desk value metrics into desk_daily, per workspace as its tenant."""
+    from analystos.desk.rollup import maybe_rollup_nightly
+
+    try:
+        maybe_rollup_nightly()
+    except Exception:
+        log.exception("desk value rollup failed")
+
+
+@platform_loop
 def run_scheduler(poll_seconds: float = 15.0, *, once: bool = False, stop: threading.Event | None = None,
                   configure: bool = True) -> None:
     """The schedule/monitor loop: `analystos scheduler`, or a thread of the API process in the lite
@@ -612,6 +629,7 @@ def run_scheduler(poll_seconds: float = 15.0, *, once: bool = False, stop: threa
         nightly_calibration()
         nightly_verification_sweep()
         nightly_audit_chain()
+        nightly_desk_value()
         if once:
             return
         if stop is None:

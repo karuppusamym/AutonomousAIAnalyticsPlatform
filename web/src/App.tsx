@@ -8,6 +8,7 @@ import { AdminPage } from "./pages/Admin";
 import { ApprovalsPage } from "./pages/Approvals";
 import { AskPage } from "./pages/Ask";
 import { ConsolePage } from "./pages/Console";
+import { DeskPage } from "./pages/Desk";
 import { GovernancePage } from "./pages/Governance";
 import { LoginPage } from "./pages/Login";
 import { MonitoringPage } from "./pages/Monitoring";
@@ -15,6 +16,7 @@ import { WorkPage } from "./pages/Runs";
 import { RunViewPage } from "./pages/RunView";
 import { SchedulesPage } from "./pages/Schedules";
 import { SourcesPage } from "./pages/Sources";
+import { ValuePage } from "./pages/Value";
 import { OutputsPage } from "./pages/Studio";
 import { WorkspaceHomePage } from "./pages/WorkspaceHome";
 import { WorkspacesPage } from "./pages/Workspaces";
@@ -36,6 +38,8 @@ const ELEMENTS: Record<ScreenId, ReactElement> = {
   workspaces: <WorkspacesPage />,
   overview: <WorkspaceHomePage />,
   ask: <AskPage />,
+  desk: <DeskPage />,
+  value: <ValuePage />,
   work: <WorkPage />,
   investigation: <RunViewPage />,
   "investigation-console": <ConsolePage />,

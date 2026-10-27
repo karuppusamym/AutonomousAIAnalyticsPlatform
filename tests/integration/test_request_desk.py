@@ -280,3 +280,56 @@ def test_another_tenant_gets_404(api, world):
     assert req["id"] not in [r["id"] for r in api.get("/api/requests?view=all", headers=other).json()]
     assert api.get(f"/api/value?workspace={world['ws']}", headers=other).status_code == 404
     assert api.post("/api/requests", headers=other, json={"workspace_id": world["ws"], "text": "How many incidents?"}).status_code == 404
+
+
+def test_nightly_rollup_writes_each_tenants_rows_as_that_tenant_and_exports(api, world):
+    """S13 §3.6 under strict tenancy: the platform loop only picks workspaces; each workspace is rolled up as its own
+    tenant (the rows carry that tenant), a tenant reads only its own rollup, and the export is aggregates only."""
+    from analystos.core.config import get_settings
+    from analystos.core.ids import new_id, utcnow
+    from analystos.db.base import session_scope
+    from analystos.db.models import Tenant, User, Workspace
+    from analystos.desk.models import DeskDaily, Request
+    from analystos.services.schedules import nightly_desk_value
+    from analystos.tenancy import DEFAULT_TENANT_ID, system_scope, tenant_scope
+
+    assert get_settings().tenancy_mode == "strict"
+    tb = new_id("tnt")
+    with system_scope(), session_scope() as s:
+        s.add(Tenant(id=tb, slug=f"roll-{tb[-6:]}", name="Rollup tenant B"))
+    with tenant_scope(tb), session_scope() as s:
+        user = User(id=new_id("usr"), email=f"r-{tb}@b.test", name="B", password_hash="x", is_admin=True)
+        s.add(user)
+        s.flush()
+        ws_b = Workspace(id=new_id("ws"), name="B desk", created_by=user.id)
+        s.add(ws_b)
+        s.flush()
+        now = utcnow()
+        s.add(Request(id=new_id("rq"), workspace_id=ws_b.id, requester_id=user.id, channel="api", text="secret B question",
+                      normalized_intent={}, request_class="R2", state="accepted", resolution="auto", priority="normal",
+                      run_ids=[], triage={}, followers=[], cost_usd=0.0, revision=1, first_answer_at=now, closed_at=now,
+                      answer_ref={"via": "auto"}, human_minutes=0))
+        ws_b_id = ws_b.id
+    nightly_desk_value()  # the scheduler's hook; claims the night
+    from analystos.desk.rollup import maybe_rollup_nightly
+
+    out = maybe_rollup_nightly(force=True)
+    assert out["failed"] == [] and out["workspaces"] >= 2
+    with system_scope(), session_scope() as s:
+        owners = dict(s.execute(select(DeskDaily.workspace_id, text("tenant_id")).select_from(DeskDaily)
+                                .where(DeskDaily.workspace_id.in_([world["ws"], ws_b_id]))).all())
+    assert owners == {world["ws"]: DEFAULT_TENANT_ID, ws_b_id: tb}
+    with tenant_scope(DEFAULT_TENANT_ID), session_scope() as s:
+        assert ws_b_id not in set(s.scalars(select(DeskDaily.workspace_id)))
+
+    analyst = _login(api, "analyst@analystos.local")
+    refreshed = api.post(f"/api/value/rollup?workspace={world['ws']}", headers=analyst)
+    assert refreshed.status_code == 200 and refreshed.json()["rows"] >= 1
+    value = api.get(f"/api/value?workspace={world['ws']}", headers=analyst).json()
+    assert value["daily"] and value["daily"][-1]["class"] == "all" and value["rollup_computed_at"]
+    csv_resp = api.get(f"/api/value/export?workspace={world['ws']}", headers=analyst)
+    assert csv_resp.status_code == 200 and csv_resp.headers["content-type"].startswith("text/csv")
+    assert csv_resp.text.startswith("day,class,n,") and "secret B question" not in csv_resp.text
+    assert api.get(f"/api/value/export?workspace={ws_b_id}", headers=analyst).status_code == 404
+    viewer = _login(api, "approver@analystos.local")
+    assert api.post(f"/api/value/rollup?workspace={world['ws']}", headers=viewer).status_code == 403

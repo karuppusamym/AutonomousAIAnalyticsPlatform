@@ -212,17 +212,23 @@ def process_request(user: User, request_id: str) -> dict[str, Any]:
         log.info("request %s auto path stopped: %s", request_id, exc.message)
         return _escalate_by_desk(requester, request_id, f"the auto path stopped: {exc.message}",
                                  refusal={"kind": exc.code, "message": exc.message})
+    from analystos.desk.proposals import propose
+
+    proposal = propose(cls, text)  # R4/R5: a draft schedule or monitor for the analyst, never created here
     return _escalate_by_desk(requester, request_id, triage.CLASS_LABELS.get(cls or "", "unclassified") +
-                             " — a person handles this class")
+                             (" — a draft is prepared; an analyst completes it and it goes through approval" if proposal
+                              else " — a person handles this class"), proposal=proposal)
 
 
 def _escalate_by_desk(user: User, request_id: str, reason: str, *, turn_id: str | None = None,
-                      refusal: dict[str, Any] | None = None) -> dict[str, Any]:
+                      refusal: dict[str, Any] | None = None, proposal: dict[str, Any] | None = None) -> dict[str, Any]:
     now = utcnow()
     with session_scope() as s:
         req = s.get(Request, request_id)
         turn = s.get(AskTurn, turn_id) if turn_id else None
         escalation.apply_escalation(s, req, now, turn=turn, reason=reason, refusal=refusal)
+        if proposal is not None:
+            req.data_pack = {**(req.data_pack or {}), "proposal": proposal}
         req.cost_usd = _cost(s, [req.id, turn_id or ""])
         move(s, req, "escalated", "desk", type_="escalated",
              payload={"reason": reason[:500], "assignee_id": req.assignee_id,
@@ -532,8 +538,59 @@ def value_report(session: Session, user: User, workspace_id: str, *, start: date
                                                 Request.created_at < end).limit(VALUE_MAX_ROWS)).all()
     data = [{"class": r[0], "state": r[1], "resolution": r[2], "created_at": r[3], "first_answer_at": r[4],
              "closed_at": r[5], "human_minutes": r[6], "cost_usd": r[7]} for r in rows_]
+    from analystos.desk.rollup import daily_series
+
+    daily = daily_series(session, workspace_id, start.date(), end.date())
     return {"workspace_id": workspace_id, "from": start.isoformat(), "to": end.isoformat(),
-            "truncated": len(data) >= VALUE_MAX_ROWS, **value.compute(data, baselines(session, workspace_id))}
+            "truncated": len(data) >= VALUE_MAX_ROWS, **value.compute(data, baselines(session, workspace_id)),
+            # The nightly rollup (desk_daily): the trend by day the requests were created, and when it last ran.
+            "daily": daily, "rollup_computed_at": max((d["computed_at"] for d in daily if d["computed_at"]), default=None)}
+
+
+EXPORT_COLUMNS = ("day", "class", "n", "duplicates", "closed", "accepted", "auto_resolved", "auto_resolution_rate",
+                  "accepted_rate", "tta_p50_seconds", "tta_p95_seconds", "human_minutes", "est_minutes_saved",
+                  "unbaselined", "cost_usd", "computed_at")
+MAX_RANGE_DAYS = 366
+
+
+def _days(start: datetime | None, end: datetime | None) -> tuple[Any, Any]:
+    end_d = (end or utcnow()).date()
+    start_d = start.date() if start else end_d - timedelta(days=29)
+    if start_d > end_d:
+        raise InvalidInput("`from` must be before `to`")
+    if (end_d - start_d).days >= MAX_RANGE_DAYS:
+        raise InvalidInput(f"a range is at most {MAX_RANGE_DAYS} days")
+    return start_d, end_d
+
+
+def value_export(session: Session, user: User, workspace_id: str, *, start: datetime | None = None,
+                 end: datetime | None = None) -> str:
+    """The rollup as CSV (FR-053 "exportable"): aggregates about the desk's own work, one row per day and class.
+    No request text or answer leaves through it."""
+    import csv
+    import io
+
+    require_role(session, user, workspace_id, "viewer")
+    start_d, end_d = _days(start, end)
+    from analystos.desk.rollup import daily_series
+
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=list(EXPORT_COLUMNS), extrasaction="ignore", lineterminator="\n")
+    writer.writeheader()
+    for r in daily_series(session, workspace_id, start_d, end_d, request_class=None):
+        writer.writerow(r)
+    return buf.getvalue()
+
+
+def refresh_value(session: Session, user: User, workspace_id: str, *, start: datetime | None = None,
+                  end: datetime | None = None) -> dict[str, Any]:
+    """Recompute the rollup for a range now (an analyst's "refresh"), instead of waiting for the nightly job."""
+    from analystos.desk.rollup import rollup_in
+
+    require_role(session, user, workspace_id, ANALYST)
+    start_d, end_d = _days(start, end)
+    rows_written = rollup_in(session, workspace_id, start_d, end_d)
+    return {"workspace_id": workspace_id, "from": start_d.isoformat(), "to": end_d.isoformat(), "rows": rows_written}
 
 
 def set_baseline(session: Session, user: User, workspace_id: str, request_class: str, minutes: float,
@@ -553,3 +610,10 @@ def set_baseline(session: Session, user: User, workspace_id: str, request_class:
         b.baseline_minutes, b.source, b.measured_at = float(minutes), source, utcnow()
     session.flush()
     return {**row(b, exclude={"request_class"}), "class": request_class}
+
+
+def list_baselines(session: Session, user: User, workspace_id: str) -> list[dict[str, Any]]:
+    require_role(session, user, workspace_id, "viewer")
+    return [{**row(b, exclude={"request_class"}), "class": b.request_class}
+            for b in session.scalars(select(ClassBaseline).where(ClassBaseline.workspace_id == workspace_id)
+                                     .order_by(ClassBaseline.request_class))]

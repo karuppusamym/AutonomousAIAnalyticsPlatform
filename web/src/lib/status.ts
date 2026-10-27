@@ -24,12 +24,18 @@ const TONES: Record<string, Tone> = {
   pass: "success", promoted: "success", champion: "success", fail: "danger", blocked: "danger", flagged: "warning", warn: "warning",
   needs_input: "warning", challenger: "info", candidate: "neutral", retired: "neutral", recorded: "neutral", unsupported: "neutral",
   not_applicable: "neutral", merged: "info", staged: "running",
+  // request desk (S13)
+  triaged: "info", auto_answering: "running", auto_answered: "success", auto_with_review: "warning",
+  in_investigation: "running", escalated: "warning", answered: "success", accepted: "success", reopened: "warning",
+  declined: "neutral",
 };
 
 /** Server enums whose plain reading is not just the lower-cased word. */
 const STATUS_WORDS: Record<string, string> = {
   waiting_user: "waiting for you", failed_verification: "not verified", approval_required: "needs approval",
   awaiting_approval: "awaiting approval", approved_plan: "plan approved", needs_input: "needs input",
+  auto_answered: "answered automatically", auto_with_review: "awaiting analyst review", auto_answering: "answering",
+  in_investigation: "investigating",
 };
 
 /**

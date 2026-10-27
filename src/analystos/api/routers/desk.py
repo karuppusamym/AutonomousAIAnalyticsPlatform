@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -68,6 +68,28 @@ def value(workspace_id: str = Query(alias="workspace"), start: datetime | None =
           end: datetime | None = Query(default=None, alias="to"), user: User = Depends(current_user),
           session: Session = Depends(db, scope="function")):
     return desk.value_report(session, user, workspace_id, start=start, end=end)
+
+
+@router.get("/value/export")
+def value_export(workspace_id: str = Query(alias="workspace"), start: datetime | None = Query(default=None, alias="from"),
+                 end: datetime | None = Query(default=None, alias="to"), user: User = Depends(current_user),
+                 session: Session = Depends(db, scope="function")):
+    body = desk.value_export(session, user, workspace_id, start=start, end=end)
+    return Response(body, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="desk-value-{workspace_id}.csv"'})
+
+
+@router.post("/value/rollup")
+def value_rollup(workspace_id: str = Query(alias="workspace"), start: datetime | None = Query(default=None, alias="from"),
+                 end: datetime | None = Query(default=None, alias="to"), user: User = Depends(current_user),
+                 session: Session = Depends(db, scope="function")):
+    return desk.refresh_value(session, user, workspace_id, start=start, end=end)
+
+
+@router.get("/value/baselines")
+def get_baselines(workspace_id: str = Query(alias="workspace"), user: User = Depends(current_user),
+                  session: Session = Depends(db, scope="function")):
+    return desk.list_baselines(session, user, workspace_id)
 
 
 @router.put("/value/baselines")

@@ -1,5 +1,19 @@
 # Capability register (evidence)
 
+## 2026-10-27 — S13 remainder and S11-T1/T7: Desk UI, value dashboard, nightly value rollup
+
+The Request Desk now has its screens and its nightly job. Work → Request desk (`web/src/pages/Desk.tsx`) gives
+requesters their requests and answers (accept or reopen) and analysts the queue by SLA with assignment, answer or
+approve (minutes required), escalate, decline, duplicate, certify and the prepared data pack. Overview → Value
+(`web/src/pages/Value.tsx`) shows the FR-053 numbers, the daily trend, per-class results, baselines and a CSV export.
+Backend: `desk_daily` (migration `0066_desk_daily`, RLS) filled by `desk/rollup.py` — a `@platform_loop` that claims
+the night and picks workspaces, then `@owned_by("workspace")` work per workspace — hooked into the scheduler with an
+SLA sweep built the same way; R4/R5 requests escalate with a draft schedule or monitor the desk never creates.
+Tests (2026-10-27, Windows dev host): `tests/unit/test_request_desk.py`; `tests/integration/test_request_desk.py`
+on Postgres 16 under strict tenancy (5 passed: AT-19, dedupe, escalation flow, cross-tenant 404, two-tenant nightly
+rollup and export); `web/src/test/desk.test.tsx`; `npm --prefix web run build`. Not done: workspace-home Desk
+widgets, axe/browser pass on the new screens, business-hours SLA, skills-based assignment.
+
 ## 2026-10-27 — S01-T6 ABAC on every call + OPA adapter, S01-T7 tenant-scoped cache keys
 
 ABAC (`governance/abac.py`): the policy decision input carries `{classification, purpose, region,
