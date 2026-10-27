@@ -40,13 +40,13 @@ suggestion in `knowledge/suggestions.py`). Personal memory **never** changes an 
    and records a tombstone in the audit log.
 6. **Cross-app read API.** Other apps read *summaries and approved knowledge*, never other users' raw messages:
    ```
-   GET  /v2/conversations?mine=true
-   GET  /v2/conversations/{id}                (participant)
-   POST /v2/conversations/{id}/messages       {text, attachments?, mode?: ask|investigate|edit}
-   POST /v2/conversations/{id}/branch         {from_message_id}
-   GET  /v2/conversations/{id}/state
-   GET  /v2/conversations/{id}/summary
-   POST /v2/conversations/{id}/corrections    {term, meaning, scope}
+   GET  /api/v2/conversations?mine=true
+   GET  /api/v2/conversations/{id}                (participant)
+   POST /api/v2/conversations/{id}/messages       {text, attachments?, mode?: ask|investigate|edit}
+   POST /api/v2/conversations/{id}/branch         {from_message_id}
+   GET  /api/v2/conversations/{id}/state
+   GET  /api/v2/conversations/{id}/summary
+   POST /api/v2/conversations/{id}/corrections    {term, meaning, scope}
    ```
    MCP: `conversation.start`, `conversation.say` (both create Desk requests), `conversation.summary` (participant only).
 7. **Never stored as memory:** raw rows from restricted columns, credentials, full prompts containing data samples
@@ -67,8 +67,9 @@ AT-18; `test_branch_restores_state`; `test_summary_numbers_cite_turns`; `test_pe
 | S04-T6 | MCP conversation tools | 1d |
 
 ## 7. As built (2026-10-27, T1–T6)
-Code: `src/analystos/conversations/` (`service`, `state`, `corrections`, `summaries`, `retention`, `ledger`, `models`),
-`api/routers/conversations.py` (prefix `/v2`), MCP tools in `mcp/server.py`, migration `0062_conversations`.
+Code: `src/analystos/conversations/` (`service`, `state`, `corrections`, `summaries`, `retention`, `models`),
+`api/routers/conversations.py` (prefix `/api/v2`, like S03's `/api/v2/context`: the web dev proxy and `TenantMiddleware` cover `/api`), MCP tools in `mcp/server.py`, ledger projectors in `context/ledger.py`,
+migrations `0062_conversations` and `0063_conversation_ledger`.
 Tests: `tests/unit/test_conversations.py`, `tests/integration/test_conversations.py` (Postgres, RLS, strict tenancy).
 
 Deviations and decisions:
@@ -82,11 +83,17 @@ Deviations and decisions:
   copies the latest version with `at_seq <= N` (corrections made after N but before N+1 are included).
   `mode=edit` = branch just before the edited message, then ask there. `mode=investigate` starts a run and records a
   message with status `delegated` and the run id. Attachments are references (`message` | `artifact`), never content.
-* **Ledger interface.** The S03 `context_ledger_entry` table is not on `main` yet. S04 writes through
-  `conversations/ledger.py` (`ContextLedger.upsert/remove/remove_for_conversation`); the default `InterimLedger` stores
-  rows in `conversation_memory_entry`, which has the S03 columns plus `conversation_id` (for deletion). **S03 to do:**
-  install its writer with `set_ledger(...)` (or move these rows into `context_ledger_entry`) — the S04 callers do
-  not change. Owner rows stay in `conversation_summary` / `conversation_correction`.
+* **Ledger (S03).** `conversation_summary` and `conversation_correction` are owner tables of the S03 context
+  ledger: projectors in `context/ledger.py` reconcile them on commit like every other owner. A conversation's latest
+  summary projects as kind `conversation_summary` (trust `workspace` or `personal`, owner = participant, `refs` = the
+  tables its answers read); a personal correction while active and unexpired projects as kind `correction`, trust
+  `personal`; a team correction once approved projects as `approved` (while proposed it is in the ledger as its pending
+  knowledge suggestion, trust `suggested`; a session correction never leaves its conversation). S03 retrieval, REST
+  `/api/v2/context/*` and MCP `context.*` then apply their own filters: `personal` for its owner only, workspace
+  membership, RLS for the tenant, data scope by `refs`. Deletion, revocation, supersession and expiry call
+  `context.ledger.forget`, which erases every version of the projection with its embedding and change-feed rows
+  (retiring would keep them). The interim `conversation_memory_entry` (built before S03 landed) is gone: migration
+  `0063_conversation_ledger` copied its open rows into the ledger under the projector refs and dropped the table.
 * **Corrections.** T2 personal memory is `conversation_correction(scope=personal)` (180-day TTL), projected with
   trust `personal`, owner-only. "Make this the team definition" proposes a `knowledge_suggestion` (kind `definition`,
   subject `term:<key>`, origin `conversation.correction`); the existing knowledge review (workspace editor or owner)
@@ -102,12 +109,13 @@ Deviations and decisions:
   explanations and single-row aggregates, never result rows. Policy flag `share_conversation_summaries`
   (workspace policy, default false) selects trust `workspace` over `personal`.
 * **Retention.** `tenant.settings.conversations = {messages_days: 365, results_days: 30}` (API
-  `/v2/tenants/{id}/conversation-retention`, tenant admin). There is no result-handle store yet (S02-T3), so
+  `/api/v2/tenants/{id}/conversation-retention`, tenant admin). There is no result-handle store yet (S02-T3), so
   `results_days` clears the rows inside stored answers and keeps query id and result hash. Personal memory expires
   after 180 days. The sweep runs from scheduler housekeeping at most hourly, per tenant binding; legal holds are
   skipped. Legal hold is set by a tenant admin or auditor (or platform admin) and blocks deletion (409).
 * **Deletion cascade** removes messages, their citation sets, state versions, summaries, session and personal
-  corrections, and every memory entry with its embedding; the audit tombstone holds counts only. Kept on purpose:
+  corrections, and every ledger projection of them with its embedding and change-feed rows; the audit tombstone
+  holds counts only. Kept on purpose:
   a team correction under review (detached), the Desk request record (its link is cleared), model-call and decision
   receipts (hashes and redacted payloads, as before). **Not yet removed:** analysis steps a user ingested from an Ask
   thread (`analysis_step` with container `ask_thread`).

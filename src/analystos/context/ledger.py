@@ -333,11 +333,67 @@ def _desk_playbooks(session: Session, ws: str, tags: _Tags) -> list[Projected]:
     return out
 
 
+def _conversation_summaries(session: Session, ws: str, tags: _Tags) -> list[Projected]:
+    """S04: the latest summary of each conversation (a newer one retires the older). Trust is what the summary was
+    written with: ``workspace`` when the workspace shares conversation summaries, else ``personal`` (its owner only).
+    Claims only, never result rows; ``refs`` are the tables the answers read, so retrieval withholds a summary from a
+    caller whose scope does not cover them."""
+    from analystos.conversations.models import ConversationSummary
+    from analystos.conversations.summaries import text_of
+    from analystos.db.models import AskThread
+
+    latest: dict[str, Any] = {}
+    for row, title in session.execute(select(ConversationSummary, AskThread.title)
+                                      .join(AskThread, AskThread.id == ConversationSummary.conversation_id)
+                                      .where(ConversationSummary.workspace_id == ws)
+                                      .order_by(ConversationSummary.conversation_id, ConversationSummary.version.desc())
+                                      .limit(20000)):
+        latest.setdefault(row.conversation_id, (row, title))
+    out = []
+    for row, title in latest.values():
+        refs = _uniq((row.summary or {}).get("tables") or [], 50)
+        out.append(Projected("conversation_summary", row.id, "conversation_summary", row.trust, _text(title, 300),
+                             _text(text_of(row.summary or {})), source="conversation",
+                             classification=tags.classify(refs, asset_level=True), owner_id=row.user_id, refs=refs,
+                             aliases=_uniq([title]),
+                             provenance={"conversation_id": row.conversation_id, "summary_version": row.version,
+                                         "through_seq": row.through_seq, "produced_by": row.produced_by}))
+    return out
+
+
+def _conversation_corrections(session: Session, ws: str, tags: _Tags) -> list[Projected]:
+    """S04: a personal correction while it is active and unexpired (trust ``personal``, its author only) and a team
+    correction once its knowledge suggestion is approved (``approved``). A proposed team correction is already in
+    the ledger as its pending suggestion; a session correction lives in its conversation's state only."""
+    from analystos.conversations.models import ConversationCorrection as C
+
+    now = utcnow()
+    out = []
+    for c in session.scalars(select(C).where(C.workspace_id == ws, C.status.in_(("active", "approved")),
+                                             C.scope.in_(("personal", "workspace_proposed")))):
+        personal = c.scope == "personal"
+        if personal and (c.status != "active" or (c.expires_at is not None and _aware(c.expires_at) <= now)):
+            continue
+        if not personal and c.status != "approved":
+            continue
+        out.append(Projected("conversation_correction", c.id, "correction", "personal" if personal else "approved",
+                             _text(c.term, 300), _text(f"{c.term}: {c.meaning}"), source="conversation",
+                             owner_id=c.user_id, aliases=_uniq([c.term]),
+                             provenance={"scope": c.scope, "suggestion_id": c.suggestion_id,
+                                         "expires_at": c.expires_at.isoformat() if c.expires_at else None}))
+    return out
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
 Projector = Callable[[Session, str, _Tags], list[Projected]]
 PROJECTORS: dict[str, Projector] = {
     "context_entry": _context_entries, "semantic_metric": _semantic_metrics, "verified_query": _verified_queries,
     "insight": _findings, "semantic_relationship_candidate": _relationships, "source_asset": _datasets,
     "knowledge_document": _documents, "knowledge_suggestion": _suggestions, "request": _desk_playbooks,
+    "conversation_summary": _conversation_summaries, "conversation_correction": _conversation_corrections,
 }
 
 
@@ -431,7 +487,9 @@ OWNER_MODELS: dict[str, str] = {"context_entry": "ContextEntry", "semantic_metri
                                 "verified_query": "VerifiedQuery", "insight": "Insight",
                                 "semantic_relationship_candidate": "SemanticRelationshipCandidate",
                                 "source_asset": "SourceAsset", "knowledge_document": "KnowledgeDocument",
-                                "knowledge_suggestion": "KnowledgeSuggestion", "request": "Request"}
+                                "knowledge_suggestion": "KnowledgeSuggestion", "request": "Request",
+                                "conversation_summary": "ConversationSummary",
+                                "conversation_correction": "ConversationCorrection"}
 
 
 def owner_of(session: Session, entry: ContextLedgerEntry) -> Any:
@@ -442,6 +500,23 @@ def owner_of(session: Session, entry: ContextLedgerEntry) -> Any:
     model = getattr(models, name, None) if name else None
     row = session.get(model, entry.ref_id) if model is not None else None
     return row if row is not None and getattr(row, "workspace_id", None) == entry.workspace_id else None
+
+
+def forget(session: Session, ref_table: str, ref_ids: Iterable[str]) -> dict[str, int]:
+    """Remove every version of these owners' projections, their embeddings and their change-feed rows (a deletion
+    request, personal memory that expired or was revoked: S04-T5). Retiring keeps history; this erases it."""
+    from sqlalchemy import delete
+
+    ids = sorted({str(i) for i in ref_ids if i})
+    if not ids:
+        return {"entries": 0, "embeddings": 0}
+    rows = session.execute(select(ContextLedgerEntry.id, ContextLedgerEntry.embedding.is_not(None))
+                           .where(ContextLedgerEntry.ref_table == ref_table, ContextLedgerEntry.ref_id.in_(ids))).all()
+    entry_ids = [r[0] for r in rows]
+    if entry_ids:
+        session.execute(delete(ContextLedgerChange).where(ContextLedgerChange.entry_id.in_(entry_ids)))
+        session.execute(delete(ContextLedgerEntry).where(ContextLedgerEntry.id.in_(entry_ids)))
+    return {"entries": len(entry_ids), "embeddings": sum(1 for r in rows if r[1])}
 
 
 # ------------------------------------------------------------------------------------------- the session hook

@@ -7,8 +7,9 @@ is good enough, so no call is made). Code decides: every claim, model or rules, 
 the computed result of the message it cites — a claim whose number matches nothing there is dropped (and listed in
 ``guard.dropped``) and the rules claim stands in for it.
 
-The summary is written to the ledger as ``conversation_summary`` with trust ``workspace`` when the workspace policy
-sets ``share_conversation_summaries``, otherwise ``personal`` (the participant only). The model sees questions,
+The S03 context ledger projects the latest summary as ``conversation_summary`` (``context/ledger.py``) with trust
+``workspace`` when the workspace policy sets ``share_conversation_summaries``, otherwise ``personal`` (the participant
+only). The model sees questions,
 explanations and single-row aggregates only, never result rows.
 """
 from __future__ import annotations
@@ -154,7 +155,9 @@ def build(turns: list[AskTurn], corrections: list[dict[str, Any]], *, llm: Llm |
     if proposed:
         produced_by = f"model:{guard['model']}"
     guard["ok"] = True  # every published claim passed; dropped ones are listed, never shown as answers
-    summary = {"questions": questions, "answers": answers, "corrections": corrections, "open_questions": open_questions}
+    tables = sorted({a for t in answered.values() for a in (t.result or {}).get("referenced_assets") or []})
+    summary = {"questions": questions, "answers": answers, "corrections": corrections, "open_questions": open_questions,
+               "tables": tables}  # the ledger's refs: retrieval withholds the summary from callers outside them
     return summary, guard, produced_by
 
 
@@ -175,9 +178,9 @@ def _model_llm(owner: User, workspace_id: str) -> Llm | None:
 
 
 def text_of(summary: dict[str, Any]) -> str:
-    lines = [f"- {a['claim']} [{a['label']}, message {a['evidence_ref']['seq']}]" for a in summary["answers"]]
-    lines += [f"- Correction ({c['scope']}): {c['term']} = {c['meaning']}" for c in summary["corrections"]]
-    lines += [f"- Open: {q['text']}" for q in summary["open_questions"]]
+    lines = [f"- {a['claim']} [{a['label']}, message {a['evidence_ref']['seq']}]" for a in summary.get("answers") or []]
+    lines += [f"- Correction ({c['scope']}): {c['term']} = {c['meaning']}" for c in summary.get("corrections") or []]
+    lines += [f"- Open: {q['text']}" for q in summary.get("open_questions") or []]
     return "\n".join(lines) or "- Nothing answered yet."
 
 
@@ -190,7 +193,6 @@ def _shared(session: Session, workspace_id: str) -> bool:
 
 def write(session: Session, conv: AskThread, trigger: str, *, llm: Llm | None = None) -> Any:
     from analystos.conversations import state as st
-    from analystos.conversations.ledger import LedgerEntry, get_ledger
     from analystos.conversations.models import ConversationCorrection as C
     from analystos.conversations.models import ConversationSummary
 
@@ -208,10 +210,6 @@ def write(session: Session, conv: AskThread, trigger: str, *, llm: Llm | None = 
                               trigger=trigger, trust=trust, summary=summary, guard=guard, produced_by=produced_by[:120])
     session.add(row)
     session.flush()
-    get_ledger().upsert(session, LedgerEntry(
-        workspace_id=conv.workspace_id, kind="conversation_summary", ref_table="conversation_summary", ref_id=conv.id,
-        version=version, trust=trust, title=conv.title, summary=text_of(summary), owner_id=conv.user_id,
-        conversation_id=conv.id))
     conv.summarized_at = utcnow()
     emit(conv.workspace_id, "conversation.summarized", {"conversation_id": conv.id, "version": version, "trigger": trigger,
                                                         "trust": trust, "dropped": len(guard["dropped"])},

@@ -2321,7 +2321,6 @@ from analystos.context import ledger as _context_ledger  # noqa: E402,F401  (reg
 from analystos.context.models import ContextLedgerChange, ContextLedgerEntry  # noqa: E402,F401  (Context Ledger, S03)
 from analystos.conversations.models import (  # noqa: E402,F401  (conversation memory, S04)
     ConversationCorrection,
-    ConversationMemoryEntry,
     ConversationState,
     ConversationSummary,
 )

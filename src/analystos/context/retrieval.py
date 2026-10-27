@@ -231,6 +231,12 @@ def body_of(entry: Any, owner: Any, access: Access) -> dict[str, Any]:
     if t == "request":
         ref = owner.answer_ref or {}
         return {"request": owner.text, "playbook": ref.get("playbook"), "answer": ref.get("text")}
+    if t == "conversation_summary":  # S04: claims citing messages, corrections, open questions; never result rows
+        summary = owner.summary or {}
+        return {"conversation_id": owner.conversation_id, "version": owner.version, "trust": owner.trust,
+                **{k: summary.get(k) for k in ("questions", "answers", "corrections", "open_questions")}}
+    if t == "conversation_correction":
+        return {"term": owner.term, "meaning": owner.meaning, "scope": owner.scope, "status": owner.status}
     return {}
 
 

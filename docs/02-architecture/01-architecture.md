@@ -122,7 +122,7 @@ sequenceDiagram
   participant R as Model Router
   participant S as Semantic Compiler
   participant Q as Query Gateway
-  U->>API: POST /v2/conversations/{id}/messages
+  U->>API: POST /api/v2/conversations/{id}/messages
   API->>D: create/attach request (triage)
   D->>C: compile(purpose=ask, scope, budget)
   C-->>D: ContextBundle + receipt

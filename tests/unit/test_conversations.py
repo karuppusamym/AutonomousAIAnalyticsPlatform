@@ -15,7 +15,6 @@ from analystos.conversations import service as conv
 from analystos.conversations import state as st
 from analystos.conversations.models import (
     ConversationCorrection,
-    ConversationMemoryEntry,
     ConversationState,
     ConversationSummary,
 )
@@ -25,7 +24,7 @@ from analystos.db.models import AskThread, AskTurn, AuditEvent, User, Workspace,
 
 TABLES = ("tenant", "tenant_member", "app_user", "workspace", "workspace_member", "workspace_policy", "ask_thread",
           "ask_turn", "conversation_state", "conversation_summary", "conversation_correction",
-          "conversation_memory_entry", "knowledge_suggestion", "knowledge_pack", "knowledge_document", "audit_event",
+          "context_ledger_entry", "context_ledger_change", "source_column", "knowledge_suggestion", "knowledge_pack", "knowledge_document", "audit_event",
           "run_event", "lineage_edge", "evidence_citation_set", "source", "source_asset", "request", "request_event",
           "context_entry", "verification_record", "query_execution", "model_call", "decision")
 
@@ -74,6 +73,18 @@ def world(db):
         for u in (alice, bob, owner):
             s.expunge(u)
         return SimpleNamespace(ws=ws.id, other=other.id, alice=alice, bob=bob, owner=owner, db=db)
+
+
+def _ledger(s, ref_table: str, ref_id: str | None = None, *, open_only: bool = True) -> list:
+    """The S03 context ledger's rows projecting a conversation owner table."""
+    from analystos.context.models import ContextLedgerEntry as E
+
+    q = select(E).where(E.ref_table == ref_table)
+    if ref_id is not None:
+        q = q.where(E.ref_id == ref_id)
+    if open_only:
+        q = q.where(E.valid_to.is_(None))
+    return list(s.scalars(q.order_by(E.version)))
 
 
 def _conversation(w, user, title="Incidents") -> str:
@@ -271,9 +282,45 @@ def test_rules_summary_needs_no_model_and_goes_to_the_ledger_as_personal_by_defa
     assert out["produced_by"] == "rules" and out["trust"] == "personal"
     assert out["summary"]["answers"][0]["claim"] == "Top 5 groups by incidents: 2 rows"
     with world.db() as s:
-        entry = s.scalar(select(ConversationMemoryEntry).where(ConversationMemoryEntry.kind == "conversation_summary"))
+        [entry] = _ledger(s, "conversation_summary")
+        assert entry.kind == "conversation_summary" and entry.ref_id == out["id"]
         assert entry.trust == "personal" and entry.owner_id == world.alice.id and entry.embedding
+        assert entry.refs == ["stg.incident"] and entry.source == "conversation"
         assert "Network" not in entry.summary  # never raw rows
+
+
+def test_a_newer_summary_retires_the_older_projection(world):
+    cid = _conversation(world, world.alice)
+    _turn(world, cid, "How many?")
+    first = summaries.summarize(world.alice, cid, "manual", use_model=False)
+    _turn(world, cid, "And now?", rows=((43,),))
+    second = summaries.summarize(world.alice, cid, "manual", use_model=False)
+    with world.db() as s:
+        assert [e.ref_id for e in _ledger(s, "conversation_summary")] == [second["id"]]
+        assert [e.valid_to is not None for e in _ledger(s, "conversation_summary", first["id"], open_only=False)] == [True]
+
+
+def test_ledger_retrieval_shows_a_personal_summary_to_its_owner_only(world):
+    from analystos.context import retrieval
+
+    cid = _conversation(world, world.alice)
+    _turn(world, cid, "How many incidents?")
+    summaries.summarize(world.alice, cid, "manual", use_model=False)
+
+    def access(user, ws):
+        return retrieval.Access(workspace_id=ws, user_id=user.id, role="analyst", assets={"stg.incident"}, denied=set(),
+                                known_assets={"stg.incident"})
+
+    with world.db() as s:
+        def found(user, ws):
+            return [e.kind for e in retrieval.candidates(s, access(user, ws), kinds=["conversation_summary"],
+                                                         trusts=retrieval.MODEL_TRUSTS)]
+        assert found(world.alice, world.ws) == ["conversation_summary"]
+        assert found(world.bob, world.ws) == []  # personal: its author only
+        assert found(world.alice, world.other) == []  # another workspace
+        narrow = retrieval.Access(workspace_id=world.ws, user_id=world.alice.id, role="analyst", assets=set(),
+                                  denied=set(), known_assets={"stg.incident"})
+        assert retrieval.candidates(s, narrow, kinds=["conversation_summary"], trusts=retrieval.MODEL_TRUSTS) == []
 
 
 def test_shared_workspace_summaries_are_workspace_trust(world, monkeypatch):
@@ -316,8 +363,8 @@ def test_personal_memory_isolated(world):
         assert corrections.mine(s, s.merge(world.bob), world.ws) == []
         with pytest.raises(NotFound):
             corrections.load_correction(s, s.merge(world.bob), out["correction"]["id"])
-        entry = s.scalar(select(ConversationMemoryEntry).where(ConversationMemoryEntry.ref_id == out["correction"]["id"]))
-        assert entry.trust == "personal" and entry.owner_id == world.alice.id
+        [entry] = _ledger(s, "conversation_correction", out["correction"]["id"])
+        assert entry.kind == "correction" and entry.trust == "personal" and entry.owner_id == world.alice.id
 
 
 def test_a_newer_personal_meaning_supersedes_the_older(world):
@@ -328,8 +375,7 @@ def test_a_newer_personal_meaning_supersedes_the_older(world):
         assert s.get(ConversationCorrection, first["id"]).status == "superseded"
         mine = corrections.mine(s, s.merge(world.alice), world.ws)
         assert [m["meaning"] for m in mine] == ["ordered within 90 days"]
-        assert s.scalar(select(func.count()).select_from(ConversationMemoryEntry)
-                        .where(ConversationMemoryEntry.ref_id == first["id"])) == 0
+        assert _ledger(s, "conversation_correction", first["id"], open_only=False) == []  # erased, not just retired
 
 
 def test_team_correction_applies_to_others_only_after_approval(world):
@@ -353,9 +399,8 @@ def test_team_correction_applies_to_others_only_after_approval(world):
         mem = corrections.memory(s, world.bob.id, world.ws, b1)
         assert [(i["term"], i["meaning"], i["scope"]) for i in mem["items"]] == [
             ("active", "logged in within 30 days", "workspace")]
-        entry = s.scalar(select(ConversationMemoryEntry).where(ConversationMemoryEntry.ref_id == corr["id"],
-                                                               ConversationMemoryEntry.valid_to.is_(None)))
-        assert entry.trust == "approved"
+        [entry] = _ledger(s, "conversation_correction", corr["id"])
+        assert entry.trust == "approved" and entry.kind == "correction"
 
 
 def test_personal_meaning_never_silently_replaces_the_team_definition(world):
@@ -429,9 +474,9 @@ def test_retention_delete_cascades_embeddings(world):
     team = _correct(world, world.alice, cid, "churn", "no order in 180 days", scope="workspace_proposed")["correction"]
     summaries.summarize(world.alice, cid, "manual", use_model=False)
     with world.db() as s:
-        derived = s.scalar(select(func.count()).select_from(ConversationMemoryEntry).where(
-            ConversationMemoryEntry.conversation_id == cid, ConversationMemoryEntry.embedding.is_not(None)))
-        assert derived == 3  # summary, personal correction, team suggestion
+        derived = [*_ledger(s, "conversation_summary"), *_ledger(s, "conversation_correction")]
+        assert len(derived) == 2 and all(e.embedding for e in derived)  # summary, personal correction
+        assert _ledger(s, "knowledge_suggestion")  # the team proposal is in the ledger as its suggestion
         with pytest.raises(NotFound):
             conv.delete(s, s.merge(world.bob), cid)
         out = conv.delete(s, s.merge(world.alice), cid, reason="user request")
@@ -442,12 +487,13 @@ def test_retention_delete_cascades_embeddings(world):
         for model in (AskTurn, ConversationState, ConversationSummary):
             assert s.scalar(select(func.count()).select_from(model)) == 0, model
         assert s.get(AskThread, cid) is None and s.get(ConversationCorrection, personal["id"]) is None
-        assert s.scalar(select(func.count()).select_from(ConversationMemoryEntry).where(
-            ConversationMemoryEntry.conversation_id == cid)) == 0
+        from analystos.context.models import ContextLedgerChange
+
+        assert _ledger(s, "conversation_summary", open_only=False) == []
+        assert _ledger(s, "conversation_correction", open_only=False) == []
+        assert {c.entry_id for c in s.scalars(select(ContextLedgerChange))} & {e.id for e in derived} == set()
         kept = s.get(ConversationCorrection, team["id"])
         assert kept is not None and kept.conversation_id is None
-        assert s.scalar(select(ConversationMemoryEntry.conversation_id).where(
-            ConversationMemoryEntry.ref_id == team["id"])) is None
         tomb = s.scalar(select(AuditEvent).where(AuditEvent.action == "conversation.deleted"))
         assert tomb.target == cid and tomb.details["tombstone"] and tomb.details["messages"] == 1
         assert "How many" not in str(tomb.details) and "billing" not in str(tomb.details)
