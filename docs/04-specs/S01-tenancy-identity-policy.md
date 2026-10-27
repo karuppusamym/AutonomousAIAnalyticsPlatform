@@ -16,7 +16,7 @@ and make the audit log physically append-only.
 | Audit | `AuditEvent`, `governance/audit` |
 | Atlas donor | Enterprise secret managers, `authorization_gate.py`, access reviews |
 
-## 2a. As built (2026-10-27, tasks T1–T3)
+## 2a. As built (2026-10-27, tasks T1–T7)
 * Ids follow the codebase (`String(40)`, prefix `tnt_`), not UUID. Default tenant `tnt_default`.
 * `tenant_id` is filled by a `BEFORE INSERT` trigger from the row's workspace or parent row (then the bound tenant,
   then, for the roots `workspace`/`app_user` only, the default tenant). The ORM classes stay unchanged: the column is
@@ -63,6 +63,56 @@ and make the audit log physically append-only.
     `POST /api/tenants/{t}/audit/verify`, for the tenant's `tenant_admin`/`tenant_auditor` or a platform admin, for
     the tenant the request acts for (another id is 404). CLI: `analystos audit seal|verify|export [--tenant T | --platform]`
     (verify exits 4 on a broken chain).
+* **T6, ABAC on every call** (`governance/abac.py`, `contracts/policy.py` `AbacAttributes`/`AbacRule`/`AbacScope`/
+  `PolicyInput`):
+  * The decision input is `PolicyInput`: identity facts (tenant, workspace, user, role, agent, tool, source, assets,
+    data residency, policy version) plus `{classification, purpose, region, aggregation_grain, audience}`, all derived
+    by code. `classification` is the highest class of what the call can read (column tags: `public`; untagged =
+    `internal`; `pii`/`confidential`/`sensitive` = `confidential`; `restricted`); denied columns do not count.
+    `region` is the user attribute `region` (administrator or IdP mapped), unknown = None. `aggregation_grain` is
+    syntactic on the outermost SELECT (`aggregate` when it groups or only aggregates, else `row`; unparseable = `row`).
+    `audience` is `external` for publish/export/notify_external and external-write tools, else `workspace`.
+    `purpose` is the identity's purpose (tool calls) or the gateway purpose (queries); a rule value also matches the
+    purpose class (`monitor` matches `monitor.freshness`).
+  * Decision points: `policy.evaluate` (so `ToolRuntime.authorize`, the tool pre-hook the spec calls `ToolExecutor`,
+    and run, publish, build, MCP tool and monitor decisions), after the role and autonomy checks; and
+    `QueryGateway.execute` for every statement (federated statements once; their legs are not decided again),
+    after validation and before the result cache, so a cached result is never a way around a denial.
+    `explain` reads no rows and is not ABAC-checked.
+  * `resolve_scope` attaches `DataScope.abac` (region, residency = workspace policy else `tenant.data_residency`,
+    the class of each readable non-internal column, the workspace rules). It is excluded from the scope hash, so plan
+    hashes and approvals do not change.
+  * Rules only deny. Platform rules (always on): `platform.data_residency` (known region outside the residency;
+    `eu` covers `eu-west-1`) and `platform.restricted_external` (restricted data to an external audience).
+    Workspace rules: `WorkspacePolicyDoc.abac_rules`, each `{id, when: [{attribute, op in|not_in|at_least|at_most,
+    values}], applies_to: [tool, query, action], reason, remedy}`, versioned with the policy. An unknown region is
+    never `in` a list and always `not_in` it, so "EU only" rules fail closed.
+  * `ANALYSTOS_POLICY_ENGINE=opa` (default `builtin`): after the built-in engine allows, the adapter posts
+    `{"input": PolicyInput + workspace_rules}` to `ANALYSTOS_POLICY_OPA_URL/v1/data/<ANALYSTOS_POLICY_OPA_DECISION_PATH>`
+    (default `analystos/abac/decision`, timeout `ANALYSTOS_POLICY_OPA_TIMEOUT_SECONDS`, 1 s) and expects
+    `{allow: bool, rule?, reason?, remedy?}` (a bare boolean is accepted). OPA can only add a denial. Unreachable,
+    HTTP error, timeout or a non-boolean `allow` is a deny (`opa.unavailable`, `opa.invalid_decision`). No decision
+    cache. The setting is an environment setting, not the `policy.engine` runtime setting the plan named.
+  * Errors: `403 policy_denied` with `details {rule, reason, remedy, engine}` from the tool gate, the gateway and the
+    run, publish and build paths (`policy.denied`); the denial is recorded on `tool_execution.decision.abac`, the
+    `policy.denied` event (`rule`) and, for queries, a `rejected` `query_execution` row.
+* **T7, tenant-scoped cache keys** (`tenancy/cache_keys.py`): every tenant-data cache key carries
+  `tenant:{t}:scope:{scope_hash}:policy:{policy_version}`:
+  * query result cache `analystos:qcache:<prefix>:<sha>` (tenant = the source's workspace tenant, scope hash and policy
+    version of the DataScope); model response cache L0 `aos:llm:<prefix>:<workspace>:<purpose>:<hash>`
+    (`CallContext.tenant_id/scope_hash/policy_version`, filled by run steps, Ask, the Request Desk and
+    `workspace_call_ctx`); context cache `aos:ctx:<prefix>:<workspace>:<kind>:<digest>` for knowledge retrieval and
+    compiled contexts (`context.cache.scope_of(ctx)`). The retrieval key had no scope before; `load_knowledge` filters
+    by the scope, so a narrower scope could reuse a wider one's retrieval. It now cannot.
+  * The tenant segment is the bound tenant; unbound (system scope, unit tests, `bound`/`off` modes) it is the owner
+    tenant passed in (the workspace's), else `-`. A bound tenant that differs from the owner gets key `None`: no read,
+    no write. Unbound entries are never served to a bound tenant.
+  * Not prefixed, by design: pure functions of their input with no authorization in them (SQL semantics of verified
+    queries, now bounded at 4,096; catalog text screening; lexicon), platform catalogues (playbooks, capability
+    manifests, platform settings, decision calibration), and the system lookups keyed by globally unique ids
+    (`tenancy/resolve.py` user tenants, `tenancy/background.py` row owners, `services/model_config.py` workspace
+    layers). Counter hashes (`aos:ctx:stats`, budget counters) hold counts, not data.
+  * Entries written before this change are unreachable (old key shapes) and expire with their TTLs.
 * The request tenant is bound by `TenantMiddleware` (token → home tenant, or `X-Tenant-Id` if the user is a member,
   else 403) before any route code runs, and it reaches every session the request opens.
 * Platform rows (NULL tenant) are readable by tenants only for shared catalogs (knowledge packs). They stay private for
