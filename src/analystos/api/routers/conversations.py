@@ -19,7 +19,7 @@ from analystos.conversations import service as conv_svc
 from analystos.core.errors import InvalidInput, NotFound
 from analystos.db.models import User
 
-router = APIRouter(prefix="/v2", tags=["conversations"])
+router = APIRouter(prefix="/api/v2", tags=["conversations"])
 
 
 class ConversationIn(BaseModel):

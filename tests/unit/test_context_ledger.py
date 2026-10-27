@@ -15,7 +15,8 @@ from analystos.core.errors import ContextConflict, ContextOverBudget, NotFound
 
 WS, WS2 = "ws_ledger", "ws_other"
 EXTRA_TABLES = ("context_entry", "verified_query", "knowledge_suggestion", "request", "semantic_relationship_candidate",
-                "knowledge_pack", "knowledge_document")
+                "knowledge_pack", "knowledge_document",
+                "ask_thread", "conversation_summary", "conversation_correction")  # S04 owner tables
 
 
 @pytest.fixture

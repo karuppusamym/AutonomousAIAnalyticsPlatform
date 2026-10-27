@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from analystos.core.errors import Forbidden, InvalidInput, NotFound
@@ -91,13 +91,8 @@ def _drop_messages(session: Session, turn_ids: list[str]) -> int:
 
 def purge_conversation(session: Session, conv: AskThread) -> dict[str, Any]:
     """Delete the conversation and everything derived from it; returns counts (the tombstone's content)."""
-    from analystos.conversations.ledger import get_ledger
-    from analystos.conversations.models import (
-        ConversationCorrection,
-        ConversationMemoryEntry,
-        ConversationState,
-        ConversationSummary,
-    )
+    from analystos.context.ledger import forget
+    from analystos.conversations.models import ConversationCorrection, ConversationState, ConversationSummary
     from analystos.conversations.service import detach_request
 
     cid, ws, owner = conv.id, conv.workspace_id, conv.user_id
@@ -106,12 +101,11 @@ def purge_conversation(session: Session, conv: AskThread) -> dict[str, Any]:
     if kept:  # team knowledge under review outlives the conversation, without a link back to it
         session.execute(update(ConversationCorrection).where(ConversationCorrection.id.in_(kept))
                         .values(conversation_id=None, message_id=None))
-        session.execute(update(ConversationMemoryEntry).where(ConversationMemoryEntry.ref_table == "conversation_correction",
-                                                              ConversationMemoryEntry.ref_id.in_(kept))
-                        .values(conversation_id=None))
-    embeddings = int(session.scalar(select(func.count()).select_from(ConversationMemoryEntry).where(
-        ConversationMemoryEntry.conversation_id == cid, ConversationMemoryEntry.embedding.is_not(None))) or 0)
-    memory = get_ledger().remove_for_conversation(session, cid)
+    gone = [forget(session, "conversation_summary", session.scalars(
+                select(ConversationSummary.id).where(ConversationSummary.conversation_id == cid))),
+            forget(session, "conversation_correction", session.scalars(
+                select(ConversationCorrection.id).where(ConversationCorrection.conversation_id == cid)))]
+    memory, embeddings = sum(g["entries"] for g in gone), sum(g["embeddings"] for g in gone)
     corrections = int(session.execute(delete(ConversationCorrection).where(
         ConversationCorrection.conversation_id == cid)).rowcount or 0)
     summaries = int(session.execute(delete(ConversationSummary).where(ConversationSummary.conversation_id == cid))
@@ -136,7 +130,7 @@ def _held(session: Session) -> Any:
 
 def apply_tenant(session: Session, tenant: Tenant | None, now: datetime) -> dict[str, int]:
     """One tenant's retention in the current transaction (bound to that tenant by the caller)."""
-    from analystos.conversations.ledger import get_ledger
+    from analystos.context.ledger import forget
     from analystos.conversations.models import ConversationCorrection as C
 
     pol = policy_of(tenant)
@@ -161,7 +155,7 @@ def apply_tenant(session: Session, tenant: Tenant | None, now: datetime) -> dict
                                                    C.expires_at.is_not(None), C.expires_at < now).limit(BATCH)))
     for c in expired:
         c.status = "expired"
-    get_ledger().remove(session, ref_table="conversation_correction", ref_ids=[c.id for c in expired])
+    forget(session, "conversation_correction", [c.id for c in expired])  # projection and embedding go
     return {"messages": messages, "result_payloads": results, "personal_expired": len(expired)}
 
 

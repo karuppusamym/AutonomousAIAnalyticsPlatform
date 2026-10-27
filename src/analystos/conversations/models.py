@@ -2,8 +2,8 @@
 fills ``tenant_id`` from the workspace and row-level security applies (ADR-009).
 
 The conversation and its messages are the existing ``ask_thread`` / ``ask_turn`` rows (spec S04 §4.1). These tables
-add the T1 session state (versioned per message), summaries, typed corrections and the interim store behind the
-context-ledger interface (``conversations/ledger.py``) until the S03 ledger table exists."""
+add the T1 session state (versioned per message), summaries and typed corrections. Summaries and corrections are
+owner tables of the S03 context ledger, which projects them (``context/ledger.py``)."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -14,9 +14,6 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from analystos.db.base import Base
-from analystos.db.vectors import Embedding
-
-MEMORY_EMBEDDING_DIM = 256  # the platform's feature-hash embedding (context/embeddings.py)
 
 
 def _ts() -> Mapped[datetime]:
@@ -86,31 +83,3 @@ class ConversationCorrection(Base):
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-
-class ConversationMemoryEntry(Base):
-    """Interim store behind the context-ledger interface: the columns of the S03 ``context_ledger_entry`` for the
-    kinds S04 writes (``conversation_summary``, ``correction``). Never raw result rows. ``conversation_id`` lets a
-    deletion request find every entry (and embedding) derived from a conversation."""
-
-    __tablename__ = "conversation_memory_entry"
-    __table_args__ = (UniqueConstraint("ref_table", "ref_id", "version", name="uq_conversation_memory_ref"),
-                      Index("ix_conversation_memory_lookup", "workspace_id", "kind", "trust"))
-    id: Mapped[str] = mapped_column(String(40), primary_key=True)
-    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
-    conversation_id: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
-    kind: Mapped[str] = mapped_column(String(40))
-    ref_table: Mapped[str] = mapped_column(String(60))
-    ref_id: Mapped[str] = mapped_column(String(40))
-    version: Mapped[int] = mapped_column(Integer, default=1)
-    trust: Mapped[str] = mapped_column(String(20))  # certified | approved | workspace | personal | suggested
-    visibility: Mapped[str] = mapped_column(String(20), default="workspace")
-    owner_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    title: Mapped[str] = mapped_column(String(300))
-    summary: Mapped[str] = mapped_column(Text)
-    classification: Mapped[str] = mapped_column(String(20), default="internal")
-    source: Mapped[str] = mapped_column(String(40), default="conversation")
-    valid_from: Mapped[datetime] = _ts()
-    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    embedding: Mapped[list[float] | None] = mapped_column(Embedding(MEMORY_EMBEDDING_DIM), nullable=True)
-    embedding_model: Mapped[str | None] = mapped_column(String(60), nullable=True)
-    created_at: Mapped[datetime] = _ts()

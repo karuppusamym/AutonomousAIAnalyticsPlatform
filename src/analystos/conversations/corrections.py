@@ -59,14 +59,6 @@ def view(row: Any) -> dict[str, Any]:
             "created_at": row.created_at.isoformat() if row.created_at else None}
 
 
-def _project(session: Session, row: Any, trust: str, version: int = 1) -> None:
-    from analystos.conversations.ledger import LedgerEntry, get_ledger
-
-    get_ledger().upsert(session, LedgerEntry(
-        workspace_id=row.workspace_id, kind="correction", ref_table="conversation_correction", ref_id=row.id,
-        version=version, trust=trust, title=row.term, summary=f"{row.term}: {row.meaning}", owner_id=row.user_id,
-        conversation_id=row.conversation_id, valid_to=row.expires_at))
-
 
 # ------------------------------------------------------------------------------------ apply
 def correct(session: Session, user: User, conv: AskThread, *, term: str, meaning: str, scope: str,
@@ -99,8 +91,7 @@ def correct(session: Session, user: User, conv: AskThread, *, term: str, meaning
                 ConversationCorrection.scope == "personal", ConversationCorrection.status == "active",
                 ConversationCorrection.term_key == key, ConversationCorrection.id != row.id)):
             old.status = "superseded"
-            _forget(session, [old.id])
-        _project(session, row, "personal")
+            _forget(session, [old.id])  # an older personal meaning leaves the ledger with its embedding
     elif scope == "workspace_proposed":
         _propose(session, user, conv, row)
     audit(f"user:{user.id}", "conversation.correction_applied", workspace_id=conv.workspace_id, target=row.id,
@@ -123,8 +114,7 @@ def _propose(session: Session, user: User, conv: AskThread, row: Any) -> None:
     if suggestion is None:  # already decided for this term, rejected before, or owner content exists
         row.status = "not_proposed"
         return
-    row.suggestion_id = suggestion.id
-    _project(session, row, "suggested")
+    row.suggestion_id = suggestion.id  # the pending suggestion is in the ledger as `suggested` (S03 projector)
 
 
 @scoped_loader
@@ -164,9 +154,9 @@ def revoke(session: Session, user: User, correction_id: str) -> dict[str, Any]:
 
 
 def _forget(session: Session, ids: list[str]) -> None:
-    from analystos.conversations.ledger import get_ledger
+    from analystos.context.ledger import forget
 
-    get_ledger().remove(session, ref_table="conversation_correction", ref_ids=ids)
+    forget(session, "conversation_correction", ids)
 
 
 def mine(session: Session, user: User, workspace_id: str) -> list[dict[str, Any]]:
@@ -196,11 +186,7 @@ def on_suggestions_decided(session: Session, decided: list[tuple[Any, str]]) -> 
         return
     for corr in session.scalars(select(C).where(C.suggestion_id.in_(list(ids)), C.scope == "workspace_proposed")):
         status = ids[corr.suggestion_id]
-        corr.status = "approved" if status == "approved" else "rejected"
-        if corr.status == "approved":
-            _project(session, corr, "approved", version=2)
-        else:
-            _forget(session, [corr.id])
+        corr.status = "approved" if status == "approved" else "rejected"  # the ledger hook projects an approval
 
 
 # ------------------------------------------------------------------------------------ effective memory
