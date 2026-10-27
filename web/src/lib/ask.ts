@@ -2,7 +2,10 @@
  * Ask screen helpers (P4-U02): thread grouping, provenance and staleness pills, one refusal state per
  * kind, and the promote actions. Pure functions, so the rules are unit-tested without rendering.
  */
-import type { AskPromotion, AskRefusal, AskStaleness, AskThread, AskTurn, ContextReceipt, DecisionRow } from "../api";
+import type {
+  AnswerCost, AskPromotion, AskRefusal, AskStaleness, AskThread, AskTurn, ContextReceipt, ConversationMemory, ConversationMessage, DecisionRow,
+} from "../api";
+import { fmtUsd } from "./format";
 import type { StateKind } from "../components/ui";
 import type { Tone } from "./status";
 
@@ -201,4 +204,60 @@ export function receiptView(r: ContextReceipt) {
     section: r.section ?? r.kind ?? null,
     documentId: typeof r.document_id === "string" ? r.document_id : null,
   };
+}
+
+// ------------------------------------------------------------------------------------ conversations (S11-T2)
+const RUNG_LABELS: Record<string, string> = {
+  llm_small: "small model", llm_large: "large model", decision: "decision model", cache: "cache", rules: "rule",
+};
+
+/** Who or what answered (UX invariant: every answer names it): a rule, a verified query, an approved metric or a model. */
+export function answeredByLabel(turn: Pick<AskTurn, "answered_by" | "model" | "status" | "route" | "cost">): string {
+  if (turn.route === "investigate") return "an investigation run";
+  switch (turn.answered_by) {
+    case "registry": return "verified query (no model)";
+    case "rules": return "rule built from the catalog (no model)";
+    case "semantic": return "approved metric calculation (no model)";
+    case "sample": return "example rows rule (no model)";
+    case "model": {
+      const rungs = (turn.cost?.rungs ?? []).map((r) => RUNG_LABELS[r] ?? r);
+      return `model ${turn.model ?? turn.cost?.models[0] ?? ""}`.trim() + (rungs.length ? ` (${rungs.join(", ")})` : "");
+    }
+    default: return turn.status === "answered" ? "the governed Ask path" : "not answered";
+  }
+}
+
+/** The answer's cost in one line: spend and model calls, or why there was none. */
+export function costLine(cost: AnswerCost | undefined | null): string {
+  if (!cost) return "cost not recorded";
+  const parts: string[] = [];
+  if (cost.model_calls > 0) {
+    parts.push(`${fmtUsd(cost.usd)} · ${cost.model_calls} model call${cost.model_calls === 1 ? "" : "s"}`);
+  } else {
+    parts.push("$0 · no model call");
+  }
+  if (cost.cache_hits > 0) parts.push(`${cost.cache_hits} from cache`);
+  if (cost.avoided > 0) parts.push(`${cost.avoided} model call${cost.avoided === 1 ? "" : "s"} avoided`);
+  return parts.join(" · ");
+}
+
+/** A v2 message as the Ask turn the answer views render (the same row, with the fields the message names). */
+export function messageToTurn(m: ConversationMessage): AskTurn {
+  return { ...m.answer, id: m.id, thread_id: m.conversation_id, question: m.text, seq: m.seq, created_at: m.created_at,
+    workspace_id: "" } as AskTurn;
+}
+
+export type MemoryScope = ConversationMemory["items"][number]["scope"];
+
+/** Personal and team memory look different (S11 UX invariant): colour class and a written label. */
+export const MEMORY_LABELS: Record<MemoryScope, { label: string; className: string; title: string }> = {
+  session: { label: "This conversation", className: "memory-session", title: "Applies only in this conversation" },
+  personal: { label: "Personal", className: "memory-personal", title: "Your own memory: applies in your conversations, nobody else sees it" },
+  workspace: { label: "Team", className: "memory-team", title: "The approved team definition: applies to everyone in the workspace" },
+};
+
+/** The message a branch should continue after so that `turnId` can be asked again differently (null: before the first). */
+export function branchPointBefore(turns: Pick<AskTurn, "id">[], turnId: string): string | null {
+  const i = turns.findIndex((t) => t.id === turnId);
+  return i > 0 ? turns[i - 1].id : null;
 }

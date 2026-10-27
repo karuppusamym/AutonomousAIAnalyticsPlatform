@@ -565,3 +565,25 @@ def test_mcp_conversation_tools_are_granted_by_role():
     assert G.min_role("conversation.start") == G.min_role("conversation.say") == "analyst"
     assert G.min_role("conversation.summary") == "viewer"
     assert TOOL_DEFS["conversation.summary"]["read_only"] and not TOOL_DEFS["conversation.say"]["read_only"]
+
+
+# ------------------------------------------------------------------------------------ S11-T2: answered by + cost
+def test_each_message_carries_what_answering_it_cost(world):
+    from analystos.db.models import ModelCall
+
+    cid = _conversation(world, world.alice)
+    m1, m2 = _turn(world, cid, "How many?"), _turn(world, cid, "And by group?", answered_by="registry")
+    with world.db() as s:
+        base = {"workspace_id": world.ws, "purpose": "sql_generation", "profile": "chat", "provider": "openrouter",
+                "attempt": 1, "latency_ms": 5, "input_tokens": 100, "output_tokens": 20}
+        s.add_all([ModelCall(task_id=m1, model="small-1", status="ok", cost_usd=0.0012, answered_by="llm_small", **base),
+                   ModelCall(task_id=m1, model="large-1", status="ok", cost_usd=0.0040, answered_by="llm_large", **base),
+                   ModelCall(task_id=m1, model="-", status="skipped", cost_usd=0.0, tokens_saved=600, answered_by="rules",
+                             **base),
+                   ModelCall(task_id=m2, model="-", status="cache_hit", cost_usd=0.0, answered_by="cache", **base)])
+        s.commit()
+    with world.db() as s:
+        msgs = {m["id"]: m["answer"]["cost"] for m in conv.detail(s, s.merge(world.alice), cid)["messages"]}
+    assert msgs[m1] == {"usd": 0.0052, "model_calls": 2, "cache_hits": 0, "avoided": 1, "tokens_saved": 600,
+                        "rungs": ["llm_small", "llm_large"], "models": ["small-1", "large-1"]}
+    assert msgs[m2]["usd"] == 0.0 and msgs[m2]["cache_hits"] == 1 and msgs[m2]["model_calls"] == 0

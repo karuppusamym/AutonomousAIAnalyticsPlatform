@@ -201,7 +201,8 @@ def memory(session: Session, user_id: str, workspace_id: str, conversation_id: s
     if conversation_id:
         for c in st.current(session, conversation_id).get("clarifications") or []:
             layers["session"].append({"term": c["term"], "term_key": c["term_key"], "meaning": c["meaning"],
-                                      "correction_id": c.get("correction_id"), "scope": "session"})
+                                      "correction_id": c.get("correction_id"), "scope": "session",
+                                      "saved_as": c.get("scope") or "session"})  # how it was applied here
     for r in _personal(session, user_id, workspace_id):
         layers["personal"].append({"term": r.term, "term_key": r.term_key, "meaning": r.meaning, "correction_id": r.id,
                                    "scope": "personal"})

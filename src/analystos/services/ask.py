@@ -310,7 +310,8 @@ def list_threads(session: Session, user: User, workspace_id: str, q: str | None 
 def thread_detail(session: Session, user: User, thread_id: str) -> dict[str, Any]:
     thread = _thread_for(session, user, thread_id)
     turns = list(session.scalars(select(AskTurn).where(AskTurn.thread_id == thread.id).order_by(AskTurn.seq)))
-    return {**row(thread), "turns": [turn_out(session, t) for t in turns]}
+    costs = answer_costs(session, [t.id for t in turns])
+    return {**row(thread), "turns": [turn_out(session, t, costs[t.id]) for t in turns]}
 
 
 @scoped_loader
@@ -390,7 +391,35 @@ def staleness(session: Session, turn: AskTurn, now: datetime | None = None) -> d
     return {"state": state, "label": f"Data as of {when} ago", "data_as_of": _iso(oldest)}
 
 
-def turn_out(session: Session, turn: AskTurn) -> dict[str, Any]:
+def answer_costs(session: Session, turn_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """What answering each turn cost (S11-T2 "answered by + cost"), from the model-call receipts recorded against it
+    (`task_id = turn id`): spend, calls by ladder rung and model, cache hits, and calls a rule or cache avoided.
+    One query for a whole thread."""
+    out = {i: {"usd": 0.0, "model_calls": 0, "cache_hits": 0, "avoided": 0, "tokens_saved": 0, "rungs": [], "models": []}
+           for i in turn_ids}
+    if not turn_ids:
+        return out
+    for task_id, status, rung, model, cost, saved in session.execute(
+            select(ModelCall.task_id, ModelCall.status, ModelCall.answered_by, ModelCall.model, ModelCall.cost_usd,
+                   ModelCall.tokens_saved).where(ModelCall.task_id.in_(turn_ids))):
+        c = out[task_id]
+        c["usd"] += float(cost or 0.0)
+        c["tokens_saved"] += int(saved or 0)
+        if status == "skipped":
+            c["avoided"] += 1
+        elif status == "cache_hit":
+            c["cache_hits"] += 1
+        else:
+            c["model_calls"] += 1
+            for key, value in (("rungs", rung), ("models", model)):
+                if value and value != "-" and value not in c[key]:
+                    c[key].append(value)
+    for c in out.values():
+        c["usd"] = round(c["usd"], 6)
+    return out
+
+
+def turn_out(session: Session, turn: AskTurn, cost: dict[str, Any] | None = None) -> dict[str, Any]:
     from analystos.semantic.evidence import evidence_status
 
     fresh = staleness(session, turn)
@@ -401,7 +430,8 @@ def turn_out(session: Session, turn: AskTurn) -> dict[str, Any]:
         governance |= {"semantic_model_version": semantic.get("semantic_model_version", semantic.get("model_version")),
                        "compiler_version": semantic.get("compiler_version")}
     return {**row(turn), **governance, "staleness": fresh, "evidence_status": evidence_status(session, turn, fresh),
-            "promotions": promotions_view(session, list(turn.promotions or []))}
+            "promotions": promotions_view(session, list(turn.promotions or [])),
+            "cost": cost if cost is not None else answer_costs(session, [turn.id])[turn.id]}
 
 
 def approval_state(approval: Approval | None) -> str:

@@ -1006,6 +1006,19 @@ export interface AskTurn {
   staleness: AskStaleness;
   /** Analyst mode only (null for a quick answer): the plan, the steps and the synthesis. */
   analysis?: AskAnalysis | null;
+  /** What answering it cost, from the model-call receipts recorded against the turn (S11-T2). */
+  cost?: AnswerCost;
+}
+
+/** Spend and model use of one answer: calls by ladder rung and model, cache hits, calls a rule or cache avoided. */
+export interface AnswerCost {
+  usd: number;
+  model_calls: number;
+  cache_hits: number;
+  avoided: number;
+  tokens_saved: number;
+  rungs: string[];
+  models: string[];
 }
 
 export type AskMode = "quick" | "analyst";
@@ -1097,10 +1110,118 @@ export interface AskThread {
   created_at: string;
   updated_at: string;
   turn_count?: number;
+  /** S04: an Ask thread is a v2 conversation; a branch names its parent and the message it continues after. */
+  channel?: string;
+  parent_conversation_id?: string | null;
+  branch_from_message_id?: string | null;
+  legal_hold?: boolean;
+  closed_at?: string | null;
 }
 
 export interface AskThreadDetail extends AskThread {
   turns: AskTurn[];
+}
+
+// ----------------------------------------------------------------------------------- v2 conversations (S04, S11-T2)
+/** GET /api/v2/conversations/{id} without messages (conversations/service.py `view`). */
+export interface Conversation {
+  id: string;
+  workspace_id: string;
+  tenant_id: string | null;
+  channel: string;
+  title: string;
+  owner_id: string;
+  participants: string[];
+  request_id: string | null;
+  parent_conversation_id: string | null;
+  branch_from_message_id: string | null;
+  legal_hold: boolean;
+  archived: boolean;
+  closed_at: string | null;
+  summarized_at: string | null;
+  created_at: string;
+  updated_at: string;
+  revision: number;
+  state_version: number;
+  message_count: number;
+}
+
+/** A message: the question and its answer (the Ask turn without the fields the message already names). */
+export interface ConversationMessage {
+  id: string;
+  conversation_id: string;
+  seq: number;
+  /** Shown from the conversation this one branched from, up to the branch point. */
+  inherited: boolean;
+  author_id: string;
+  text: string;
+  mode: "ask" | "investigate";
+  status: string;
+  created_at: string;
+  answer: Omit<AskTurn, "id" | "thread_id" | "question" | "user_id" | "seq" | "workspace_id" | "created_at">;
+}
+
+export interface ConversationDetail extends Conversation {
+  messages: ConversationMessage[];
+}
+
+export interface ConversationBranch extends Conversation {
+  restored_state: { conversation_id: string; version: number };
+}
+
+export interface StateFilter { column: string; op: string; value: unknown }
+
+export type CorrectionScope = "session" | "personal" | "workspace_proposed";
+
+export interface Clarification {
+  term: string;
+  term_key: string;
+  meaning: string;
+  correction_id: string;
+  scope: CorrectionScope;
+}
+
+/** T1 session state, one immutable version per change (GET /api/v2/conversations/{id}/state). */
+export interface ConversationState {
+  conversation_id: string;
+  version: number;
+  at_seq: number;
+  cause: "created" | "message" | "correction" | "edit" | "branch" | null;
+  message_id: string | null;
+  state: {
+    filters: StateFilter[];
+    sources: string[];
+    metric_bindings: Record<string, string>;
+    time_window: string | Dict | null;
+    clarifications: Clarification[];
+    result_handles: Dict[];
+  };
+}
+
+export interface Correction {
+  id: string;
+  conversation_id: string | null;
+  message_id: string | null;
+  user_id: string;
+  term: string;
+  meaning: string;
+  scope: CorrectionScope;
+  /** session/personal: active | superseded | expired | revoked; team: proposed | approved | rejected | not_proposed */
+  status: string;
+  promoted_from: string | null;
+  suggestion_id: string | null;
+  expires_at: string | null;
+  created_at: string | null;
+}
+
+/** What the next message uses: one meaning per term, session first, then personal, then the approved team one. */
+export interface ConversationMemory {
+  items: {
+    term: string; term_key: string; meaning: string; correction_id: string | null; scope: "session" | "personal" | "workspace";
+    /** A session item's scope as applied here: a "remember" or team proposal made in this conversation. */
+    saved_as?: "session" | "personal" | "workspace_proposed";
+  }[];
+  overrides: { term: string; used: string; meaning: string; team_meaning: string; team_correction_id: string }[];
 }
 
 /** A `decision` row (decisions/store.py) recorded against the turn. */
@@ -3937,6 +4058,28 @@ export const api = {
   createAskThread: (ws: string, title?: string) =>
     post("/api/workspaces/{workspace_id}/ask/threads", { path: W(ws), body: { title: title ?? null } }) as Promise<AskThreadDetail>,
   askThread: (id: string) => get("/api/ask/threads/{thread_id}", { path: { thread_id: id } }) as Promise<AskThreadDetail>,
+  // v2 conversations over the same threads (S04): branches, state, typed corrections and memory
+  conversation: (id: string) =>
+    get("/api/v2/conversations/{conversation_id}", { path: { conversation_id: id } }) as Promise<ConversationDetail>,
+  branchConversation: (id: string, fromMessageId: string | null) =>
+    post("/api/v2/conversations/{conversation_id}/branch", { path: { conversation_id: id }, body: { from_message_id: fromMessageId } }) as
+      Promise<ConversationBranch>,
+  conversationState: (id: string) =>
+    get("/api/v2/conversations/{conversation_id}/state", { path: { conversation_id: id } }) as Promise<ConversationState>,
+  patchConversationState: (id: string, body: Schemas["ConversationStatePatch"]) =>
+    patch("/api/v2/conversations/{conversation_id}/state", { path: { conversation_id: id }, body }) as Promise<ConversationState>,
+  conversationMemory: (id: string) =>
+    get("/api/v2/conversations/{conversation_id}/memory", { path: { conversation_id: id } }) as Promise<ConversationMemory>,
+  conversationCorrections: (id: string) =>
+    get("/api/v2/conversations/{conversation_id}/corrections", { path: { conversation_id: id } }) as Promise<Correction[]>,
+  addCorrection: (id: string, body: Schemas["ConversationCorrectionIn"]) =>
+    post("/api/v2/conversations/{conversation_id}/corrections", { path: { conversation_id: id }, body }) as
+      Promise<{ correction: Correction; state_version: number }>,
+  promoteCorrection: (id: string, correctionId: string, to: "personal" | "workspace_proposed") =>
+    post("/api/v2/conversations/{conversation_id}/corrections/{correction_id}/promote",
+      { path: { conversation_id: id, correction_id: correctionId }, body: { to } }) as Promise<{ correction: Correction; state_version: number }>,
+  forgetCorrection: (correctionId: string) =>
+    del("/api/v2/memory/corrections/{correction_id}", { path: { correction_id: correctionId } }) as Promise<Correction>,
   patchAskThread: (id: string, body: Schemas["AskThreadPatch"]) =>
     patch("/api/ask/threads/{thread_id}", { path: { thread_id: id }, body }) as Promise<AskThread>,
   askTurn: (threadId: string, question: string, parameters?: Dict, mode: AskMode = "quick") =>
