@@ -339,6 +339,27 @@ def test_idle_conversations_get_a_summary_once(world):
     assert summaries.summarize_idle(utcnow()) == []
 
 
+
+def test_idle_sweep_skips_archived_workspaces(world):
+    """An archived workspace's older conversations cannot be summarized; they must not fill the batch and starve
+    the live ones (seen on a dev database with hundreds of archived demo conversations)."""
+    stale = _conversation(world, world.alice)
+    _turn(world, stale, "Old question")
+    live = _conversation(world, world.alice, "live")
+    _turn(world, live, "How many?")
+    with world.db() as s:
+        ws = s.get(Workspace, world.ws)
+        ws.status, ws.deleted_at = "disabled", utcnow()
+        for turn in s.scalars(select(AskTurn).where(AskTurn.thread_id == stale)):
+            turn.created_at = utcnow() - timedelta(hours=1)  # older, so it would come first in the batch
+        s.add(Workspace(id="ws_live", name="live", created_by=world.owner.id, status="active", settings={}, policy_version=1))
+        s.flush()
+        s.get(AskThread, live).workspace_id = "ws_live"
+        s.add(WorkspaceMember(workspace_id="ws_live", user_id=world.alice.id, role="analyst"))
+        s.commit()
+    later = utcnow() + timedelta(minutes=31)
+    assert summaries.summarize_idle(later, limit=1) == [live]
+
 # ------------------------------------------------------------------------------------ T4: corrections
 def test_correction_applies_to_the_session_at_once(world):
     cid = _conversation(world, world.alice)

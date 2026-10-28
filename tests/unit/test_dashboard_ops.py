@@ -187,3 +187,23 @@ def test_model_rung_only_when_no_rule_matches_and_invalid_ops_are_dropped():
     assert [o.op for o in out.ops] == ["chart.set_type"] and any("invalid" in n for n in out.notes)
     off = design(doc(), "make the trend look smoother please", router=FakeRouter("off"))
     assert off.answered_by == "none" and off.ops == []
+
+
+def test_model_prompt_names_every_op_and_its_required_fields():
+    """The model rung is told each op's exact fields, so a proposal is not dropped for a guessed name."""
+    from analystos.dashboards.design import _SYSTEM
+    from analystos.dashboards.ops import OP_KINDS, op_guide
+
+    guide = op_guide()
+    assert [line.split(":")[0][2:] for line in guide.splitlines()] == list(OP_KINDS)
+    assert "- text.set: block_id*, markdown*" in guide and "- metric.bind: metric*," in guide
+    assert guide in _SYSTEM
+
+
+def test_a_metric_bound_into_a_chart_that_is_not_there_is_added_as_a_new_element():
+    """Small models name a new chart id for metric.bind; only an existing chart can be the bind target."""
+    router = FakeRouter("auto", {"ops": [{"op": "metric.bind", "metric": "open_incidents@2", "viz": "kpi", "chart_id": "kpi_new"},
+                                         {"op": "metric.bind", "metric": "open_incidents@2", "viz": "bar", "chart_id": "trend"}]})
+    out = design(doc(), "show open incidents as a KPI please", router=router, metrics={"open_incidents": 2})
+    assert [(o.op, o.chart_id) for o in out.ops] == [("metric.bind", None), ("metric.bind", "trend")]
+    assert any("'kpi_new' is not a chart here" in n for n in out.notes)

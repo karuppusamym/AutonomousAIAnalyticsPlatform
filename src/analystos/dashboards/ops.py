@@ -125,6 +125,17 @@ OP_KINDS = ("chart.set_type", "chart.set_encoding", "dashboard.add_filter", "que
 _OPS = TypeAdapter(list[Op])
 
 
+
+def op_guide() -> str:
+    """One line per op kind with its fields (* = required), from the op models: the model rung is told the exact
+    shape, so its proposals are not dropped for a guessed field name."""
+    lines = []
+    for model in (ChartSetType, ChartSetEncoding, DashboardAddFilter, QueryExtendPeriod, MetricBind, ChartAdd, ChartRemove,
+                  LayoutMove, TextSet, PublishRequest):
+        fields = [f"{name}{'*' if info.is_required() else ''}" for name, info in model.model_fields.items() if name != "op"]
+        lines.append(f"- {model.model_fields['op'].default}: {', '.join(fields)}")
+    return "\n".join(lines)
+
 def parse_ops(raw: list[dict[str, Any]]) -> list[Any]:
     """Typed ops from JSON; raises ValueError naming the first invalid op."""
     try:

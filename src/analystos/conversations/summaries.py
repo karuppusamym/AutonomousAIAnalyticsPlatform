@@ -269,12 +269,17 @@ def current(user: User, conversation_id: str, *, refresh_if_stale: bool = False)
 @platform_loop
 def summarize_idle(now: Any = None, *, idle_after: timedelta = IDLE_AFTER, limit: int = 50) -> list[str]:
     """Conversations quiet for ``idle_after`` with messages newer than their last summary get one. Selection runs
-    in system scope; each summary is written as the conversation's own tenant."""
+    in system scope; each summary is written as the conversation's own tenant. Only active workspaces: a disabled or
+    archived one cannot be summarized, and its oldest conversations would otherwise fill every batch forever."""
+    from analystos.db.models import Workspace
+
     now = now or utcnow()
     with session_scope() as s:
         latest_turn = (select(AskTurn.thread_id, func.max(AskTurn.created_at).label("last"))
                        .group_by(AskTurn.thread_id).subquery())
         ids = list(s.scalars(select(AskThread.id).join(latest_turn, latest_turn.c.thread_id == AskThread.id)
+                             .join(Workspace, Workspace.id == AskThread.workspace_id)
+                             .where(Workspace.status == "active", Workspace.deleted_at.is_(None))
                              .where(latest_turn.c.last < now - idle_after,
                                     (AskThread.summarized_at.is_(None)) | (AskThread.summarized_at < latest_turn.c.last))
                              .order_by(latest_turn.c.last).limit(limit)))
