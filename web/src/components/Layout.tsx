@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, NavLink, Outlet, useLocation, useMatch } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useMatch, useNavigate } from "react-router-dom";
 import { api, type Workspace } from "../api";
 import { useAuth } from "../auth";
 import { nextThemePref, setThemePref, useTheme } from "../lib/theme";
@@ -10,6 +10,8 @@ import { GuideButton } from "./Guide";
 import { NotificationBell } from "./NotificationBell";
 import { StatusBanner } from "./StatusBanner";
 import { TourProvider } from "./Tour";
+import { LiteWorkspace } from "./LiteWorkspace";
+import { to } from "../routes";
 
 const THEME_LABEL = { system: "System theme", light: "Light theme", dark: "Dark theme" } as const;
 const THEME_ICON = { system: "◐", light: "☀", dark: "☾" } as const;
@@ -87,6 +89,17 @@ export function Layout() {
   const wsId = useMatch("/w/:wsId/*")?.params.wsId;
   const ws = useWorkspace(wsId);
   const location = useLocation();
+  const navigate = useNavigate();
+  const [lite, setLite] = useState(() => {
+    try { return sessionStorage.getItem("analystos.ui") === "lite"; } catch { return false; }
+  });
+  const liteEntry = !!wsId && location.pathname === to.lite(wsId);
+  useEffect(() => {
+    if (liteEntry) {
+      setLite(true);
+      try { sessionStorage.setItem("analystos.ui", "lite"); } catch { /* Storage may be disabled. */ }
+    }
+  }, [liteEntry]);
   const [navOpen, setNavOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   useEffect(() => setNavOpen(false), [location.pathname]);
@@ -102,6 +115,20 @@ export function Layout() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  if (wsId && (lite || liteEntry)) return (
+    <TourProvider>
+      <LiteWorkspace wsId={wsId} name={ws?.name} onExit={() => {
+        setLite(false);
+        try { sessionStorage.removeItem("analystos.ui"); } catch { /* Storage may be disabled. */ }
+        if (liteEntry) navigate(to.ask(wsId), { replace: true });
+      }}>
+        <StatusBanner />
+        <ErrorBoundary resetKey={location.pathname}><Outlet /></ErrorBoundary>
+      </LiteWorkspace>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} wsId={wsId} role={ws?.role} />
+    </TourProvider>
+  );
+
   return (
     <TourProvider>
     <div className="shell">
@@ -116,6 +143,7 @@ export function Layout() {
           <span>Context2AI <strong>AnalystOS</strong></span>
         </Link>
         <div className="topbar-spacer" />
+        {wsId && <Link className="btn btn-sm" to={to.lite(wsId)}>Lite workspace</Link>}
         <button type="button" className="btn btn-sm palette-trigger" onClick={() => setPaletteOpen(true)} aria-haspopup="dialog"
           aria-keyshortcuts="Control+K Meta+K">
           <span>Go to…</span> <kbd className="kbd">Ctrl K</kbd>

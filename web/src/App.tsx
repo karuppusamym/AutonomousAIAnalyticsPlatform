@@ -85,6 +85,7 @@ export function AppRoutes() {
     <Routes>
       <Route path="/login" element={ELEMENTS.login} />
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
+        <Route path="/w/:wsId/lite" element={<AskPage />} />
         {screens.map((s) => <Route key={s.id} path={s.path} element={<Entitled screen={s}>{ELEMENTS[s.id]}</Entitled>} />)}
         {LEGACY_REDIRECTS.map((r) => <Route key={r.from} path={r.from} element={<LegacyRedirect redirect={r} />} />)}
         <Route path="*" element={<div className="page"><EmptyState title="Page not found" /></div>} />
