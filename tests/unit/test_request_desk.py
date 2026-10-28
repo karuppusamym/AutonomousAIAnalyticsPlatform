@@ -264,7 +264,8 @@ def desk_db(sqlite_db, monkeypatch):
 
     engine = sqlite_db.kw["bind"]
     models.Base.metadata.create_all(engine, tables=[models.Base.metadata.tables[t] for t in (
-        "request", "request_event", "class_baseline", "context_entry", "semantic_metric", "verified_query", "ask_turn")])
+        "request", "request_event", "class_baseline", "context_entry", "semantic_metric", "verified_query", "ask_turn",
+        "desk_daily")])
     with session_scope() as s:
         for uid in ("usr_req", "usr_ana", "usr_ana2", "usr_out"):
             s.add(User(id=uid, email=f"{uid}@x", name=uid, password_hash="x", is_admin=False, active=True, attributes={}))
@@ -509,3 +510,114 @@ def test_r7_answers_from_a_reviewed_definition_or_escalates(desk_db):
     assert out["answer"]["entry_id"] == "ce_1" and out["answer"]["definition"].startswith("A customer")
     miss = service.submit(desk_db["usr_req"], WS, "What counts as a dormant merchant?")
     assert miss["state"] == "escalated" and miss["assignee_id"]
+
+
+# ------------------------------------------------------------------------------------------- S13 remainder
+def test_daily_rows_split_by_day_created_and_class_with_an_all_row():
+    from analystos.desk.rollup import daily_rows
+
+    d1, d2 = T0, T0 + timedelta(days=1)
+    rows = [{**_r("R1", "accepted", "auto", 10), "created_at": d1}, {**_r("R2", "accepted", "human", 60, 20), "created_at": d1},
+            {**_r("R2", "escalated", None), "created_at": d2}]
+    out = daily_rows(rows, {"R1": 15.0, "R2": 30.0})
+    keys = [(r["day"].isoformat(), r["request_class"]) for r in out]
+    assert keys == [("2026-10-01", "all"), ("2026-10-01", "R1"), ("2026-10-01", "R2"), ("2026-10-02", "all"),
+                    ("2026-10-02", "R2")]
+    day1 = out[0]
+    assert day1["n"] == 2 and day1["auto_resolution_rate"] == 0.5 and day1["est_minutes_saved"] == 25.0
+    assert out[3]["closed"] == 0 and out[3]["auto_resolution_rate"] is None
+
+
+def _closed_auto(service, desk_db, text):
+    from analystos.desk.models import Request
+
+    out = service.submit(desk_db["usr_req"], WS, text, process=False)
+    with _session() as s:
+        req = s.get(Request, out["id"])
+        service.move(s, req, "auto_answering", "desk")
+        req.answer_ref, req.human_minutes = {"via": "auto"}, 0
+        service.move(s, req, "auto_answered", "desk")
+        service.move(s, req, "accepted", "user:usr_req")
+    return out
+
+
+def test_nightly_rollup_runs_once_per_night_and_feeds_value_and_export(desk_db):
+    from analystos.desk import rollup, service
+    from analystos.desk.models import ClassBaseline, DeskDaily
+
+    _closed_auto(service, desk_db, "How many incidents were opened last week?")
+    with _session() as s:
+        s.add(ClassBaseline(id="cb_r2", workspace_id=WS, request_class="R2", baseline_minutes=20, source="assumed"))
+    first = rollup.maybe_rollup_nightly()
+    assert first == {"workspaces": 1, "rows": 2, "failed": []}  # today: the `all` row and the R2 row
+    assert rollup.maybe_rollup_nightly() is None  # claimed already tonight
+    assert rollup.maybe_rollup_nightly(force=True)["rows"] == 2  # re-running replaces, never duplicates
+    with _session() as s:
+        assert s.query(DeskDaily).count() == 2
+        rep = service.value_report(s, desk_db["usr_req"], WS)
+        csv_text = service.value_export(s, desk_db["usr_req"], WS)
+    assert [d["class"] for d in rep["daily"]] == ["all"] and rep["daily"][0]["est_minutes_saved"] == 20.0
+    assert rep["rollup_computed_at"]
+    lines = csv_text.strip().splitlines()
+    assert lines[0].startswith("day,class,n,") and len(lines) == 3 and "How many" not in csv_text  # aggregates only
+
+
+def test_refresh_is_for_analysts_and_ranges_are_bounded(desk_db):
+    from analystos.desk import service
+
+    _closed_auto(service, desk_db, "How many incidents were opened last week?")
+    with _session() as s:
+        with pytest.raises(Forbidden):
+            service.refresh_value(s, desk_db["usr_req"], WS)
+        assert service.refresh_value(s, desk_db["usr_ana"], WS)["rows"] == 2
+        with pytest.raises(InvalidInput):
+            service.value_export(s, desk_db["usr_ana"], WS, start=T0 - timedelta(days=400), end=T0)
+
+
+def test_sla_sweep_loop_flags_each_workspace_as_its_owner(desk_db):
+    from analystos.desk import rollup, service
+    from analystos.desk.models import Request
+
+    out = service.submit(desk_db["usr_req"], WS, "Should we enter the Brazilian market next year?", priority="urgent")
+    with _session() as s:
+        due = s.get(Request, out["id"]).sla_due_at
+    later = (due if due.tzinfo else due.replace(tzinfo=UTC)) + timedelta(minutes=5)
+    assert rollup.sweep_sla_all(now=later) == 1
+    assert rollup.sweep_sla_all(now=later) == 0
+
+
+@pytest.mark.parametrize(("text", "cron"), [
+    ("Send me the weekly ops pack every Monday", "0 9 * * 1"),
+    ("Monthly variance report for finance", "0 9 1 * *"),
+    ("A quarterly summary of incidents", "0 9 1 1,4,7,10 *"),
+    ("Email me a daily report of new incidents", "0 9 * * *"),
+    ("Each Friday send the incident summary", "0 9 * * 5"),
+])
+def test_r4_becomes_a_draft_schedule(text, cron):
+    from analystos.desk.proposals import propose
+
+    p = propose("R4", text)
+    assert p["kind"] == "schedule" and p["body"]["cron"] == cron and p["body"]["kind"] == "report"
+    assert "approval" in p["approval"]
+
+
+def test_r5_becomes_a_draft_monitor_with_the_stated_threshold():
+    from analystos.desk.proposals import propose
+
+    p = propose("R5", "Tell me if failure rate goes above baseline + 2pp")
+    assert p["body"]["kind"] == "metric_drift" and p["body"]["config"] | {"objective": None} ==         {"op": ">", "value": 2.0, "unit": "pp", "objective": None}
+    q = propose("R5", "Alert me when backlog drops below 40")
+    assert q["body"]["kind"] == "metric_threshold" and q["body"]["config"]["op"] == "<" and q["body"]["config"]["value"] == 40
+    r = propose("R5", "Let me know when something odd happens")
+    assert "op" not in r["body"]["config"] and "the threshold" in r["needs"]
+    assert propose("R2", "How many incidents?") is None
+
+
+def test_r4_request_escalates_with_its_draft_and_creates_nothing(desk_db):
+    from analystos.desk import service
+
+    out = service.submit(desk_db["usr_req"], WS, "Send me the weekly ops pack every Monday")
+    assert out["class"] == "R4" and out["state"] == "escalated" and "data_pack" not in out
+    with _session() as s:
+        pack = service.get_request(s, desk_db["usr_ana"], out["id"])["data_pack"]
+    assert pack["proposal"]["kind"] == "schedule" and "draft is prepared" in pack["reason"]

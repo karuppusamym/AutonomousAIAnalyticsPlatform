@@ -32,6 +32,7 @@ export const CONCEPTS = [
   "finding", "dashboard", "report", "dataset", "chart", "model", "scoring-run", "materialization",
   "approval", "monitor", "alert", "schedule", "policy",
   "member", "autonomy", "audit", "capability", "platform-settings", "model-config", "usage",
+  "request", "value-metric",
 ] as const;
 export type Concept = (typeof CONCEPTS)[number];
 
@@ -45,7 +46,7 @@ export type ScreenId =
   | "login"
   | "workspaces" | "overview"
   | "sources" | "catalog"
-  | "work" | "ask" | "investigation" | "investigation-console"
+  | "work" | "ask" | "desk" | "investigation" | "investigation-console" | "value"
   | "outputs" | "finding"
   | "approvals" | "monitoring" | "schedules"
   | "policy" | "registry" | "platform" | "usage";
@@ -76,6 +77,9 @@ export const SCREENS: Screen[] = [
   { id: "overview", area: "overview", path: "/w/:wsId", title: "Overview", nav: true, workspace: true, audience: "everyone",
     owns: [], keywords: "home what needs me checklist onboarding start work objective" },
 
+  { id: "value", area: "overview", path: "/w/:wsId/value", title: "Value", nav: true, workspace: true, audience: "everyone",
+    owns: ["value-metric"], keywords: "desk analyst load automation auto resolution minutes saved baseline time to answer export" },
+
   { id: "sources", area: "data", path: "/w/:wsId/data/sources", title: "Sources", nav: true, workspace: true, audience: "everyone",
     owns: ["source", "selection"], keywords: "connect discover crawl drift database upload" },
   { id: "catalog", area: "data", path: "/w/:wsId/data/catalog", title: "Catalog & definitions", nav: true, workspace: true, audience: "everyone",
@@ -87,6 +91,8 @@ export const SCREENS: Screen[] = [
     keywords: "investigations data thread steps branches notebooks experiments models predict forecast prepare data recipes ingest file pipelines dry run dbt builds" },
   { id: "ask", area: "work", path: "/w/:wsId/work/ask", title: "Ask", nav: true, workspace: true, audience: "everyone",
     owns: ["question"], keywords: "question sql console explain quick" },
+  { id: "desk", area: "work", path: "/w/:wsId/work/desk/:requestId?", title: "Request desk", nav: true, workspace: true,
+    audience: "everyone", owns: ["request"], keywords: "requests queue escalated sla assign triage answer accept reopen data pack" },
   { id: "investigation", area: "work", path: "/w/:wsId/work/investigations/:runId", title: "Investigation", nav: false, workspace: true,
     audience: "everyone", owns: [] },
   { id: "investigation-console", area: "work", path: "/w/:wsId/work/investigations/:runId/console", title: "Agent console", nav: false,
@@ -180,6 +186,11 @@ export const to = {
   workspaces: () => "/",
   workspace: (ws: string) => P("overview", { wsId: ws }),
   ask: (ws: string) => P("ask", { wsId: ws }),
+  /** Work → Request desk; with a request id its detail is open. */
+  desk: (ws: string, request?: string, q: { view?: "mine" | "queue" | "all" } = {}) =>
+    withQuery(P("desk", { wsId: ws, requestId: request }), { view: q.view }),
+  /** Overview → Value: the desk's FR-053 metrics. */
+  value: (ws: string) => P("value", { wsId: ws }),
   work: (ws: string, tab?: WorkTab, q: Record<string, string | undefined> = {}) =>
     withQuery(P("work", { wsId: ws }), { tab: tab === "investigations" ? undefined : tab, ...q }),
   investigations: (ws: string) => P("work", { wsId: ws }),

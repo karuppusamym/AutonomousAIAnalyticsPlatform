@@ -83,3 +83,18 @@ AT-19, AT-20; `test_dedupe_links`; `test_sla_breach_alert`; `test_auto_with_revi
 * Text that reads like an instruction to a model is refused (422). Each certification is appended to
   `answer_ref.certified` and written to the timeline (`certified`, event `request.certified`) and the audit trail.
   It is projected into the ledger in the same transaction.
+
+## 8. As built: value rollup, export, R4/R5 drafts, screens (2026-10-27)
+* `desk_daily(workspace, day, class, n, duplicates, closed, accepted, auto_resolved, auto_resolution_rate, accepted_rate,
+  tta_p50/p95, human_minutes, est_minutes_saved, unbaselined, cost)`, keyed by the day requests were created; class `all`
+  is the day total. Tenant comes from the workspace (RLS). Migration `0068_desk_daily`.
+* Nightly: `desk/rollup.maybe_rollup_nightly` (`@platform_loop`, advisory lock + `desk.value_rollup` audit marker, once
+  per 20 h) picks workspaces with requests in the last 14 days and calls `rollup_workspace` (`@owned_by("workspace")`),
+  which recomputes those days. The scheduler calls it as `nightly_desk_value`; its housekeeping pass also runs
+  `sweep_sla_all` (same pattern) so SLA breaches are flagged without anyone opening the queue.
+* API: `GET /api/value` adds `daily` (rollup, class `all`) and `rollup_computed_at`; `POST /api/value/rollup` (analyst)
+  recomputes a range now; `GET /api/value/export` is the rollup as CSV (aggregates only, no request text);
+  `GET /api/value/baselines`. Ranges are at most 366 days.
+* R4/R5 escalate with `data_pack.proposal`: a draft schedule (cadence → cron) or monitor (threshold → op/value, baseline
+  → `metric_drift`). The desk never creates either; the analyst submits it through the approval-gated APIs.
+* Screens (S11-T1, S11-T7): Work → Request desk (`/w/:wsId/work/desk/:requestId?`), Overview → Value (`/w/:wsId/value`).

@@ -3632,6 +3632,22 @@ export const api = {
   createWorkspace: (body: Schemas["WorkspaceIn"]) => post("/api/workspaces", { body }) as Promise<Workspace>,
   getWorkspace: (ws: string) =>
     get("/api/workspaces/{workspace_id}", { path: W(ws) }) as Promise<WorkspaceDetail>,
+
+  // request desk (S13): intake, queue, detail, actions; value metrics (FR-053)
+  listRequests: (q: { view?: "mine" | "queue" | "all"; workspace_id?: string; state?: RequestState; class?: RequestClass; limit?: number } = {}) =>
+    get("/api/requests", { query: q }) as Promise<DeskRequest[]>,
+  getRequest: (id: string) => get("/api/requests/{request_id}", { path: { request_id: id } }) as Promise<DeskRequest>,
+  createRequest: (body: Schemas["RequestIn"]) => post("/api/requests", { body }) as Promise<CreatedRequest>,
+  requestAction: (id: string, type: RequestActionType, payload: Dict = {}) =>
+    post("/api/requests/{request_id}/actions", { path: { request_id: id }, body: { type, payload } }) as Promise<DeskRequest>,
+  value: (ws: string, q: { from?: string; to?: string } = {}) =>
+    get("/api/value", { query: { workspace: ws, ...q } }) as Promise<ValueReport>,
+  refreshValue: (ws: string, q: { from?: string; to?: string } = {}) =>
+    post("/api/value/rollup", { query: { workspace: ws, ...q } }) as Promise<{ workspace_id: string; from: string; to: string; rows: number }>,
+  exportValue: (ws: string, q: { from?: string; to?: string } = {}) =>
+    downloadFile(apiPath("get", "/api/value/export", { query: { workspace: ws, ...q } }), `desk-value-${ws}.csv`),
+  valueBaselines: (ws: string) => get("/api/value/baselines", { query: { workspace: ws } }) as Promise<ClassBaseline[]>,
+  putValueBaseline: (body: Schemas["BaselineIn"]) => put("/api/value/baselines", { body }) as Promise<ClassBaseline>,
   getWorkModes: (ws: string) =>
     get("/api/workspaces/{workspace_id}/work-modes", { path: W(ws) }) as Promise<WorkModesPlan>,
   previewWorkModes: (ws: string, modes: WorkMode[]) =>
@@ -4504,6 +4520,72 @@ export interface SavedProcessAnalysis {
   id: string; name: string; version: number; created_at: string | null; updated_at: string | null;
   asset: ProcessAnalysis["asset"] | null; segment: ProcessAnalysis["segment"]; mapping: ProcessMapping | null;
   summary: ProcessAnalysis["summary"] | null;
+}
+
+// ----------------------------------------------------------------------------------- request desk (S13, S11-T1/T7)
+export type RequestClass = "R1" | "R2" | "R3" | "R4" | "R5" | "R6" | "R7" | "R8" | "R9";
+export type RequestState =
+  | "new" | "triaged" | "auto_answering" | "auto_answered" | "auto_with_review" | "in_investigation" | "escalated"
+  | "answered" | "accepted" | "reopened" | "declined";
+export type RequestPriority = "low" | "normal" | "high" | "urgent";
+export type RequestActionType = Schemas["RequestActionIn"]["type"];
+
+/** Who/what classified a request (desk/triage.py): rules first, a typed decision or small model only when no rule was sure. */
+export interface RequestTriage {
+  class: RequestClass | null; confidence: number; reason: string;
+  answered_by: "rules" | "decision" | "llm_small" | "fallback"; flags: string[]; missing: string[]; model?: string;
+}
+/** How a request was answered: an Ask turn, an investigation run, a reviewed definition or an analyst's text. */
+export interface RequestAnswer {
+  via: "auto" | "auto_with_review" | "human"; kind?: "ask_turn" | "run" | "context_entry";
+  turn_id?: string; thread_id?: string; run_id?: string; query_id?: string | null; answered_by?: string | null;
+  governance?: "governed" | "ad_hoc"; explanation?: string | null; entry_id?: string; name?: string; definition?: string;
+  text?: string; answered_by_user?: string; edited?: boolean; evidence?: Dict[]; certified?: Dict[];
+}
+/** A draft schedule or monitor for an R4/R5 request: never created by the desk; the analyst submits it (approval-gated). */
+export interface RequestProposal {
+  kind: "schedule" | "monitor"; endpoint: string; body: Dict; summary: string; needs: string[]; approval: string;
+}
+/** What an escalated request carries for the analyst (analysts only). Context is data, never instructions. */
+export interface DataPack {
+  reason: string; triage: Partial<RequestTriage>; intent: Dict; missing: unknown[];
+  refusal: { kind?: string; title?: string; message?: string; remedy?: string } | null;
+  context_receipts: { kind: "context_entry" | "asset"; id: string; name?: string; asset?: string; entry_kind?: string;
+    business_name?: string | null; trusted?: boolean; excerpt: string }[];
+  candidate_sql: { sql: string; from: string; status?: string | null; error?: string | null }[];
+  evidence: { kind: string; id: string; thread_id?: string; status?: string; inspector?: string }[];
+  proposal?: RequestProposal;
+}
+export interface RequestTimelineEvent {
+  seq: number; type: string; from_state: string | null; to_state: string | null; actor: string; payload: Dict; created_at: string;
+}
+export interface DeskRequest {
+  id: string; workspace_id: string; requester_id: string; channel: string; text: string; normalized_intent: Dict;
+  class: RequestClass | null; state: RequestState; priority: RequestPriority; sla_due_at: string | null;
+  sla_breached_at: string | null; sla_breached: boolean; assignee_id: string | null; conversation_id: string | null;
+  run_ids: string[]; triage: Partial<RequestTriage>; answer: RequestAnswer | null; resolution: string | null;
+  human_minutes: number | null; cost_usd: number; duplicate_of: string | null; followers: string[]; revision: number;
+  created_at: string; updated_at: string; first_answer_at: string | null; closed_at: string | null;
+  data_pack?: DataPack | null;
+  original?: { id: string; state: RequestState; answer: RequestAnswer | null } | null;
+  timeline?: RequestTimelineEvent[];
+}
+export interface CreatedRequest { request: DeskRequest; conversation_id: string | null }
+
+/** FR-053 value metrics over a period (desk/value.py); `daily` is the nightly rollup (desk_daily, class `all`). */
+export interface ValueSummary {
+  n: number; duplicates: number; closed: number; accepted: number; auto_resolved: number;
+  auto_resolution_rate: number | null; accepted_rate: number | null; tta_p50_seconds: number | null;
+  tta_p95_seconds: number | null; human_minutes: number; est_minutes_saved: number; unbaselined: number; cost_usd: number;
+}
+export interface ValueDay extends ValueSummary { day: string; class: string; computed_at: string | null }
+export interface ValueReport extends ValueSummary {
+  workspace_id: string; from: string; to: string; truncated: boolean;
+  by_class: Record<string, ValueSummary & { baseline_minutes: number | null }>;
+  baselines: Record<string, number>; daily: ValueDay[]; rollup_computed_at: string | null;
+}
+export interface ClassBaseline {
+  id: string; workspace_id: string; class: RequestClass; baseline_minutes: number; source: string; measured_at: string; created_at: string;
 }
 
 /** Whether billable model calls are refused because no store can prove the spend caps (Redis, or Postgres in lite). */

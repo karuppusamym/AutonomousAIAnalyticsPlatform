@@ -2,10 +2,10 @@
 trigger fills ``tenant_id`` from the workspace and row-level security applies (ADR-009)."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -81,3 +81,29 @@ class ClassBaseline(Base):
     source: Mapped[str] = mapped_column(String(40))  # practitioner_protocol | pilot_review | assumed
     measured_at: Mapped[datetime] = _ts()
     created_at: Mapped[datetime] = _ts()
+
+
+class DeskDaily(Base):
+    """Nightly value rollup (spec S13 §3.6, FR-053): one row per workspace, day the requests were created and class
+    (``all`` = every class). Days are recomputed over a trailing window, since requests close after their day."""
+
+    __tablename__ = "desk_daily"
+    __table_args__ = (UniqueConstraint("workspace_id", "day", "request_class", name="uq_desk_daily_ws_day_class"),)
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    day: Mapped[date] = mapped_column(Date)
+    request_class: Mapped[str] = mapped_column(String(10))  # R1..R9 | untriaged | all
+    n: Mapped[int] = mapped_column(Integer, default=0)
+    duplicates: Mapped[int] = mapped_column(Integer, default=0)
+    closed: Mapped[int] = mapped_column(Integer, default=0)
+    accepted: Mapped[int] = mapped_column(Integer, default=0)
+    auto_resolved: Mapped[int] = mapped_column(Integer, default=0)
+    auto_resolution_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    accepted_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tta_p50_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tta_p95_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    human_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    est_minutes_saved: Mapped[float] = mapped_column(Float, default=0.0)
+    unbaselined: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    computed_at: Mapped[datetime] = _ts()

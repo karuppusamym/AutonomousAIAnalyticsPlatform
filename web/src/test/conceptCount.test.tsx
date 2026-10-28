@@ -8,6 +8,8 @@
  * entries, the counters, Start analysis with an autonomy picker, members & policy, empty lists);
  * after it, 20 for an analyst and 24 for an admin (the gear adds its three platform screens and
  * Members & policy). The ceilings below keep it from creeping back.
+ * 2026-10-27: +2 for the two nav entries the v2 IA adds (spec S11 §2: Work → Request desk, Overview → Value);
+ * nothing else on first login changed.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -18,7 +20,7 @@ import { AuthProvider } from "../auth";
 import { mockBackend, USER, WORKSPACE } from "./mockBackend";
 
 const FRESH = "ws_fresh";
-export const CEILING = { analyst: 22, admin: 26 } as const;
+export const CEILING = { analyst: 24, admin: 28 } as const;
 
 const ANALYST: User = { ...USER, id: "usr_analyst", email: "analyst@analystos.local", name: "Ana Analyst", is_admin: false };
 const FRESH_WS: WorkspaceDetail = {
