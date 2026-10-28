@@ -4,7 +4,8 @@
     POST /v2/runs/{id}/signals          {type: pause|resume|cancel|redirect|approve_step, payload}
     GET  /v2/runs/{id}                  state, steps, complexity decision, remaining budget, limitations
     GET  /v2/runs/{id}/events           Server-Sent Events (contract below)
-    GET  /v2/runs/{id}/evidence         findings with verification standing, statement counts
+    GET  /v2/runs/{id}/evidence         findings with verification standing, statement counts, Evidence v2 objects
+    GET  /v2/evidence/{evidence_id}     one finding as the Evidence v2 object (S07-T4)
     GET  /v2/runs/{id}/plan?version=    the current plan, or a superseded version (immutable)
 
 SSE contract (`docs/20-contracts/05-goal-api-v2.md`): one frame per persisted `run_event`,
@@ -54,6 +55,17 @@ def get_run(run_id: str, user: User = Depends(current_user), session: Session = 
 @router.get("/runs/{run_id}/evidence")
 def evidence(run_id: str, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
     return goal_svc.evidence_view(session, run_svc.get_run_for(session, user, run_id))
+
+
+@router.get("/evidence/{evidence_id}")
+def evidence_object(evidence_id: str, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    """One finding as `EvidenceV2` (spec S07 §3.3): label, dataset and metric versions, statements, method,
+    effect with its interval, sample and coverage, limitations, review status, fingerprint, void reason."""
+    from analystos.db.models import Insight
+    from analystos.evidence.api_v2 import for_insight
+    from analystos.governance.policy import load_in_workspace
+
+    return for_insight(session, load_in_workspace(session, Insight, evidence_id, user=user, label="evidence"))
 
 
 @router.get("/runs/{run_id}/plan")

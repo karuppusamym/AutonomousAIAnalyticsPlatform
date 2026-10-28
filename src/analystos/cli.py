@@ -145,6 +145,7 @@ def export_contracts(out_dir: str | None = None) -> None:
               "semantic_query": semantic.SemanticQuery,
               "scenario_spec": scenario.ScenarioSpec, "scenario_result": scenario.ScenarioResult,
               "evidence_bundle": evidence.EvidenceBundle, "data_manifest": evidence.DataManifest, "fact": evidence.Fact,
+              "evidence_v2": evidence.EvidenceV2,
               "citations": citations.Citations,
               "definition_ref": definition.DefinitionRef, "pin_status": definition.PinStatus, "work_order": work.WorkOrderSpec,
               "recipe": recipe.Recipe, "workspace_brief": brief.WorkspaceBriefDoc,
