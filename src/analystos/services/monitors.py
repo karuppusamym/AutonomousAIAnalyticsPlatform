@@ -29,6 +29,8 @@ from analystos.governance.audit import audit
 from analystos.governance.policy import evaluate as policy_evaluate
 from analystos.governance.policy import require_role, resolve_scope
 from analystos.services.notifications import deliver, notify
+from analystos.tenancy.background import owned_by, platform_loop
+from analystos.triggers import noise, rules
 
 log = get_logger(__name__)
 ML_KINDS = {"ml_drift", "ml_freshness", "ml_performance"}  # P5-03: analystos/ml/monitoring.py
@@ -39,12 +41,15 @@ PERCENT_TOLERANCE = 1e-9
 BASELINE_SUBJECTS = ("insight", "step", "ml_experiment")
 ON_VOID_BASELINE = ("refuse", "relabel")
 BASELINE_VOID = "baseline_void"
+# Config keys that say how a signal is announced, not what is watched. S09 gate and rule keys are *not* here: a
+# monitor with other recipients, playbook or gate is its own signal, never folded into an existing monitor.
+HOW_KEYS = ("pinned", "deliver_to")
 
 
 def condition_key(workspace_id: str, kind: str, config: dict) -> str:
     """Identity of what a monitor watches. Two monitors with the same condition are the same signal:
     they share alerts instead of each raising its own (the repeated alert in the Phase-3 evidence)."""
-    watched = {k: v for k, v in config.items() if k not in ("pinned", "deliver_to")}  # how and where, not what
+    watched = {k: v for k, v in config.items() if k not in HOW_KEYS}  # how and where, not what
     return stable_hash({"workspace": workspace_id, "kind": kind, "config": watched})[:32]
 
 
@@ -67,6 +72,7 @@ def create_monitor(session: Session, user: User, workspace_id: str, *, name: str
             raise InvalidInput("grain must be day, week or month")
     validate_baseline(session, workspace_id, config)
     validate_delivery(session, workspace_id, config)
+    validate_rule(session, workspace_id, config)
     if config.get("investigate_definition") is not None:  # checked again when an alert starts the run (P7-03)
         from analystos.services.definitions import resolve_runnable
 
@@ -83,7 +89,16 @@ def create_monitor(session: Session, user: User, workspace_id: str, *, name: str
                 auto_investigate=auto_investigate, created_by=user.id)
     session.add(m)
     audit(f"user:{user.id}", "monitor.created", workspace_id=workspace_id, target=m.id, details={"kind": kind}, session=session)
+    if rules.requires_approval(config):  # S09: a rule monitor is approved once, bound to scope/recipients/playbook
+        session.flush()
+        rules.request_rule_approval(session, user, m)
     return m
+
+
+def validate_rule(session: Session, workspace_id: str, config: dict) -> None:
+    """S09: the anti-noise settings and the rule part (`scope`, `notify`, `on_trigger`) of a monitor config."""
+    noise.parse(config)
+    rules.validate_rule_config(session, workspace_id, config)
 
 
 def validate_delivery(session: Session, workspace_id: str, config: dict) -> None:
@@ -506,7 +521,10 @@ def _evaluate_quality(session: Session, owner: User, monitor: Monitor) -> dict[s
 
 
 # ------------------------------------------------------------------------------------ evaluation
-def evaluate_monitor(monitor_id: str, *, trigger: str = "manual") -> dict[str, Any]:
+def evaluate_monitor(monitor_id: str, *, trigger: str = "manual", observation: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Evaluate a monitor now. `observation` (an `observe` trigger event's typed payload, S09) is the reading
+    itself: the monitor's condition is applied to it instead of querying the source."""
+    gate: noise.Decision | None = None
     with session_scope() as s:
         monitor = s.get(Monitor, monitor_id)
         if monitor is None:
@@ -514,7 +532,9 @@ def evaluate_monitor(monitor_id: str, *, trigger: str = "manual") -> dict[str, A
         owner = s.get(User, monitor.created_by)
         baseline = baseline_state(s, monitor)
         try:
-            if baseline and baseline["void"] and baseline["on_void"] == "refuse":
+            if observation is not None:
+                result = _observed(monitor, observation)
+            elif baseline and baseline["void"] and baseline["on_void"] == "refuse":
                 # ADR-0020 decision 5: a monitor never compares with a VOID verdict; it says why and waits.
                 result = {"alert": False, "state": BASELINE_VOID, "baseline": baseline,
                           "message": f"Not evaluated: the baseline verdict is void ({baseline['cause']}); re-verify "
@@ -540,26 +560,39 @@ def evaluate_monitor(monitor_id: str, *, trigger: str = "manual") -> dict[str, A
             monitor.last_result = {**(monitor.last_result or {}), "error": exc.message}
             emit(monitor.workspace_id, "monitor.evaluated", {"monitor": monitor.id, "state": "error", "error": exc.message}, session=s)
             raise
+        refused = result.get("state") == BASELINE_VOID
+        if not refused and noise.configured(monitor.config):
+            gate = _gate(s, monitor, result, observation)
+            result = {**result, "alert": gate.fire, "noise": gate.as_dict()}
         workspace = s.get(Workspace, monitor.workspace_id)
         s.expunge_all()
     alert_id = None
     if result.get("alert"):
-        alert_id = _raise_alert(monitor, owner, workspace, result)
-    refused = result.get("state") == BASELINE_VOID
+        alert_id = _raise_alert(monitor, owner, workspace, result, defer_until=gate.defer_until if gate else None,
+                                payload=observation)
     with session_scope() as s:
         m = s.get(Monitor, monitor_id)
-        m.state = BASELINE_VOID if refused else "alerting" if result.get("alert") else "ok"
+        if gate is not None:
+            m.noise_state = gate.state
+            m.state = gate.phase if gate.phase != "ok" else "ok"
+        else:
+            m.state = BASELINE_VOID if refused else "alerting" if result.get("alert") else "ok"
         m.last_evaluated_at = utcnow()
         if refused:  # the last real reading stays; only the refusal is added
             m.last_result = {**(m.last_result or {}), "state": BASELINE_VOID, "baseline": result["baseline"],
                              "message": result["message"]}
         else:
             m.last_result = {k: v for k, v in result.items() if k != "series_tail"} | {"series_tail": result.get("series_tail")}
-        if not result.get("alert") and not refused:
+        if not result.get("alert") and not refused and not (gate is not None and gate.keep_open):
             key = condition_key(m.workspace_id, m.kind, m.config)
             for a in s.scalars(select(Alert).where(or_(Alert.monitor_id == monitor_id, Alert.dedupe_key.like(f"{key}:%")),
                                                    Alert.status != "resolved")):
                 a.status, a.resolved_at = "resolved", utcnow()
+            if gate is not None:
+                s.flush()
+                from analystos.triggers.groups import resolve_quiet
+
+                resolve_quiet(s, m.workspace_id)
         emit(m.workspace_id, "monitor.evaluated", {"monitor": m.id, "state": m.state, "trigger": trigger,
                                                    "message": result.get("message"), "alert_id": alert_id}, session=s)
     return {**result, "alert_id": alert_id}
@@ -603,7 +636,11 @@ def _open_alert(*keys: str) -> str | None:
         return s.scalar(select(Alert.id).where(Alert.dedupe_key.in_(keys), Alert.status != "resolved"))
 
 
-def _raise_alert(monitor: Monitor, owner: User, workspace: Workspace, result: dict) -> str:
+def _raise_alert(monitor: Monitor, owner: User, workspace: Workspace, result: dict, *, defer_until: datetime | None = None,
+                 payload: dict | None = None) -> str:
+    """Raise one alert per signal. S09: a correlated alert joins its open alert group (only the alert group's
+    first alert is announced); inside quiet hours it is recorded now and announced when the window ends;
+    a rule monitor's alert goes to its approved recipients and starts its approved playbook."""
     dedupe = alert_dedupe_key(monitor, result)
     legacy = f"{monitor.id}:{dedupe.split(':', 1)[1]}"[:200]  # alerts raised before condition keys
     existing_id = _open_alert(dedupe, legacy)
@@ -614,26 +651,144 @@ def _raise_alert(monitor: Monitor, owner: User, workspace: Workspace, result: di
         existing = s.scalar(select(Alert).where(Alert.dedupe_key == dedupe, Alert.status != "resolved"))
         if existing:
             return existing.id
+        cfg = noise.parse(monitor.config) if noise.configured(monitor.config) else None
         alert = Alert(id=new_id("alr"), workspace_id=monitor.workspace_id, monitor_id=monitor.id, severity=severity,
                       title=f"{monitor.name}: {result.get('direction', 'signal')} detected"[:300],
                       message=result.get("message", ""), data={**{k: v for k, v in result.items() if k != "issues"},
-                                                               "triage": triage}, dedupe_key=dedupe)
+                                                               "triage": triage, "dataset_key": dataset_key(monitor)},
+                      dedupe_key=dedupe)
         s.add(alert)
         s.flush()
         emit(monitor.workspace_id, "alert.raised", {"alert": alert.id, "severity": severity, "title": alert.title}, session=s)
-        notify(s, monitor.workspace_id, kind="alert", title=f"[{severity}] {alert.title}", body=alert.message,
-               link={"type": "alert", "id": alert.id})
-        deliver(s, monitor.workspace_id, (monitor.config or {}).get("deliver_to"), subject_type="alert",
-                subject_id=alert.id, origin={"monitor_id": monitor.id})  # N-3: approved destinations only
+        announce = True
+        if cfg is not None and cfg.correlation_key:
+            from analystos.triggers.groups import attach
+
+            values = noise.correlation_values(cfg.correlation_key, monitor_config=monitor.config or {}, result=result,
+                                              payload=payload)
+            _, announce = attach(s, alert, monitor.id, values)  # merged into an open alert group: no second announcement
+        if not announce:
+            alert.data = {**alert.data, "merged_into": alert.group_id}
+        elif defer_until is not None:
+            alert.deferred_until = defer_until
+            emit(monitor.workspace_id, "alert.deferred", {"alert": alert.id, "until": defer_until.isoformat()}, session=s)
+        else:
+            _announce(s, monitor, alert)
         audit(f"monitor:{monitor.id}", "alert.raised", workspace_id=monitor.workspace_id, target=alert.id,
-              details={"severity": severity, "triage": triage}, session=s)
+              details={"severity": severity, "triage": triage, "group_id": alert.group_id,
+                       "deferred_until": defer_until.isoformat() if defer_until and announce else None}, session=s)
         alert_id = alert.id
+    if rules.requires_approval(monitor.config) and (monitor.config or {}).get("on_trigger"):
+        rules.start_goal(monitor.id, alert_id)  # verified against the rule's approval first; a refusal is recorded
+        return alert_id
     from analystos.services.platform_settings import get as platform
 
     if platform().monitors.auto_investigation_enabled and monitor.auto_investigate and \
             SEVERITY_RANK[severity] >= SEVERITY_RANK["warning"] and (triage is None or triage.get("material", True)):
         start_investigation(alert_id, owner, automatic=True)
     return alert_id
+
+
+def _announce(session: Session, monitor: Monitor, alert: Alert) -> None:
+    """Tell people: the in-app notification and the external deliveries (N-3 destinations, approved; a rule
+    monitor's alert goes to its rule's recipients and each send re-verifies the rule's approval)."""
+    notify(session, monitor.workspace_id, kind="alert", title=f"[{alert.severity}] {alert.title}", body=alert.message,
+           link={"type": "alert", "id": alert.id})
+    targets = rules.recipients(session, monitor) if rules.requires_approval(monitor.config) else \
+        (monitor.config or {}).get("deliver_to")
+    deliver(session, monitor.workspace_id, targets, subject_type="alert", subject_id=alert.id,
+            origin={"monitor_id": monitor.id})
+    alert.notified_at = utcnow()
+
+
+@owned_by("alert", "alert_id")
+def announce_deferred(alert_id: str) -> bool:
+    """Release one alert held by quiet hours (still open, its window over)."""
+    with session_scope() as s:
+        alert = s.get(Alert, alert_id, with_for_update=True)
+        if alert is None or alert.notified_at is not None or alert.deferred_until is None:
+            return False
+        if alert.status == "resolved":
+            alert.deferred_until = None  # recovered during the night: nothing to announce
+            return False
+        monitor = s.get(Monitor, alert.monitor_id)
+        if monitor is None:
+            return False
+        _announce(s, monitor, alert)
+        emit(alert.workspace_id, "alert.released", {"alert": alert.id}, session=s)
+        return True
+
+
+@platform_loop
+def release_deferred(now: datetime | None = None, limit: int = 50) -> int:
+    """Every scheduler iteration: announce alerts whose quiet hours are over."""
+    with session_scope() as s:
+        ids = list(s.scalars(select(Alert.id).where(Alert.deferred_until <= (now or utcnow()), Alert.notified_at.is_(None))
+                             .order_by(Alert.deferred_until).limit(limit)))
+    return sum(1 for alert_id in ids if announce_deferred(alert_id))
+
+
+# ------------------------------------------------------------------------------------ S09 anti-noise gate
+def dataset_key(monitor: Monitor) -> str | None:
+    """What a per-dataset frequency cap counts against: the rule's scope, else the monitored dataset or assets."""
+    cfg = monitor.config or {}
+    scope = cfg.get("scope") if isinstance(cfg.get("scope"), dict) else {}
+    key = scope.get("source") or cfg.get("dataset_artifact_id") or (cfg.get("pinned") or {}).get("dataset_artifact_id")
+    if not key and cfg.get("assets"):
+        key = ",".join(sorted(cfg["assets"]))
+    return str(key) if key else None
+
+
+def _cap_hit(session: Session, monitor: Monitor, cfg: noise.NoiseConfig, now: datetime) -> str | None:
+    from datetime import timedelta
+
+    since = now - timedelta(days=1)
+    tenant_cap = cfg.caps.get("per_tenant_per_day")
+    if tenant_cap:
+        ws = session.get(Workspace, monitor.workspace_id)
+        q = select(Alert.id).join(Workspace, Workspace.id == Alert.workspace_id).where(Alert.created_at >= since)
+        q = q.where(Workspace.tenant_id == ws.tenant_id) if ws is not None and ws.tenant_id else \
+            q.where(Alert.workspace_id == monitor.workspace_id)
+        if len(list(session.scalars(q.limit(tenant_cap)))) >= tenant_cap:
+            return f"per_tenant_per_day={tenant_cap}"
+    dataset_cap, key = cfg.caps.get("per_dataset_per_day"), dataset_key(monitor)
+    if dataset_cap and key:
+        recent = session.scalars(select(Alert).where(Alert.workspace_id == monitor.workspace_id, Alert.created_at >= since)
+                                 .limit(5000))
+        if sum(1 for a in recent if (a.data or {}).get("dataset_key") == key) >= dataset_cap:
+            return f"per_dataset_per_day={dataset_cap}"
+    return None
+
+
+def _gate(session: Session, monitor: Monitor, result: dict[str, Any], payload: dict | None) -> noise.Decision:
+    cfg = noise.parse(monitor.config)
+    now = utcnow()
+    env = noise.variables(result, payload)
+    breach, exited = noise.breach_and_exit(cfg, result, env)
+    cap = _cap_hit(session, monitor, cfg, now) if cfg.caps and breach else None
+    decision = noise.decide(cfg, monitor.noise_state, breach=breach, exited=exited, now=now,
+                            severity=result.get("severity") or (monitor.config or {}).get("severity"), cap_hit=cap)
+    if decision.action == "suppressed" and cfg.correlation_key:
+        from analystos.triggers.groups import note_suppressed
+
+        note_suppressed(session, monitor.workspace_id,
+                        noise.correlation_values(cfg.correlation_key, monitor_config=monitor.config or {}, result=result,
+                                                 payload=payload))
+    audit(f"monitor:{monitor.id}", "monitor.gate", workspace_id=monitor.workspace_id, target=monitor.id,
+          decision="allow" if decision.fire else None, details={**decision.as_dict(), "breach": breach, "exit": exited},
+          session=session)
+    return decision
+
+
+def _observed(monitor: Monitor, observation: dict[str, Any]) -> dict[str, Any]:
+    """An `observe` trigger event as a reading: its typed fields are the condition's variables."""
+    cfg = monitor.config or {}
+    numbers = {k: v for k, v in observation.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    label = cfg.get("metric") or monitor.name
+    shown = ", ".join(f"{k}={v:.4g}" for k, v in list(numbers.items())[:6])
+    period = str(observation.get("period") or observation.get("event_time") or utcnow().isoformat())[:40]
+    return {**numbers, "alert": None, "metric": label, "period": period, "severity": cfg.get("severity", "warning"),
+            "message": f"{label}: {shown or 'event received'} ({period}).", "observed_event": True}
 
 
 def start_investigation(alert_id: str, user: User, *, automatic: bool = False) -> str | None:

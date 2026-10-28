@@ -301,6 +301,22 @@ class Settings(BaseSettings):
     delivery_authorization_days: int = Field(default=90, ge=1)  # an authorized destination is re-approved after this
     delivery_attachment_max_bytes: int = Field(default=10_000_000, ge=0)
     delivery_timeout_seconds: float = 20.0
+    # S09 channels: email through SMTP (default) or Microsoft Graph sendMail; Teams / Slack incoming webhooks
+    # only to these hosts (a leading dot matches subdomains) or an operator-listed private host.
+    delivery_email_transport: str = Field(default="smtp", pattern="^(smtp|graph)$")
+    graph_base_url: str = "https://graph.microsoft.com/v1.0"
+    graph_sender: str = ""  # mailbox (UPN or id) the platform sends as
+    graph_token_ref: str = ""  # env:NAME holding an app-only bearer token with Mail.Send
+    channel_teams_hosts: str = ".webhook.office.com,.logic.azure.com,.environment.api.powerplatform.com"
+    channel_slack_hosts: str = "hooks.slack.com"
+
+    # S09 trigger ingress: HMAC timestamp skew, replay cache retention, body cap; Kafka (compose profile `events`)
+    # with a per-tenant topic ACL (`<tenant id or *>:<topic glob>`, comma-separated; empty = no topic).
+    trigger_skew_seconds: int = Field(default=300, ge=30, le=3600)
+    trigger_replay_days: int = Field(default=7, ge=1, le=90)
+    trigger_max_body_bytes: int = Field(default=256_000, ge=1024)
+    kafka_bootstrap_servers: str = ""
+    kafka_topic_acl: str = ""
 
     # Set by compose.yaml: this process runs in a compose container, where `localhost` is the container itself.
     in_container: bool = False

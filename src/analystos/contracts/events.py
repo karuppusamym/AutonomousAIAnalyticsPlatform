@@ -101,3 +101,7 @@ TASK_STATUSES = ["NEW", "READY", "RUNNING", "WAITING_USER", "COMPLETED", "FAILED
 # Tool, agent and data-product registry (S10): signed versions published, quarantined at admission, status changes,
 # invocations
 EVENT_TYPES |= {"tool.published", "tool.quarantined", "tool.deprecated", "tool.status_changed", "tool.invoked"}
+# Proactive monitoring, triggers and recurring work (S09): ingress, anti-noise outcomes, alert groups, channels, packs
+EVENT_TYPES |= {"trigger.received", "trigger.processed", "alert.deferred", "alert.released", "alert_group.opened",
+                "alert_group.merged", "alert_group.resolved", "monitor.rule_approved", "channel.request_created",
+                "pack.reviewed"}

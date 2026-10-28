@@ -1100,6 +1100,11 @@ class Monitor(Base):
     created_by: Mapped[str] = mapped_column(String(40))
     created_at: Mapped[datetime] = _ts()
     revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")  # P4-06: optional If-Match on PATCH
+    # S09 anti-noise state (hysteresis phase, debounce start, last fire, cooldown) and the rule's own approval:
+    # a hash-bound approval of its scope, recipients, playbook and limits, verified before every side effect.
+    noise_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    approval_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    rule_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class Alert(Base):
@@ -1117,6 +1122,10 @@ class Alert(Base):
     acknowledged_by: Mapped[str | None] = mapped_column(String(40), nullable=True)
     created_at: Mapped[datetime] = _ts()
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    group_id: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)  # S09 correlation
+    # S09 quiet hours: raised but not yet announced; released once the window ends (notified_at set then).
+    deferred_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Notification(Base):
@@ -2413,6 +2422,13 @@ from analystos.conversations.models import (  # noqa: E402,F401  (conversation m
 from analystos.db import column_presence  # noqa: E402,F401  (registers the absent-column filter, P7-20)
 from analystos.desk.models import ClassBaseline, Request, RequestEvent  # noqa: E402,F401  (Request Desk, S13)
 from analystos.tenancy.schema import attach_tenant_columns  # noqa: E402
+from analystos.triggers.models import (  # noqa: E402,F401  (triggers, alert groups, channels, S09)
+    AlertGroup,
+    ChannelBinding,
+    ChannelMessage,
+    TriggerEvent,
+    TriggerRule,
+)
 
 attach_tenant_columns(Base.metadata)  # tenant_id on every tenant-owned table (ADR-009)
 # The audit sealer finds a tenant's unsealed events by (tenant, time window) (S01-T5, migration 0058).

@@ -209,10 +209,15 @@ def patch_monitor(monitor_id: str, body: MonitorPatch, response: Response, user:
     if "config" in changes:
         mon_svc.validate_baseline(session, m.workspace_id, changes["config"])
         mon_svc.validate_delivery(session, m.workspace_id, changes["config"])
+        mon_svc.validate_rule(session, m.workspace_id, changes["config"])
     for k, v in changes.items():
         setattr(m, k, v)
     if changes:
         m.revision = (m.revision or 1) + 1
+    if "config" in changes:  # S09: new scope, recipients, playbook or limits -> the rule is approved again
+        from analystos.triggers.rules import after_config_change
+
+        after_config_change(session, session.merge(user), m)
     audit(f"user:{user.id}", "monitor.updated", workspace_id=m.workspace_id, target=m.id, details=body.model_dump(), session=session)
     set_etag(response, m.revision or 1)
     return row(m)

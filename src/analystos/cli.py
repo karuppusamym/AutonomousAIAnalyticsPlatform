@@ -312,6 +312,10 @@ def _main(argv: list[str]) -> int:
         return audit_main(argv[1:])
     if argv[:1] == ["context"]:
         return context_main(argv[1:])
+    if argv[:1] == ["triggers-consumer"]:  # S09-T2 Kafka trigger consumer (compose profile `events`)
+        from analystos.triggers.kafka import main as triggers_consumer
+
+        return triggers_consumer(argv[1:])
     if argv[:1] == ["demo-seed"]:  # a ready demo workspace through the running API (`analystos demo-seed --help`)
         from analystos.demo.seed import main as demo_seed
 

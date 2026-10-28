@@ -35,6 +35,7 @@ KINDS = {"reanalysis": "analyst", "dataset_refresh": "editor", "report": "analys
 KINDS["saved_analysis"] = "editor"
 KINDS["step"] = "editor"  # a pinned step's frozen query (P7-04, services/step_pins.py)
 KINDS["pipeline"] = "editor"  # P6-02: a published pipeline's incremental run, or a dry run proposing a materialization
+KINDS["pack"] = "editor"  # S09-T4: a recurring pack (template playbook + output template, auto-deliver policy)
 MIN_INTERVAL_SECONDS = 15 * 60
 
 
@@ -71,6 +72,10 @@ def validate(kind: str, cron: str, tz: str, config: dict) -> None:
             raise InvalidInput("config.action must be run or dry_run (a destination is only written after an approval)")
         if config.get("mode", "auto") not in ("auto", "full", "reconcile"):
             raise InvalidInput("config.mode must be auto, full or reconcile")
+    if kind == "pack":
+        from analystos.triggers.packs import validate_shape
+
+        validate_shape(config)
     if kind == "reanalysis":
         from analystos.registries.replay import validate_schedule_config
 
@@ -114,6 +119,10 @@ def create_schedule(session: Session, user: User, workspace_id: str, *, name: st
     config = config or {}
     validate(kind, cron, timezone, config)
     _check_definition(session, workspace_id, config)
+    if kind == "pack":  # pins the template's installed version
+        from analystos.triggers.packs import prepare
+
+        config = prepare(session, workspace_id, config)
     if kind == "saved_analysis":
         from analystos.services.saved_analysis import verify
 
@@ -150,6 +159,10 @@ def update_schedule(session: Session, user: User, schedule_id: str, patch: dict,
     validate(sch.kind, sch.cron, sch.timezone, sch.config)
     if patch.get("config") is not None:
         _check_definition(session, sch.workspace_id, sch.config)
+        if sch.kind == "pack":
+            from analystos.triggers.packs import prepare
+
+            sch.config = prepare(session, sch.workspace_id, sch.config)
     if sch.kind == "saved_analysis" and (patch.get("enabled") is not False or set(patch) != {"enabled"}):
         from analystos.services.saved_analysis import verify
 
@@ -218,7 +231,12 @@ def _finish(srun_id: str, status: str, result: dict | None = None, error: str | 
             notify(s, srun.workspace_id, kind="schedule", title=f"Schedule failed: {sch.name}", body=error or "",
                    link={"type": "schedule", "id": sch.id}, user_id=sch.owner_id)
         report_id = (result or {}).get("report_artifact_id")
-        if status == "succeeded" and sch and report_id and (sch.config or {}).get("deliver_to"):  # N-3
+        if status == "succeeded" and sch and report_id and sch.kind == "pack":  # S09-T4: auto-deliver or review
+            from analystos.triggers.packs import route
+
+            srun.result = {**(srun.result or {}), "pack": {**((srun.result or {}).get("pack") or {}),
+                                                           **route(s, sch, srun, report_id)}}
+        elif status == "succeeded" and sch and report_id and (sch.config or {}).get("deliver_to"):  # N-3
             queued = deliver(s, srun.workspace_id, sch.config["deliver_to"], subject_type="report", subject_id=report_id,
                              origin={"schedule_id": sch.id, "schedule_run_id": srun.id})
             srun.result = {**(srun.result or {}), "deliveries": queued}
@@ -258,10 +276,11 @@ def execute(srun_id: str) -> None:
     try:
         from analystos.services.saved_analysis import execute as saved_analysis
         from analystos.services.step_pins import execute_schedule as step_pin
+        from analystos.triggers.packs import execute as pack
 
         result = {"dataset_refresh": _refresh, "reanalysis": _reanalysis, "report": _report, "monitor": _monitors,
                   "crawl": _crawl, "saved_analysis": saved_analysis, "step": step_pin,
-                  "pipeline": _pipeline}[kind](
+                  "pipeline": _pipeline, "pack": pack}[kind](
             owner, workspace_id, schedule_id, srun_id, config)
     except AnalystOSError as exc:
         _finish(srun_id, "failed", error=f"{exc.code}: {exc.message}")
@@ -548,6 +567,15 @@ def housekeeping() -> dict[str, Any]:
 
     out["conversation_summaries"] = len(summaries.summarize_idle_quietly())  # S04: idle 30 min -> summary
     out["conversation_retention"] = retention.apply_retention_quietly()  # S04: at most hourly; skips legal holds
+    try:  # S09: accepted webhook / Kafka trigger events, quiet-hours releases, the 7-day replay cache
+        from analystos.services.monitors import release_deferred
+        from analystos.triggers import processor
+
+        out["triggers"] = processor.process_due()
+        out["alerts_released"] = release_deferred()
+        out["trigger_replay_purged"] = processor.purge_expired()
+    except Exception:
+        log.exception("trigger processing failed")
     try:  # N-3: approved external deliveries that are due (bounded retries; never fatal to the loop)
         from analystos.services.deliveries import process_due
 
