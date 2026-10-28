@@ -1,0 +1,391 @@
+{
+ "date": "2026-10-28",
+ "host": "win32 dev host, Postgres 16 :55432, isolated plane migrated to 0066_platform_ops",
+ "config": {
+  "version": 6,
+  "sha256": "9599b4e5b08aa99cb47e48c81719b298f36e2e6eb45f3c7c961895bdc1c0a567",
+  "owner": "product owner (Context2AI)"
+ },
+ "tiers": {
+  "release_safety": {
+   "status": "passed",
+   "metrics": {
+    "sql_safety_pass_share": 1.0,
+    "sql_safety_cases": 350,
+    "cross_tenant_leaks": 0,
+    "cross_tenant_cases": 51,
+    "publish_integrity_share": 1.0,
+    "publish_integrity_cases": 54,
+    "not_run": 0,
+    "groups": {
+     "sql_safety": {
+      "tests": 350,
+      "passed": 350,
+      "failed": 0,
+      "skipped": 0
+     },
+     "cross_tenant": {
+      "tests": 51,
+      "passed": 51,
+      "failed": 0,
+      "skipped": 0
+     },
+     "publish_integrity": {
+      "tests": 54,
+      "passed": 54,
+      "failed": 0,
+      "skipped": 0
+     }
+    }
+   },
+   "failures": [],
+   "seconds": 42.1,
+   "blocking": true
+  },
+  "model_matrix_fake": {
+   "status": "passed",
+   "metrics": {
+    "models_evaluated": 14,
+    "errors": 0,
+    "blocked_family_evaluated": 0,
+    "blocked_family_calls": 0,
+    "pinned_share_min": 1.0,
+    "execution_correctness": 1.0,
+    "answer_correctness": 1.0,
+    "metric_grounding": 1.0,
+    "confident_wrong": 0,
+    "default_route_models": 1,
+    "mode": "fake",
+    "rows": [
+     {
+      "profile": "analytical_reasoning",
+      "model": "qwen/qwen3-32b",
+      "provider": "openrouter",
+      "default_route": true,
+      "status": "not_exercised",
+      "metrics": {
+       "execution_correctness": 1.0,
+       "answer_correctness": 1.0,
+       "metric_grounding": 1.0,
+       "confident_wrong": 0,
+       "restricted_leaks": 0,
+       "questions": 18,
+       "model_calls": 5,
+       "profile_calls": 0,
+       "pinned_share": null,
+       "blocked_family_calls": 0,
+       "by_model": {
+        "coding/qwen/qwen3-32b": 5
+       }
+      },
+      "failures": []
+     },
+     {
+      "profile": "analytical_reasoning",
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "provider": "openrouter",
+      "default_route": false,
+      "status": "not_exercised",
+      "metrics": {
+       "execution_correctness": 1.0,
+       "answer_correctness": 1.0,
+       "metric_grounding": 1.0,
+       "confident_wrong": 0,
+       "restricted_leaks": 0,
+       "questions": 18,
+       "model_calls": 5,
+       "profile_calls": 0,
+       "pinned_share": null,
+       "blocked_family_calls": 0,
+       "by_model": {
+        "coding/deepseek/deepseek-v4-flash-0731": 5
+       }
+      },
+      "failures": []
+     },
+     {
+      "profile": "analytical_reasoning",
+      "model": "openai/gpt-oss-120b",
+      "provider": "openrouter",
+      "default_route": false,
+      "status": "not_exercised",
+      "metrics": {
+       "execution_correctness": 1.0,
+       "answer_correctness": 1.0,
+       "metric_grounding": 1.0,
+       "confident_wrong": 0,
+       "restricted_leaks": 0,
+       "questions": 18,
+       "model_calls": 5,
+       "profile_calls": 0,
+       "pinned_share": null,
+       "blocked_family_calls": 0,
+       "by_model": {
+        "coding/openai/gpt-oss-120b": 5
+       }
+      },
+      "failures": []
+     },
+     {
+      "profile": "coding",
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "provider": "openrouter",
+      "default_route": true,
+      "status": "passed",
+      "metrics": {
+       "execution_correctness": 1.0,
+       "answer_correctness": 1.0,
+       "metric_grounding": 1.0,
+       "confident_wrong": 0,
+       "restricted_leaks": 0,
+       "questions": 18,
+       "model_calls": 5,
+       "profile_calls": 5,
+       "pinned_share": 1.0,
+       "blocked_family_calls": 0,
+       "by_model": {
+        "coding/deepseek/deepseek-v4-flash-0731": 5
+       }
+      },
+      "failures": []
+     },
+     {
+      "profile": "coding",
+      "model": "qwen/qwen3-32b",
+      "provider": "openrouter",
+      "default_route": false,
+      "status": "passed",
+      "metrics": {
+       "execution_correctness": 1.0,
+       "answer_correctness": 1.0,
+       "metric_grounding": 1.0,
+       "confident_wrong": 0,
+       "restricted_leaks": 0,
+       "questions": 18,
+       "model_calls": 5,
+       "profile_calls": 5,
+       "pinned_share": 1.0,
+       "blocked_family_calls": 0,
+       "by_model": {
+        "coding/qwen/qwen3-32b": 5
+       }
+      },
+      "failures": []
+     },
+     {
+      "profile": "coding",
+      "model": "openai/gpt-oss-120b",
+      "provider": "openrouter",
+      "default_route": false,
+      "status": "passed",
+      "metrics": {
+       "execution_correctness": 1.0,
+       "answer_correctness": 1.0,
+       "metric_grounding": 1.0,
+       "confident_wrong": 0,
+       "restricted_leaks": 0,
+       "questions": 18,
+       "model_calls": 5,
+       "profile_calls": 5,
+       "pinned_share": 1.0,
+       "blocked_family_calls": 0,
+       "by_model": {
+        "coding/openai/gpt-oss-120b": 5
+       }
+      },
+      "failures": []
+     },
+     {
+      "profile": "independent_model_family",
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "provider": "openrouter",
+      "default_route": true,
+      "status": "not_exercised",
+      "metrics": {
+       "execution_correctness": 1.0,
+       "answer_correctness": 1.0,
+       "metric_grounding": 1.0,
+       "confident_wrong": 0,
+       "restricted_leaks": 0,
+       "questions": 18,
+       "model_calls": 5,
+       "profile_calls": 0,
+       "pinned_share": null,
+       "blocked_family_calls": 0,
+       "by_model": {
+        "coding/deepseek/deepseek-v4-flash-0731": 5
+       }
+      },
+      "failures": []
+     },
+     {
+      "profile": "independent_model_family",
+      "model": "openai/gpt-oss-120b",
+      "provider": "openrouter",
+      "default_route": false,
+      "status": "not_exercised",
+      "metrics": {
+       "execution_correctness": 1.0,
+       "answer_correctness": 1.0,
+       "metric_grounding": 1.0,
+       "confident_wrong": 0,
+       "restricted_leaks": 0,
+       "questions": 18,
+       "model_calls": 5,
+       "profile_calls": 0,
+       "pinned_share": null,
+       "blocked_family_calls": 0,
+       "by_model": {
+        "coding/qwen/qwen3-32b": 5
+       }
+      },
+      "failures": []
+     },
+     {
+      "profile": "low_cost",
+      "model": "qwen/qwen3-14b",
+      "provider": "openrouter",
+      "default_route": true,
+      "status": "not_exercised",
+      "metrics": {
+       "execution_correctness": 1.0,
+       "answer_correctness": 1.0,
+       "metric_grounding": 1.0,
+       "confident_wrong": 0,
+       "restricted_leaks": 0,
+       "questions": 18,
+       "model_calls": 5,
+       "profile_calls": 0,
+       "pinned_share": null,
+       "blocked_family_calls": 0,
+       "by_model": {
+        "coding/openai/gpt-oss-120b": 5
+       }
+      },
+      "failures": []
+     },
+     {
+      "profile": "low_cost",
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "provider": "openrouter",
+      "default_route": false,
+      "status": "not_exercised",
+      "metrics": {
+       "execution_correctness": 1.0,
+       "answer_correctness": 1.0,
+       "metric_grounding": 1.0,
+       "confident_wrong": 0,
+       "restricted_leaks": 0,
+       "questions": 18,
+       "model_calls": 5,
+       "profile_calls": 0,
+       "pinned_share": null,
+       "blocked_family_calls": 0,
+       "by_model": {
+        "coding/deepseek/deepseek-v4-flash-0731": 5
+       }
+      },
+      "failures": []
+     },
+     {
+      "profile": "low_cost",
+      "model": "qwen/qwen3-32b",
+      "provider": "openrouter",
+      "default_route": false,
+      "status": "not_exercised",
+      "metrics": {
+       "execution_correctness": 1.0,
+       "answer_correctness": 1.0,
+       "metric_grounding": 1.0,
+       "confident_wrong": 0,
+       "restricted_leaks": 0,
+       "questions": 18,
+       "model_calls": 5,
+       "profile_calls": 0,
+       "pinned_share": null,
+       "blocked_family_calls": 0,
+       "by_model": {
+        "coding/qwen/qwen3-32b": 5
+       }
+      },
+      "failures": []
+     },
+     {
+      "profile": "reasoning_strong",
+      "model": "qwen/qwen3-32b",
+      "provider": "openrouter",
+      "default_route": true,
+      "status": "not_exercised",
+      "metrics": {
+       "execution_correctness": 1.0,
+       "answer_correctness": 1.0,
+       "metric_grounding": 1.0,
+       "confident_wrong": 0,
+       "restricted_leaks": 0,
+       "questions": 18,
+       "model_calls": 5,
+       "profile_calls": 0,
+       "pinned_share": null,
+       "blocked_family_calls": 0,
+       "by_model": {
+        "coding/qwen/qwen3-32b": 5
+       }
+      },
+      "failures": []
+     },
+     {
+      "profile": "reasoning_strong",
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "provider": "openrouter",
+      "default_route": false,
+      "status": "not_exercised",
+      "metrics": {
+       "execution_correctness": 1.0,
+       "answer_correctness": 1.0,
+       "metric_grounding": 1.0,
+       "confident_wrong": 0,
+       "restricted_leaks": 0,
+       "questions": 18,
+       "model_calls": 5,
+       "profile_calls": 0,
+       "pinned_share": null,
+       "blocked_family_calls": 0,
+       "by_model": {
+        "coding/deepseek/deepseek-v4-flash-0731": 5
+       }
+      },
+      "failures": []
+     },
+     {
+      "profile": "reasoning_strong",
+      "model": "openai/gpt-oss-120b",
+      "provider": "openrouter",
+      "default_route": false,
+      "status": "not_exercised",
+      "metrics": {
+       "execution_correctness": 1.0,
+       "answer_correctness": 1.0,
+       "metric_grounding": 1.0,
+       "confident_wrong": 0,
+       "restricted_leaks": 0,
+       "questions": 18,
+       "model_calls": 5,
+       "profile_calls": 0,
+       "pinned_share": null,
+       "blocked_family_calls": 0,
+       "by_model": {
+        "coding/openai/gpt-oss-120b": 5
+       }
+      },
+      "failures": []
+     }
+    ],
+    "excluded": []
+   },
+   "failures": [],
+   "seconds": 270.8,
+   "blocking": true
+  }
+ },
+ "passed": true
+}

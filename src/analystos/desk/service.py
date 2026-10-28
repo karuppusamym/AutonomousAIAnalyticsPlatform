@@ -81,6 +81,9 @@ def move(session: Session, req: Request, dst: str, actor: str, *, type_: str = "
     req.state, req.revision = dst, (req.revision or 0) + 1
     if dst in ANSWERED_STATES and req.first_answer_at is None:
         req.first_answer_at = now
+        from analystos.observability.metrics import inc
+
+        inc("analystos_desk_resolutions_total", mode=(req.answer_ref or {}).get("via") or dst)
     if dst in TERMINAL:
         req.closed_at = now
         req.resolution = req.resolution if req.resolution == "duplicate" else \

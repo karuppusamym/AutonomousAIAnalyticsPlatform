@@ -87,11 +87,23 @@ securityContext:
 {{- end }}
 {{- end -}}
 
+{{/* Pod security context; under OpenShift (restricted-v2 SCC) without fixed UID/GID/fsGroup. */}}
+{{- define "analystos.podSecurityContext" -}}
+{{- $psc := default .root.Values.podSecurityContext .podSecurityContext -}}
+{{- if .root.Values.openshift.enabled -}}
+{{- $psc = omit $psc "runAsUser" "runAsGroup" "fsGroup" -}}
+{{- end -}}
+{{- toYaml $psc -}}
+{{- end -}}
+
 {{- define "analystos.podCommon" -}}
 serviceAccountName: {{ include "analystos.serviceAccountName" .root }}
 automountServiceAccountToken: {{ .root.Values.serviceAccount.automountToken }}
 securityContext:
-  {{- toYaml (default .root.Values.podSecurityContext .podSecurityContext) | nindent 2 }}
+  {{- include "analystos.podSecurityContext" . | nindent 2 }}
+{{- with .runtimeClassName }}
+runtimeClassName: {{ . }}
+{{- end }}
 {{- with .root.Values.imagePullSecrets }}
 imagePullSecrets:
   {{- toYaml . | nindent 2 }}
@@ -140,6 +152,20 @@ spec:
     matchLabels:
       {{- include "analystos.selector" . | nindent 6 }}
 {{- end }}
+{{- end -}}
+
+{{/* The runtimeClassName of a worker pool: its own, else gVisor for `gvisor: true` pools when gvisor.enabled. */}}
+{{- define "analystos.poolRuntimeClass" -}}
+{{- if .pool.runtimeClassName -}}
+{{- .pool.runtimeClassName -}}
+{{- else if and .root.Values.gvisor.enabled .pool.gvisor -}}
+{{- .root.Values.gvisor.runtimeClassName -}}
+{{- end -}}
+{{- end -}}
+
+{{/* "true" when KEDA scales this pool (then no HPA and no fixed replicas). */}}
+{{- define "analystos.kedaActive" -}}
+{{- if and .root.Values.keda.enabled .pool.keda .pool.keda.enabled -}}true{{- end -}}
 {{- end -}}
 
 {{- define "analystos.hpa" -}}

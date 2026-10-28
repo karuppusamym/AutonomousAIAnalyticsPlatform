@@ -1,0 +1,22 @@
+# gitleaks (S12 §5: "no secrets in env dumps or logs (gitleaks in CI)"). The default rules, minus the
+# development-only credentials the repository documents on purpose (seeded demo users, compose role passwords,
+# the dev JWT fallback). Keep the allowlist to exact values: a new secret-shaped string must be reviewed.
+title = "analystos"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "documented development-only defaults and test fixtures"
+regexes = [
+  '''ChangeMe123!''',
+  '''dev-only-change-me-please-32bytes!!''',
+  '''postgresql(\+psycopg)?://analystos(_loader|_reader|_builder|_writer)?:(analystos|loader|reader|builder|writer)@''',
+  '''superset:superset@''',
+]
+paths = [
+  '''tests/fixtures/''',
+  '''tests/oidc_fake\.py''',
+  '''web/package-lock\.json''',
+  '''contracts/.*\.schema\.json''',
+]

@@ -1,0 +1,100 @@
+{{- /* Per-role NetworkPolicies (S12 §1/§5), with networkPolicy.perRole. Every pod is selected by its
+       `analystos.io/role` label; isolated compute pools are excluded (networkpolicy-isolated.yaml). Egress:
+       cluster DNS, the release's API, and the peer groups networkPolicy.roles grants the role (in air-gapped
+       mode airGapped.allowedEgressCidrs are added to every role). Ingress: api/web from ingressFrom (web
+       also reaches the api), metrics ports from monitoringFrom, nothing else. */ -}}
+{{- if and (or .Values.networkPolicy.enabled .Values.airGapped.enabled) .Values.networkPolicy.perRole }}
+{{- $np := .Values.networkPolicy }}
+{{- if not $np.ingressFrom }}
+{{- fail "networkPolicy.perRole needs networkPolicy.ingressFrom (the ingress controller peers): without it nothing reaches the web or the API" }}
+{{- end }}
+{{- $roles := list "api" "web" "scheduler" "migrate" "ops" }}
+{{- range $name, $pool := .Values.workers }}
+{{- if and $pool (not $pool.isolated) }}
+{{- $roles = append $roles (default $name $pool.role) }}
+{{- end }}
+{{- end }}
+{{- range $role := uniq $roles }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "analystos.fullname" $ }}-role-{{ $role }}
+  labels:
+    {{- include "analystos.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      analystos.io/role: {{ $role | quote }}
+    matchExpressions:
+      - {key: analystos.io/isolated, operator: NotIn, values: ["true"]}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    {{- if eq $role "api" }}
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ $.Release.Name }}
+        {{- with $np.ingressFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with $np.monitoringFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      ports:
+        - {protocol: TCP, port: {{ $.Values.api.port }}}
+    {{- else if eq $role "web" }}
+    {{- with $np.ingressFrom }}
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - {protocol: TCP, port: 8080}
+    {{- end }}
+    {{- else if and $np.monitoringFrom (not (has $role (list "migrate" "ops"))) }}
+    - from:
+        {{- toYaml $np.monitoringFrom | nindent 8 }}
+      ports:
+        - {protocol: TCP, port: {{ $.Values.monitoring.metricsPort }}}
+    {{- end }}
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    {{- if ne $role "api" }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ $.Release.Name }}
+              app.kubernetes.io/component: api
+      ports:
+        - {protocol: TCP, port: {{ $.Values.api.port }}}
+    {{- end }}
+    {{- if and $.Values.pgbouncer.enabled (ne $role "web") }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ $.Release.Name }}
+              app.kubernetes.io/component: pgbouncer
+      ports:
+        - {protocol: TCP, port: 5432}
+    {{- end }}
+    {{- $peers := list }}
+    {{- range $group := (get $np.roles $role | default list) }}
+    {{- $peers = concat $peers (get $np.egress $group | default list) }}
+    {{- end }}
+    {{- if and $.Values.airGapped.enabled (ne $role "web") }}
+    {{- range $.Values.airGapped.allowedEgressCidrs }}
+    {{- $peers = append $peers (dict "ipBlock" (dict "cidr" .)) }}
+    {{- end }}
+    {{- end }}
+    {{- with $peers }}
+    - to:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+{{- end }}
+{{- end }}

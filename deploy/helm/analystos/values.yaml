@@ -41,13 +41,30 @@ config:
   extra: {}                          # any other ANALYSTOS_* setting, e.g. {ANALYSTOS_QUERY_MAX_ROWS: "20000"}
 
 secrets:
-  # Name of a Secret holding at least ANALYSTOS_DATABASE_URL, ANALYSTOS_ANALYTICS_LOADER_URL,
+  # Name of a Secret (created by you, or by External Secrets Operator when externalSecrets.enabled) holding at least ANALYSTOS_DATABASE_URL, ANALYSTOS_ANALYTICS_LOADER_URL,
   # ANALYSTOS_ANALYTICS_READER_URL, ANALYSTOS_ANALYTICS_BUILDER_URL (the BuildGateway's login) and
   # ANALYSTOS_ANALYTICS_WRITER_URL (the managed output writer's login; for both, outside
   # env=dev its password must not be the development default, or provisioning and builds refuse), ANALYSTOS_REDIS_URL, ANALYSTOS_JWT_SECRET, ANALYSTOS_BOOTSTRAP_ADMIN_PASSWORD,
   # ANALYSTOS_SUPERSET_PASSWORD; optional OPENROUTER_API_KEY, ANTHROPIC_API_KEY, AZURE_OPENAI_API_KEY,
   # ANALYSTOS_OIDC_CLIENT_SECRET and source passwords referenced by `secret_ref: env:NAME`.
   existingSecret: analystos-secrets
+
+# External Secrets Operator (S12 §1/§5): the Secret above is synced from a vault (Vault, AWS/GCP/Azure secret
+# managers, ...) instead of being created by hand. The ExternalSecret is a pre-install/pre-upgrade hook (weight
+# -10) so the migration Job finds the Secret; creationPolicy Orphan keeps the Secret when the hook object is
+# replaced. `secret_ref: env:NAME` of a source reads NAME from this same Secret: add it to `data`.
+externalSecrets:
+  enabled: false
+  apiVersion: external-secrets.io/v1  # external-secrets.io/v1beta1 for ESO < 0.17
+  refreshInterval: 1h
+  secretStoreRef: {name: "", kind: ClusterSecretStore}   # required when enabled
+  # [{secretKey: ANALYSTOS_DATABASE_URL, remoteRef: {key: analystos/prod, property: database_url}}, ...]
+  data: []
+  # [{extract: {key: analystos/prod}}]: every property of one vault entry becomes a key
+  dataFrom: []
+  # More ExternalSecrets, e.g. the PgBouncer auth Secret or file-mounted source credentials:
+  # [{name: analystos-pgbouncer-auth, data: [...], dataFrom: [...]}]
+  additional: []
 
 # Connection pools per process and plane (P4-S05, src/analystos/db/pools.py). Every API process,
 # worker process and compute-pool child holds its own pools, so Postgres needs roughly
@@ -120,6 +137,38 @@ oidc:
 migrations:
   enabled: true                      # pre-install/pre-upgrade Job: analystos migrate && analystos seed
   backoffLimit: 2
+  # Key in the Secret holding the `app_migrator` login (S01 §5: the owner role, DDL; used only by this Job).
+  # "" = the Job uses ANALYSTOS_DATABASE_URL like the pods. Migrations stay expand/contract compatible with
+  # the previous release (S12 §1): the old pods keep running against the new schema during the rollout.
+  databaseUrlKey: ""
+
+# OpenShift (restricted-v2 SCC): the namespace assigns the UID/GID range, so the pods must not pin
+# runAsUser/runAsGroup/fsGroup. runAsNonRoot, seccomp RuntimeDefault, no privilege escalation and dropped
+# capabilities stay. The images run as any UID in group 0 (deploy/docker/Dockerfile: g=u on writable paths).
+openshift:
+  enabled: false
+
+# gVisor for the compute roles (S12 §1, S07 / ADR-012): pools with `gvisor: true` get runtimeClassName. The
+# node pool needs runsc installed (GKE Sandbox: runtimeClassName gvisor exists already; elsewhere set
+# createRuntimeClass and the handler your containerd config names). A pool may set its own runtimeClassName.
+gvisor:
+  enabled: false
+  runtimeClassName: gvisor
+  createRuntimeClass: false
+  handler: runsc
+  nodeSelector: {}                   # RuntimeClass scheduling.nodeSelector (nodes that have runsc)
+
+# KEDA ScaledObjects on the Temporal task queues (S12 §1): a pool with `keda.enabled` scales on its queue's
+# backlog instead of CPU (its HPA is not rendered). Needs KEDA >= 2.17 (the `temporal` scaler) in the cluster.
+keda:
+  enabled: false
+  pollingInterval: 15
+  cooldownPeriod: 300
+  temporal:
+    endpoint: ""                     # "" = config.temporalAddress
+    namespace: ""                    # "" = config.temporalNamespace
+    queueTypes: "workflow,activity"
+    authenticationRef: ""            # a TriggerAuthentication (mTLS / API key for Temporal Cloud)
 
 podSecurityContext:
   runAsNonRoot: true
@@ -148,16 +197,21 @@ api:
 # least its process-pool size (task_queues.yaml `compute.max_concurrent`, default 4).
 # In-flight workflows must be drained (or continue-as-new) before an upgrade that changes workflow code.
 workers:
-  analysis:            # I/O-bound agent steps + AnalysisWorkflow
+  analysis:            # I/O-bound agent steps + AnalysisWorkflow; the `worker-query` role (gateway statements)
     queues: analysis
+    role: query
     replicas: 2
+    keda: {enabled: true, minReplicas: 2, maxReplicas: 6, targetQueueSize: 10}
     resources:
       requests: {cpu: 500m, memory: 1Gi}
       limits: {cpu: "2", memory: 2Gi}
     autoscaling: {enabled: false, minReplicas: 2, maxReplicas: 6, targetCPUUtilizationPercentage: 70}
     pdb: {enabled: true, minAvailable: 1}
-  compute:             # CPU-bound statistics in a process pool
+  compute:             # CPU-bound statistics in a process pool; the `worker-compute` role (gVisor)
     queues: compute
+    role: compute
+    gvisor: true
+    keda: {enabled: true, minReplicas: 2, maxReplicas: 12, targetQueueSize: 4}
     # podSecurityContext: {}   # e.g. a Localhost seccomp profile that allows unshare(2) for the sandbox
     replicas: 2
     resources:
@@ -167,6 +221,7 @@ workers:
     pdb: {enabled: true, minAvailable: 1}
   publish:             # BI side effects; few replicas keep the destination's rate limits honest
     queues: publish
+    role: publish
     replicas: 1
     resources:
       requests: {cpu: 250m, memory: 512Mi}
@@ -175,6 +230,7 @@ workers:
     pdb: {enabled: false}
   crawl:               # metadata crawls
     queues: crawl
+    role: crawl
     replicas: 1
     resources:
       requests: {cpu: 500m, memory: 1Gi}
@@ -196,6 +252,7 @@ workers:
     pdb: {enabled: true, minAvailable: 1}
   elt:
     queues: elt
+    role: elt
     replicas: 0
     resources:
       requests: {cpu: 250m, memory: 512Mi}
@@ -210,6 +267,8 @@ workers:
   # default image is EXTRAS=standard, which has it).
   compute-py:          # recipe snapshot jobs (P6-04); later notebook Python cells (P7-12)
     queues: compute-py
+    role: compute
+    gvisor: true
     isolated: true
     replicas: 0
     resources:
@@ -219,6 +278,8 @@ workers:
     pdb: {enabled: false}
   compute-ml:          # classical ML with bounded search (P5-04, ADR-0024)
     queues: compute-ml
+    role: compute
+    gvisor: true
     isolated: true
     replicas: 0
     resources:
@@ -261,11 +322,73 @@ networkPolicy:
   # external Postgres / Redis / model APIs; turn it on to bound the pods' own egress (DNS, the release's
   # pods, airGapped.allowedEgressCidrs). Sandbox children never have the pod's network (sandboxIsolation).
   enabled: false
+  # Per-role policies (S12 §1/§5) instead of the one release-wide policy: each role gets ingress only from
+  # whom it serves and egress only to the peer groups that `roles` lists for it. Isolated compute pools
+  # keep their own policy (networkpolicy-isolated.yaml) either way.
+  perRole: false
+  ingressFrom: []                    # peers allowed to reach api/web, e.g. [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}}]
+  monitoringFrom: []                 # Prometheus peers allowed to scrape the metrics ports
+  egress:                            # NetworkPolicy `to` peers per group ({ipBlock: {cidr: ...}} or selectors)
+    platform: []                     # control-plane Postgres / PgBouncer, Redis, Temporal frontend
+    models: []                       # model API hosts or the egress proxy in front of them (the model-host allowlist)
+    sources: []                      # customer data sources and the analytics database
+    superset: []
+    idp: []                          # OIDC issuer / JWKS
+    otel: []                         # OpenTelemetry collector
+  roles:                             # role -> peer groups it may reach (the release's own API is always reachable)
+    api: [platform, models, sources, superset, idp, otel]
+    query: [platform, models, sources, otel]          # worker-analysis: agent steps, gateway statements
+    compute: [platform, otel]                         # statistics on staged handles: no model, no source
+    publish: [platform, superset, otel]
+    crawl: [platform, models, sources, otel]
+    elt: [platform, sources, otel]
+    all: [platform, models, sources, superset, otel]  # values-small: one worker serves every queue
+    scheduler: [platform, models, sources, otel]
+    migrate: [platform]
+    ops: [platform]                                   # audit-verify / rls-check CronJobs
 
 serviceAccount:
   create: true
   name: ""
   automountToken: false
+
+# Observability (S12 §2). Metrics: the API serves /metrics on its http port; workers and the scheduler on
+# `metricsPort` (ANALYSTOS_METRICS_PORT). Processes of one pod merge through ANALYSTOS_METRICS_DIR. The
+# Prometheus Operator objects (PodMonitor, PrometheusRule) and Grafana dashboard ConfigMaps are opt-in.
+monitoring:
+  metricsPort: 9464
+  podMonitor: {enabled: false, interval: 30s, labels: {}}
+  prometheusRule:
+    enabled: false
+    labels: {}
+    queueBacklogThreshold: 100       # Temporal task-queue backlog above this for 10 min
+    # The Temporal server's backlog gauge (matching service, Temporal >= 1.21; a metrics prefix changes its name).
+    temporalBacklogMetric: temporal_approximate_backlog_count
+    providerErrorRate: 0.05          # model provider error share over 10 min
+    budgetRatio: 0.8                 # spend above this share of a budget
+    slo:                             # owner targets; burn-rate alerts page at 14.4x (1h) and ticket at 6x (6h)
+      askLatencySeconds: 3           # Ask (POST) time to first byte; must be a histogram bucket bound
+      askLatencyTarget: 0.95
+      runSuccessTarget: 0.95
+      availabilityTarget: 0.995
+  grafanaDashboards: {enabled: false, labels: {grafana_dashboard: "1"}, folder: AnalystOS}
+  otel:
+    enabled: false                   # traces need the image built with EXTRAS=...,otel
+    endpoint: ""                     # OTEL_EXPORTER_OTLP_ENDPOINT, e.g. http://otel-collector.observability:4318
+
+# Production checks as CronJobs (S12 §5): a failed Job pages through the PrometheusRule (kube-state-metrics).
+ops:
+  auditVerify:                       # `analystos audit verify` (+ `export` to WORM storage when exportDir is set)
+    enabled: true
+    schedule: "15 2 * * *"
+    exportDir: ""                    # a mounted WORM path (ANALYSTOS_AUDIT_EXPORT_DIR); "" = verify only
+    exportVolume: {}                 # e.g. {persistentVolumeClaim: {claimName: audit-worm}}
+  rlsCheck:                          # `analystos ops rls-check`: every tenant-owned table has RLS + policy + trigger
+    enabled: true
+    schedule: "45 2 * * *"
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 500m, memory: 512Mi}
 
 nodeSelector: {}
 tolerations: []

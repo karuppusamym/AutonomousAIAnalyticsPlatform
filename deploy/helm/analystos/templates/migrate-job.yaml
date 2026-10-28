@@ -19,6 +19,7 @@ spec:
       labels:
         {{- include "analystos.labels" . | nindent 8 }}
         app.kubernetes.io/component: migrate
+        analystos.io/role: migrate
     spec:
       {{- include "analystos.podCommon" (dict "root" . "component" "migrate") | nindent 6 }}
       restartPolicy: Never
@@ -28,6 +29,12 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["sh", "-c", "analystos migrate && analystos seed"]
           {{- include "analystos.appEnv" . | nindent 10 }}
+          {{- if .Values.migrations.databaseUrlKey }}
+          env:                  # the app_migrator login (S01 §5) overrides the runtime URL for this Job only
+            - name: ANALYSTOS_DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.secrets.existingSecret }}, key: {{ .Values.migrations.databaseUrlKey }}}
+          {{- end }}
       volumes:
         {{- include "analystos.appVolumes" . | nindent 8 }}
 {{- end }}

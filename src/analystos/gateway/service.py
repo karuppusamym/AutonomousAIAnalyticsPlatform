@@ -35,6 +35,7 @@ interrupts a statement in flight; federated legs are handles and need `data_move
 """
 from __future__ import annotations
 
+import contextlib
 import time
 from collections.abc import Callable
 from typing import Any
@@ -690,6 +691,7 @@ class QueryGateway:
         record = dict(audit, status="ok", row_count=sink.row_count, truncated=sink.truncated, columns=list(sink.columns),
                       result_hash=facts["sha256"], result_preview=preview, cache_hit=False, duration_ms=duration,
                       result_bytes=facts["bytes"], result_uri=facts["uri"])
+        _observe_statement(record)
         session = self.session_factory()
         try:
             session.add(QueryExecution(**record))
@@ -741,6 +743,9 @@ class QueryGateway:
     def _reject(self, audit: dict[str, Any], exc: AnalystOSError, started: float, *,
                 reason_code: str | None = None) -> None:
         """A refused statement keeps its hash and its redacted text (literals removed), never the values."""
+        from analystos.observability.metrics import gateway_reason, inc
+
+        inc("analystos_gateway_rejections_total", reason=gateway_reason(exc))
         original = audit.get("sql") or ""
         record = dict(audit, status="rejected", rejected_reason=exc.message[:4000],
                       reason_code=(reason_code or _reason_code(exc))[:60], sql_hash=stable_hash(original),
@@ -754,6 +759,7 @@ class QueryGateway:
         self._persist(record, strict=False)
 
     def _persist(self, record: dict[str, Any], *, strict: bool) -> None:
+        _observe_statement(record)
         session = self.session_factory()
         try:
             session.add(QueryExecution(**record))
@@ -858,6 +864,21 @@ def redact_sql(sql: str) -> str:
 
     out = [t.transform(scrub).sql() for t in trees if t is not None]
     return ";\n".join(out)[:20000] or "[empty statement]"
+def _observe_statement(record: dict[str, Any]) -> None:
+    """Metrics + a span per audited statement: status, cache, duration, the statement's hash (never its text).
+    Never raises: the audit row written after it must not depend on observability."""
+    from analystos.observability import metrics, telemetry
+
+    status = str(record.get("status") or "unknown")
+    metrics.inc("analystos_gateway_statements_total", status=status)
+    if status == "ok":
+        metrics.inc("analystos_cache_requests_total", cache="query_result", result="hit" if record.get("cache_hit") else "miss")
+    if status != "explained":
+        with contextlib.suppress(Exception):
+            telemetry.record_span("gateway.execute", float(record.get("duration_ms") or 0) / 1000.0, status=status,
+                                  workspace=record.get("workspace_id"), run_id=record.get("run_id"),
+                                  purpose=record.get("purpose"), rows=record.get("row_count"),
+                                  statement_hash=record.get("fingerprint") or telemetry.digest(record.get("sql", "")))
 
 
 class _SourceView:

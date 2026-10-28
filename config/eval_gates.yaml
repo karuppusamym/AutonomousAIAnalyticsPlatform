@@ -8,7 +8,7 @@
 # * `blocking: false` makes a tier a report: it runs and lists what it misses, but never fails the result.
 #
 # Run: python scripts/eval_gates.py [--tiers grounding,analytical_component,cost] [--out gate-result.json]
-version: 5
+version: 6
 owner: product owner (Context2AI)
 changelog:
   - {version: 1, date: 2026-09-26, change: "initial gates: today's measured values as the regression floor (P7-07)"}
@@ -16,6 +16,7 @@ changelog:
   - {version: 3, date: 2026-09-27, change: "add the heldout tier (P4-08) as a non-blocking report with proposed thresholds; blocking tiers unchanged"}
   - {version: 4, date: 2026-09-27, change: "ml tier gains null_rate (P5-07): coin-flip targets ending improved, max 0.5% over 60 fixed held-out seeds"}
   - {version: 5, date: 2026-09-27, change: "heldout corpus v2 (75 tasks, P4-08 plan size): the tasks floor rises 34 -> 60; still non-blocking, thresholds unchanged"}
+  - {version: 6, date: 2026-10-27, change: "S12 §3: release_safety (SQL safety 100%, cross-tenant 0 leaks, publish integrity 100%) and the per-model matrix (model_matrix_fake in CI, model_matrix nightly: execution >= 95%, answer >= 90%, grounding >= 95%, confident-wrong 0, no blocked family); existing tiers unchanged"}
 
 tiers:
   # --------------------------------------------------------------- deterministic: CI on every change
@@ -108,9 +109,53 @@ tiers:
       model_calls: {max: 0}
       decline_recall: {min: 1.0}
 
+  # --------------------------------------------------------------- S12 §3 release gates (blocking, CI after migrate)
+  release_safety:
+    kind: deterministic
+    runs: ci
+    needs_database: true                      # the cross-tenant suite runs against Postgres
+    suite: "evaluation/release_safety.py (pytest: adversarial SQL corpus + validator + injection; RLS coverage, tenant caches, two-tenant RLS; approvals and publishing)"
+    metrics:
+      sql_safety_pass_share: {min: 1.0}       # every hostile statement refused, every benign one accepted
+      sql_safety_cases: {min: 100}
+      cross_tenant_leaks: {max: 0}            # a failing cross-tenant test is a leak
+      cross_tenant_cases: {min: 20}
+      publish_integrity_share: {min: 1.0}     # hash-bound approvals, preview and Superset publishing
+      publish_integrity_cases: {min: 10}
+      not_run: {max: 0}                       # skipped = not proven: fails the gate
+  model_matrix_fake:
+    kind: deterministic
+    runs: ci
+    needs_database: true
+    suite: "evaluation/model_matrix.py mode fake (each profile x allowed model, pinned, oracle transport, 6 questions per domain)"
+    metrics:
+      models_evaluated: {min: 1}
+      errors: {max: 0}
+      blocked_family_evaluated: {max: 0}      # Claude / Gemini (config/models.yaml blocked_families) are never evaluated
+      blocked_family_calls: {max: 0}          # nor called by any route during the matrix
+      pinned_share_min: {min: 1.0}            # the profile's calls all came from the pinned model
+      execution_correctness: {min: 0.95}
+      answer_correctness: {min: 0.90}
+      metric_grounding: {min: 0.95}
+      confident_wrong: {max: 0}
+
   # --------------------------------------------------------------- live models: nightly and before a release
   # Placeholders until a provider key is available to the pipeline: the runner reports them as `skipped`
   # with the reason and they never pass silently. Thresholds are the owner's to set before the pilot.
+  model_matrix:
+    kind: live
+    runs: nightly                             # results stored in model_matrix_result -> /v2/admin/models/evaluations
+    suite: "evaluation/model_matrix.py mode live (each profile x allowed model on the golden Ask suite)"
+    metrics:                                  # per model: eligibility; gate: the worst default-route model (v1 §17.2)
+      models_evaluated: {min: 1}
+      errors: {max: 0}
+      blocked_family_evaluated: {max: 0}
+      blocked_family_calls: {max: 0}
+      pinned_share_min: {min: 1.0}
+      execution_correctness: {min: 0.95}
+      answer_correctness: {min: 0.90}
+      metric_grounding: {min: 0.95}
+      confident_wrong: {max: 0}
   ask_live:
     kind: live
     runs: nightly

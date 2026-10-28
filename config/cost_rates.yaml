@@ -1,0 +1,10 @@
+# Cost ledger rates (spec S12 §4, FR-052). Model calls carry their own USD (model_call.cost_usd: the provider's
+# reported cost or the price table in config/models.yaml); everything else is priced here. Owner: platform
+# operations. Bump `version` on every change: the spend API and every export name the version they used.
+version: "2026-10-27"
+currency: USD
+rates:
+  scan_usd_per_tb: 5.0           # warehouse bytes scanned (query_execution.scan_bytes), on-demand list price
+  credit_usd: 3.0                # warehouse credits (query_execution.credits), e.g. one Snowflake credit
+  cpu_usd_per_hour: 0.05         # compute pools (worker_task.usage.cpu_seconds), one vCPU-hour
+  storage_usd_per_gb_month: 0.023  # artifact payloads written, charged once in the month they are written

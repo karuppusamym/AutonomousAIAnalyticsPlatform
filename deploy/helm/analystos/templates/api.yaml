@@ -21,6 +21,7 @@ spec:
       labels:
         {{- include "analystos.labels" . | nindent 8 }}
         app.kubernetes.io/component: api
+        analystos.io/role: api
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
     spec:

@@ -61,3 +61,49 @@ and `/v2/admin/spend?group_by=`.
 | S12-T6 | Load test suite + SLO report | 3d |
 | S12-T7 | DR drill (PITR + Temporal) + runbook | 2d |
 | S12-T8 | Customer IdP integration + pen test coordination | external |
+
+## 7. As built (2026-10-27, T1–T7; T8 handed off)
+
+Code: `src/analystos/observability/` (metrics, telemetry, ASGI middleware, worker `/metrics` server),
+`src/analystos/ops/` (`cost_ledger.py`, `model_matrix.py`, `checks.py`, `cli.py` = `analystos ops ...`),
+`api/routers/ops_v2.py` (`/v2/admin/models/evaluations`, `/v2/admin/spend`, `/v2/admin/spend/export`),
+`evaluation/{model_matrix,release_safety}.py`, migration `0072_platform_ops`, Helm templates
+`keda.yaml`, `runtimeclass.yaml`, `externalsecret.yaml`, `networkpolicy-roles.yaml`, `monitoring.yaml`,
+`ops-cronjobs.yaml` and `files/{grafana,prometheus}/`, workflows `supply-chain.yml` and `nightly-eval.yml`,
+scripts `scripts/load/slo_report.py` and `scripts/dr_drill.py`. Runbooks 11 (deployment, supply chain, spend),
+12 (observability and alerts), 13 (DR). Deviations from §1–§5:
+
+* **T1 roles.** No new Temporal queue: `worker-query` is the existing `analysis` pool (agent steps run the gateway
+  statements) and `worker-compute` the `compute` pool, each labelled `analystos.io/role`; isolated compute pools
+  are role `compute` too. gVisor is per pool (`gvisor: true`) behind `gvisor.enabled`. KEDA replaces the pool's HPA
+  (one `temporal` trigger per queue). The ExternalSecret is a pre-install hook so the migration Job finds the Secret.
+  Images: one numeric non-root user in group 0 (OpenShift); distroless not adopted (python:3.11-slim stays).
+  Values `small`/`ha`/`airgapped` existed; every S12 switch is opt-in in `values.yaml`.
+* **T2.** Actions are pinned to release tags, not SHAs (Dependabot/Renovate digest pinning is the follow-up).
+  Grype only (no Trivy); `pip-audit` and `npm audit` added; there is no `uv.lock` yet (the spec's dependency pinning
+  item stays open for Python).
+* **T3.** No Prometheus client library: `observability.metrics` renders the exposition format itself and merges a
+  pod's processes through `ANALYSTOS_METRICS_DIR`. Traces need the `otel` extra (`EXTRAS=...,otel`); spans cover
+  request, model call and gateway statement (desk/context/compute/publisher spans are the follow-up; their work is
+  inside the request span). Queue depth is Temporal's own backlog gauge; the audit-chain and RLS-coverage pages come
+  from CronJob failures (kube-state-metrics). `analystos ops rls-check` is new (the prod RLS check).
+* **T4.** The matrix runs the golden Ask suite per profile × allowed model with the profile pinned (its other models
+  disabled for the run; `pinned_share` proves it). Candidates exclude `blocked_families` (Claude, Gemini) and the
+  decision profile; stored rows of a now-blocked family are never shown as evaluated. CI blocks on
+  `release_safety` (pytest negative suites counted; skipped = not run = fail) and `model_matrix_fake`; the live matrix
+  is nightly (`nightly-eval.yml`) and lands in an environment through `analystos ops model-matrix-import`.
+  The Ask golden suite only reaches the `coding` profile (SQL generation/repair); other profiles report
+  `not_exercised` until they have golden suites. Text2SQL benchmark (BIRD/Spider) not built (optional).
+* **T5.** The priced rollup is `ops.cost_ledger` (SQL aggregation, ≤ 5,000 groups, streamed export); the
+  `cost_ledger` view (security_invoker) holds the same unpriced lines for SQL readers. `query_execution.scan_bytes`
+  and `credits` exist but no engine fills them yet (S02 follow-up: engines that report bytes/credits), so query
+  spend is 0 until then. Storage = artifact payload bytes written. Budgets still read the model-call counters
+  (S05/S06); `cost_ledger.scope_cost` is ready for them. Blocked-family spend is kept in totals and flagged.
+* **T6.** `scripts/load/slo_report.py` (Python, no k6/Locust dependency) on an isolated plane or `--base-url`;
+  targets in `config/slo.yaml` (owner sign-off pending). A run started through the API ends at the publish approval
+  gate; the report counts reaching it as success and never approves. Measured 2026-10-28 on a Windows dev host at 2x
+  pilot: availability met, runs met (lite), Ask latency missed (p95 6.3 s with workers, 10.4 s lite); the Temporal
+  topology's compute process pool breaks on Windows, so the run SLI there needs Linux workers.
+* **T7.** `scripts/dr_drill.py`: PITR and Temporal restore in throwaway containers (evidence
+  `docs/60-delivery/evidence/2026-10-28-s12-dr-drill.md`).
+* **T8.** External: hand-off in `docs/60-delivery/s12-t8-idp-pentest-handoff.md`.

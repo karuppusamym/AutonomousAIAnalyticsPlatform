@@ -47,7 +47,8 @@ def sqlite_db(monkeypatch):
         "context_ledger_entry", "context_ledger_change",  # S03-T1: owner writes project into the ledger on commit
         "goal", "run_plan_version",  # S06: goals and superseded plan versions
         "verified_query", "mcp_server", "mcp_client", "mcp_grant", "registered_tool", "tool_invocation", "tool_signing_key",  # S10 registry
-        "publication")]  # S08 dashboards
+        "publication",  # S08 dashboards
+        "model_matrix_result", "ask_thread", "ask_turn", "worker_task")]  # S12: evaluation matrix, cost ledger joins
     models.Base.metadata.create_all(engine, tables=tables)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     monkeypatch.setattr(base, "SessionLocal", lambda: factory())

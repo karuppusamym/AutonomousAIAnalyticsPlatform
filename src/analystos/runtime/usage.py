@@ -6,6 +6,7 @@ only the seed of a missing counter and the fallback when Redis is unavailable. H
 `record` to the actual cost; they fail closed without Redis."""
 from __future__ import annotations
 
+import contextlib
 import time
 from datetime import datetime
 from threading import Lock
@@ -80,6 +81,38 @@ def _purpose_sql(s, run_id: str, purpose: str, what: str) -> float:
     return float(s.scalar(select(column).where(ModelCall.run_id == run_id, ModelCall.purpose == purpose)) or 0)
 
 
+def _observe_call(*, ctx: CallContext, purpose, provider, model, status, attempt, latency_ms, input_tokens,
+                  output_tokens, cost_usd, answered_by, escalation_reason, request_hash) -> None:
+    """Prometheus counters and an OTel span per model call record (the prompt only as its hash). Never raises:
+    the call record and the spend settlement after it must not depend on observability."""
+    with contextlib.suppress(Exception):
+        _observe_call_unsafe(ctx=ctx, purpose=purpose, provider=provider, model=model, status=status, attempt=attempt,
+                             latency_ms=latency_ms, input_tokens=input_tokens, output_tokens=output_tokens,
+                             cost_usd=cost_usd, answered_by=answered_by, escalation_reason=escalation_reason,
+                             request_hash=request_hash)
+
+
+def _observe_call_unsafe(*, ctx: CallContext, purpose, provider, model, status, attempt, latency_ms, input_tokens,
+                         output_tokens, cost_usd, answered_by, escalation_reason, request_hash) -> None:
+    from analystos.observability import metrics, telemetry
+
+    rung = answered_by or ("rules" if status == "skipped" else "llm_large")
+    metrics.inc("analystos_model_calls_total", provider=provider, model=model, purpose=purpose, status=status, rung=rung)
+    if status == "cache_hit":
+        metrics.inc("analystos_cache_requests_total", cache="model_response", result="hit")
+    if status in BILLABLE:
+        metrics.inc("analystos_model_tokens_total", int(input_tokens or 0), provider=provider, model=model, direction="input")
+        metrics.inc("analystos_model_tokens_total", int(output_tokens or 0), provider=provider, model=model, direction="output")
+        metrics.inc("analystos_model_cost_usd_total", float(cost_usd or 0.0), provider=provider, model=model)
+        metrics.observe("analystos_model_call_duration_seconds", (latency_ms or 0) / 1000.0, provider=provider, purpose=purpose)
+        if escalation_reason or int(attempt or 1) > 1:
+            reason = (escalation_reason or "retry").split(":", 1)[0]
+            metrics.inc("analystos_model_fallbacks_total", provider=provider, purpose=purpose, reason=reason)
+    telemetry.record_span("model.call", (latency_ms or 0) / 1000.0, error="ProviderError" if status == "error" else None,
+                          workspace=ctx.workspace_id, run_id=ctx.run_id, purpose=purpose, model=model, rung=rung,
+                          provider=provider, status=status, attempt=attempt, prompt_hash=request_hash)
+
+
 class DbUsageSink:
     def __init__(self, counters: BudgetCounters | None = None) -> None:
         self._counters = counters
@@ -95,6 +128,9 @@ class DbUsageSink:
                request: dict | None = None, response: dict | None = None, answered_by: str | None = None,
                cost_source: str | None = None, reservation: SpendReservation | None = None,
                escalated_from: str | None = None, escalation_reason: str | None = None) -> None:
+        _observe_call(ctx=ctx, purpose=purpose, provider=provider, model=model, status=status, attempt=attempt,
+                      latency_ms=latency_ms, input_tokens=input_tokens, output_tokens=output_tokens, cost_usd=cost_usd,
+                      answered_by=answered_by, escalation_reason=escalation_reason, request_hash=request_hash)
         try:
             self._insert(ctx=ctx, purpose=purpose, profile=profile, provider=provider, model=model, status=status,
                          attempt=attempt, latency_ms=latency_ms, input_tokens=input_tokens, output_tokens=output_tokens,
@@ -296,6 +332,11 @@ class DbUsageSink:
                                 lambda: _month_cost_sql(s, ctx.workspace_id, c.clock()), MONTH_TTL_SECONDS)
             if month_cost is None:
                 month_cost = _month_cost_sql(s, ctx.workspace_id, c.clock())
+            if policy.workspace_monthly_cost_budget_usd:
+                from analystos.observability.metrics import set_gauge
+
+                set_gauge("analystos_budget_used_ratio", month_cost / policy.workspace_monthly_cost_budget_usd,
+                          scope_kind="workspace_month", scope=ctx.workspace_id)
             if month_cost >= policy.workspace_monthly_cost_budget_usd:
                 raise BudgetExceeded(f"workspace monthly model budget ${policy.workspace_monthly_cost_budget_usd:.2f} exhausted")
 

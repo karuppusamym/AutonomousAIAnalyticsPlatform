@@ -7418,6 +7418,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/admin/models/evaluations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Model Evaluations */
+        get: operations["model_evaluations_v2_admin_models_evaluations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/admin/spend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Spend
+         * @description Spend per `group_by` (comma-separated dimensions), most expensive first, with per-category totals.
+         */
+        get: operations["spend_v2_admin_spend_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/admin/spend/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Spend Export
+         * @description One month of the ledger (YYYY-MM): CSV streams batch by batch; Parquet is written to a temporary file.
+         */
+        get: operations["spend_export_v2_admin_spend_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/autonomy": {
         parameters: {
             query?: never;
@@ -27615,6 +27672,122 @@ export interface operations {
                 "application/json": components["schemas"]["DestinationIn"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    model_evaluations_v2_admin_models_evaluations_get: {
+        parameters: {
+            query?: {
+                profile?: string | null;
+                model?: string | null;
+                mode?: ("live" | "fake") | null;
+                latest?: boolean;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    spend_v2_admin_spend_get: {
+        parameters: {
+            query?: {
+                group_by?: string;
+                since?: string | null;
+                until?: string | null;
+                days?: number;
+                workspace?: string | null;
+                category?: string[] | null;
+                scope?: "tenant" | "platform";
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    spend_export_v2_admin_spend_export_get: {
+        parameters: {
+            query: {
+                month: string;
+                format?: "csv" | "parquet";
+                workspace?: string | null;
+                scope?: "tenant" | "platform";
+            };
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

@@ -1,0 +1,19 @@
+# Service level objectives (spec S12 §2/§5). The owner signs these off; the load test runs at `load_factor` x the
+# pilot targets and reports each SLO as met / missed (scripts/load/slo_report.py). The alert rules
+# (deploy/helm/analystos/files/prometheus/rules.yaml, values monitoring.prometheusRule.slo) use the same numbers.
+version: 1
+owner: "platform operations (sign-off: product owner, before the pilot)"
+pilot:                       # expected pilot load per installation
+  ask_users: 10              # people asking at the same time
+  ask_think_seconds: 5       # pause between one person's questions
+  concurrent_runs: 10        # investigations running at once
+load_factor: 2.0             # S12 §5: "Load test (k6/Locust) at 2x pilot targets"
+slos:
+  ask_latency:               # Ask (POST /api/ask/threads/{id}/turns): time to the answer (non-streamed)
+    p95_seconds: 3.0
+    target: 0.95             # share of asks within p95_seconds
+  run_success:
+    target: 0.95             # COMPLETED (or COMPLETED_WITH_LIMITATIONS) of finished runs
+    max_p95_seconds: 900     # a run's wall clock at the load level
+  availability:
+    target: 0.995            # non-5xx share of API responses (health and metrics excluded)

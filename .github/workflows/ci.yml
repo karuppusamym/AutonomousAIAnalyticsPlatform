@@ -46,6 +46,9 @@ jobs:
         # held-out corpus (P4-08, ~1 min; a non-blocking report until the owner confirms its thresholds).
         run: PYTHONPATH=src .venv/bin/python scripts/eval_gates.py --out eval-gates/deterministic.json
       - run: .venv/bin/analystos migrate
+      - name: Release gates (S12 §3, blocking) - SQL safety 100%, cross-tenant 0 leaks, publish integrity 100%, per-model matrix (fake)
+        timeout-minutes: 20
+        run: PYTHONPATH=src .venv/bin/python scripts/eval_gates.py --tiers release_safety,model_matrix_fake --out eval-gates/release.json
       - name: Ask benchmark, fake + off tiers (P4-V02 and the ask_fake/ask_off gates; 162 questions each, ~1 min)
         timeout-minutes: 8
         env: {ANALYSTOS_EVAL_RESULTS_DIR: eval-gates}

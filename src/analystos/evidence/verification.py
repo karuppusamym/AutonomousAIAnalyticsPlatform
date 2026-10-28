@@ -533,6 +533,10 @@ def sweep(session: Session, *, actor: str = "scheduler") -> dict[str, Any]:
                             details={"dependencies": out["dependencies"], "by_kind": out["by_kind"],
                                      "voided": out["voided"][:500]}, started_at=started, finished_at=utcnow())
     session.add(row)
+    from analystos.observability.metrics import inc
+
+    inc("analystos_void_sweeps_total", outcome="late_voids" if out["voided"] else "clean")
+    inc("analystos_findings_voided_total", len(out["voided"]))
     if out["voided"]:
         log.warning("verification sweep: %s late void(s) %s: a change path voided nothing", len(out["voided"]), out["by_kind"])
         for ws in sorted({r.workspace_id for r in session.scalars(select(VerificationRecord)

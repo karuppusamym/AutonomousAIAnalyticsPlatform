@@ -72,6 +72,18 @@ def consume(session: Session, approval: Approval) -> Approval:
     return claim(session, approval, expect="approved", to="executed")
 
 
+def _observe_latency(approval: Approval, decision: str) -> None:
+    from analystos.observability.metrics import observe
+
+    created = approval.created_at
+    if created is not None:
+        now = utcnow()
+        if created.tzinfo is None:
+            now = now.replace(tzinfo=None)
+        observe("analystos_approval_latency_seconds", (now - created).total_seconds(), action=approval.action,
+                decision=decision)
+
+
 def decide(session: Session, approval_id: str, user: User, *, approve: bool, reason: str | None = None) -> Approval:
     approval = session.get(Approval, approval_id)
     if approval is None:
@@ -98,6 +110,7 @@ def decide(session: Session, approval_id: str, user: User, *, approve: bool, rea
         raise Conflict("policy changed since the proposal was created; a new approval is required")
     claim(session, approval, expect="pending", to="approved" if approve else "rejected", decided_by=user.id,
           decided_at=utcnow(), reason=reason)
+    _observe_latency(approval, "approved" if approve else "rejected")
     emit(approval.workspace_id, "approval.completed", {"approval_id": approval.id, "status": approval.status},
          run_id=approval.run_id, actor=f"user:{user.id}", session=session)
     audit(f"user:{user.id}", "approval.decided", workspace_id=approval.workspace_id, run_id=approval.run_id,
