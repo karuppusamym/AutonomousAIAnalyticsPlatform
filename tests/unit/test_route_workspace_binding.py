@@ -42,6 +42,10 @@ EXEMPT_ROUTES = {
     ("POST", "/api/dashboards/{artifact_id}/schedule"): "always answers with where to create a schedule; reads nothing",
     ("GET", "/api/worker/artifacts/{artifact_id}"): WORKER_TOKEN,
     ("PUT", "/api/worker/tasks/{task_id}/outputs/{name}"): WORKER_TOKEN,
+    ("POST", "/v2/triggers/webhook/{rule_id}"): "signed trigger ingress (S09-T1): no user session; authenticated by the "
+                                                "rule's own HMAC secret, then written as the rule's owning tenant",
+    ("POST", "/v2/channels/{kind}/{binding_id}"): "signed inbound channel message (S09-T5): no user session; authenticated "
+                                                  "by the binding's own secret, then written as its owning tenant",
 }
 
 

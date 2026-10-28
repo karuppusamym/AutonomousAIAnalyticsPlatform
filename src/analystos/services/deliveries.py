@@ -60,7 +60,7 @@ from analystos.tenancy.background import owned_by, platform_loop
 
 log = get_logger(__name__)
 APPROVAL_ACTION = "delivery_destination.authorize"
-KINDS = ("email", "webhook")
+KINDS = ("email", "webhook", "teams", "slack")  # teams / slack: incoming webhooks (S09-T5, triggers/channels.py)
 CONTENT_KINDS = ("report", "alert")
 TERMINAL = ("delivered", "dead_letter", "refused")
 LEASE = timedelta(minutes=5)
@@ -160,6 +160,15 @@ def normalize_config(kind: str, config: dict[str, Any] | None) -> dict[str, Any]
             raise InvalidInput("a webhook destination needs config.secret_ref = env:ANALYSTOS_WEBHOOK_<NAME>, the "
                                "environment variable holding its HMAC signing secret")
         return {"url": check_webhook_url(str(config.get("url") or "")), "secret_ref": secret_ref}
+    if kind in ("teams", "slack"):
+        extra = set(config) - {"url_ref"}
+        if extra:
+            raise InvalidInput(f"unknown {kind} destination fields: {sorted(extra)}")
+        url_ref = str(config.get("url_ref") or "").strip()
+        if not _SECRET_REF.match(url_ref):  # the incoming-webhook URL carries its own token: it is a secret
+            raise InvalidInput(f"a {kind} destination needs config.url_ref = env:ANALYSTOS_WEBHOOK_<NAME>, the "
+                               "environment variable holding its incoming-webhook URL")
+        return {"url_ref": url_ref}
     raise InvalidInput(f"kind must be one of {list(KINDS)}")
 
 
@@ -185,6 +194,8 @@ def authorization_payload(dest: DeliveryDestination) -> dict[str, Any]:
 def describe(dest: DeliveryDestination) -> str:
     if dest.kind == "email":
         return f"email to {', '.join(dest.config.get('recipients', []))}"
+    if dest.kind in ("teams", "slack"):
+        return f"{dest.kind} channel (incoming webhook in {dest.config.get('url_ref')})"
     return f"webhook POST to {dest.config.get('url')}"
 
 
@@ -507,7 +518,11 @@ class SmtpTransport:
 
 
 def default_transports() -> dict[str, Transport]:
-    return {"email": SmtpTransport(), "webhook": WebhookTransport()}
+    from analystos.triggers.channels import ChannelTransport, GraphMailTransport
+
+    email: Transport = GraphMailTransport() if _settings().delivery_email_transport == "graph" else SmtpTransport()
+    return {"email": email, "webhook": WebhookTransport(), "teams": ChannelTransport("teams"),
+            "slack": ChannelTransport("slack")}
 
 
 # ------------------------------------------------------------------------------ queueing
@@ -632,12 +647,28 @@ def _authorize(session: Session, d: Delivery, dest: DeliveryDestination | None) 
         normalize_config(dest.kind, dest.config)
     except InvalidInput as exc:
         raise PolicyDenied(f"the destination no longer satisfies the egress policy: {exc.message}") from None
+    _authorize_rule(session, d)
     # Immediately before the side effect (CLAUDE.md rule 5): the approval still binds exactly this destination.
     try:
         return verify_for_execution(session, dest.approval_id, payload=authorization_payload(dest), plan_hash=None)
     except ApprovalRequired:
         dest.status, dest.authorized_hash, dest.authorized_until = "lapsed", None, None  # shown as needing re-approval
         raise
+
+
+def _authorize_rule(session: Session, d: Delivery) -> None:
+    """S09: an alert of a rule monitor (one with `notify` / `on_trigger`) is sent only while the rule's own
+    approval verifies — same scope, same recipients — and only to a recipient that approval names."""
+    from analystos.db.models import Monitor
+    from analystos.triggers import rules
+
+    monitor_id = (d.origin or {}).get("monitor_id")
+    monitor = session.get(Monitor, monitor_id) if monitor_id else None
+    if monitor is None or not rules.requires_approval(monitor.config):
+        return
+    rules.verify_rule(session, monitor)
+    if d.destination_id not in rules.recipients(session, monitor):
+        raise PolicyDenied("the destination is not a recipient of the monitor's approved rule")
 
 
 def _permanent(exc: AnalystOSError) -> bool:

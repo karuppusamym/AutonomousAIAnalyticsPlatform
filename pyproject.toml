@@ -41,6 +41,8 @@ ml = ["scikit-learn>=1.5", "statsmodels>=0.14"]
 # PDF, XLSX, PPTX and DOCX reports (charts rendered with matplotlib; the PDF font is bundled). The API/lite image
 # installs it; md/html need nothing.
 reports = ["matplotlib>=3.9", "fpdf2>=2.7", "fonttools>=4.50", "openpyxl>=3.1", "python-pptx>=1.0", "python-docx>=1.1"]
+# The Kafka trigger consumer (`analystos triggers-consumer`, compose profile `events`, spec S09-T2).
+kafka = ["confluent-kafka>=2.5"]
 # The Temporal orchestrator and `analystos worker` (standard and scale profiles).
 temporal = ["temporalio>=1.7"]
 # The optional Neo4j projection (ANALYSTOS_GRAPH_ENABLED, the `graph` profile).

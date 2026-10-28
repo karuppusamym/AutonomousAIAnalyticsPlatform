@@ -152,9 +152,14 @@ def _decide(approval_id: str, user: User, session: Session, approve: bool, reaso
             review.apply_candidate_decision(session, approval)
         else:
             from analystos.services import deliveries
+            from analystos.triggers import packs, rules
 
             if approval.action == deliveries.APPROVAL_ACTION:  # N-3: an external destination's authorization
                 deliveries.apply_decision(session, approval)
+            elif approval.action == rules.APPROVAL_ACTION:  # S09: a monitor rule's standing approval
+                rules.apply_decision(session, approval)
+            elif approval.action == packs.REVIEW_ACTION:  # S09-T4: a recurring pack's brief, reviewed
+                packs.apply_review(session, approval)
     session.flush()
     result = row(approval, exclude={"payload"})
     run_id = approval.run_id

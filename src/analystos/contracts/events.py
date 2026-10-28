@@ -107,3 +107,7 @@ EVENT_TYPES |= {"tool.published", "tool.quarantined", "tool.deprecated", "tool.s
 # Dashboards and publishing (S08): op versions, forks of published dashboards, publish requests, reconcile drift, exports
 EVENT_TYPES |= {"dashboard.version_created", "dashboard.forked", "dashboard.publish_requested",
                 "publication.drift_detected", "export.created"}
+# Proactive monitoring, triggers and recurring work (S09): ingress, anti-noise outcomes, alert groups, channels, packs
+EVENT_TYPES |= {"trigger.received", "trigger.processed", "alert.deferred", "alert.released", "alert_group.opened",
+                "alert_group.merged", "alert_group.resolved", "monitor.rule_approved", "channel.request_created",
+                "pack.reviewed"}

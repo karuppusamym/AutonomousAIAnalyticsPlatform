@@ -43,6 +43,7 @@ from analystos.api.routers import semantic as semantic_router
 from analystos.api.routers import steps as steps_router
 from analystos.api.routers import tenants as tenants_router
 from analystos.api.routers import tools_v2 as tools_v2_router
+from analystos.api.routers import triggers_v2 as triggers_v2_router
 from analystos.api.routers import work_orders as work_orders_router
 from analystos.api.routers import worker as worker_router
 from analystos.api.routers import workspace_brief as brief_router
@@ -105,6 +106,7 @@ for r in (auth.router, workspaces.router, analysis.router, artifacts.router, adm
     app.include_router(r)
 app.include_router(mcp_router.router)
 app.include_router(tools_v2_router.router)  # tool, agent and data-product registry (S10)
+app.include_router(triggers_v2_router.router)  # signed triggers, incidents, conversation channels (S09)
 app.include_router(models_admin_router.router)  # model gateway admin (S05)
 app.include_router(decisions_router.router)
 app.include_router(builds_router.router)

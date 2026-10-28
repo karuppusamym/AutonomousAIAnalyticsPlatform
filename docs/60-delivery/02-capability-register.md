@@ -100,6 +100,25 @@ Windows dev host): tenant B never reads tenant A's query results, model answers 
 workspace layout, SQL and prompt; B presenting A's scope gets 404 and runs nothing; tenant residency read under RLS
 denies a query from outside it, audited only in B. Not built: a real OPA sidecar in compose (adapter tested against
 an OPA-shaped HTTP server), an OPA decision cache, ABAC on `explain` (reads no rows).
+## 2026-10-27 — S09 Proactive monitoring, triggers and recurring work (T1–T5)
+
+New package `src/analystos/triggers/` and API `/v2/triggers`, `/v2/channels`: signed webhook and Kafka events are
+durably queued with a 7-day replay cache and processed as the owning tenant; a monitor's anti-noise gate
+(hysteresis, debounce, cooldown, quiet hours with an explicit zone, daily caps, correlation into alert groups, the spec's incidents) decides
+what fires; a rule monitor (`notify` / `on_trigger`) is approved once, bound to its scope, recipients, pinned
+playbook and limits, and every outbound message and goal run verifies that approval first; recurring packs
+auto-deliver after N clean runs and route to a hash-bound review otherwise; Teams / Slack cards and Graph email
+go out, signed Slack / Teams / email messages come in as Request Desk requests. Evidence (Windows dev host,
+Postgres 16 on :55432 with strict tenancy and RLS, 2026-10-27): `tests/unit/test_s09_noise.py` (18),
+`tests/unit/test_s09_triggers.py` (16), `tests/unit/test_s09_packs_channels.py` (11),
+`tests/integration/test_s09_triggers_pg.py` (3: a webhook posted with no tenant bound -> processed by the platform
+loop -> one alert in one alert group -> Teams send refused until the rule is approved, then delivered; Kafka enqueue
+under RLS; a signed Slack message -> a real Desk request; another tenant sees none of the rows). Migration
+`0071_triggers` upgrade, downgrade -1 and re-upgrade checked. Fakes only for brokers and channels (Kafka consumer,
+Teams/Slack/Graph HTTP, Desk submit in unit tests): not certified against a real broker or workspace. Not built:
+the freshness poll trigger (`get_freshness()` vs a contract), a UI for rules, alert groups and bindings, replies in
+the originating Slack/Teams thread, Bot Framework (JWT) Teams bots.
+
 ## 2026-10-27 — S03 Context Service + Context Ledger (T1–T6) and S13-T5 certify-on-close
 
 The Context Ledger (`context_ledger_entry`, `context_ledger_change`; migration `0061_context_ledger`, RLS) is a

@@ -159,6 +159,26 @@ services:
     depends_on: [api]
     command: ["analystos", "scheduler"]
 
+  # events (S09-T2): a Kafka-compatible broker and the trigger consumer, e.g.
+  #   docker compose --profile standard --profile events up -d
+  # The consumer reads only topics the tenant ACL grants (ANALYSTOS_KAFKA_TOPIC_ACL) and commits after enqueue.
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    profiles: ["events"]
+    command: ["redpanda", "start", "--mode", "dev-container", "--smp", "1", "--overprovisioned",
+              "--kafka-addr", "internal://0.0.0.0:9092,external://0.0.0.0:19092",
+              "--advertise-kafka-addr", "internal://redpanda:9092,external://localhost:19092"]
+    ports: ["19092:19092"]
+
+  triggers-consumer:
+    volumes: [runtime-data:/app/var]
+    build: *worker-build
+    profiles: ["events"]
+    environment: {<<: *app-env, ANALYSTOS_KAFKA_BOOTSTRAP_SERVERS: "redpanda:9092"}
+    depends_on: [api, redpanda]
+    restart: unless-stopped
+    command: ["analystos", "triggers-consumer", "--rule-set", "default"]
+
   # scale: one service per worker pool (spec v3 §8): each serves only its task queue(s) and scales on its own,
   #   e.g. docker compose ... up -d --scale worker-compute=4 --scale worker-analysis=2
   worker-analysis:
