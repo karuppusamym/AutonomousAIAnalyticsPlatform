@@ -63,6 +63,12 @@ class SessionSQL(BaseModel):
     timeout: list[str] = Field(default_factory=list)
 
 
+class KindCapabilities(BaseModel):
+    # S02-T5: statements that hand the end user to the source's own row security (driver-bound parameters
+    # %(user)s, %(user_email)s, %(workspace)s), run on pushdown connections before the query.
+    session_identity: list[str] = Field(default_factory=list)
+
+
 class SourceKind(BaseModel):
     kind: str
     label: str
@@ -83,6 +89,7 @@ class SourceKind(BaseModel):
     system_schemas: list[str] = Field(default_factory=list)
     default_schemas: list[str] | None = None
     pushdown_default: bool = True  # when pushdown is allowed: is it the default mode, or opt-in?
+    capabilities: KindCapabilities = Field(default_factory=KindCapabilities)
     docs: str = ""
 
     @property
@@ -121,6 +128,7 @@ class SourceKind(BaseModel):
             "default_execution_mode": execution_mode_for(self.kind, None), "pip_extra": self.driver.extra,
             "driver_available": driver_available(self.kind), "readonly_session": bool(self.session_sql.readonly),
             "readonly_enforcement": self.readonly_enforcement, "docs": self.docs,
+            "session_identity": bool(self.capabilities.session_identity),
         }
 
 

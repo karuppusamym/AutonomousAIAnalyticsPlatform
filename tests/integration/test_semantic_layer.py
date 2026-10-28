@@ -202,7 +202,7 @@ def test_publication_requires_approved_metrics(control_db, servicenow_url, monke
     Planning and publication each stop for their current explicit approval rather than bypassing a gate.
     """
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.setenv("SERVICENOW_PASSWORD", "admin")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_SERVICENOW", "admin")
     monkeypatch.setenv("ANALYSTOS_SUPERSET_URL", "http://127.0.0.1:9")  # preview destination
     monkeypatch.setenv("ANALYSTOS_GRAPH_ENABLED", "false")
     from analystos.core.config import get_settings
@@ -229,7 +229,7 @@ def test_publication_requires_approved_metrics(control_db, servicenow_url, monke
             add_member(s, admin, ws.id, "approver@analystos.local", "approver")
             src = register_source(s, admin, ws.id, kind="servicenow", name="SN",
                                   config={"instance_url": servicenow_url, "username": "admin", "tables": ["incident"]},
-                                  secret_ref="env:SERVICENOW_PASSWORD")
+                                  secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
             s.flush()
             ws_id, src_id, admin_id = ws.id, src.id, admin.id
             s.expunge(admin)

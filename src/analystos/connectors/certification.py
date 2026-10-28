@@ -9,11 +9,16 @@ ran, and `result: pass`. There is no hand-kept list: deleting the file un-certif
 `scripts/certify_connectors.py` writes the file only after the kind's real-engine tests passed.
 A mock or catalog test is not live evidence; without a file a kind is `tested` (catalog and unit
 tests, `tests/unit/test_source_kinds.py`).
+
+S02-T6: the certification kit (`analystos certify-connector`, connectors/certify_kit.py) writes
+`docs/evidence/connectors/<kind>-YYYY-MM-DD.md` with the same frontmatter. Both layouts count, and only
+evidence younger than ``MAX_AGE_DAYS`` (180) certifies: an engine certified once is re-certified, not trusted
+forever.
 """
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -24,8 +29,11 @@ from pydantic import BaseModel
 from analystos.core.config import DATA_ROOT
 
 EVIDENCE_DIR = DATA_ROOT / "docs" / "60-delivery" / "evidence"
+KIT_EVIDENCE_DIR = DATA_ROOT / "docs" / "evidence" / "connectors"
+MAX_AGE_DAYS = 180
 UNIT_EVIDENCE = "tests/unit/test_source_kinds.py"
 FILE_NAME = re.compile(r"^connector-(?P<kind>[a-z0-9_]+)-(?P<date>\d{8})(?:-[A-Za-z0-9_.-]+)?\.md$")
+KIT_FILE_NAME = re.compile(r"^(?P<kind>[a-z0-9_]+)-(?P<date>\d{4}-\d{2}-\d{2})\.md$")
 _FRONTMATTER = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.S)
 REQUIRED = ("kind", "date", "engine", "test", "result")
 
@@ -40,11 +48,12 @@ class Evidence(BaseModel):
 
 def parse_evidence(path: Path, kind: str) -> tuple[Evidence | None, str | None]:
     """(evidence, None) when `path` is valid live evidence for `kind`, else (None, why not)."""
-    m = FILE_NAME.match(path.name)
+    m = FILE_NAME.match(path.name) or KIT_FILE_NAME.match(path.name)
     if not m or m.group("kind") != kind:
-        return None, f"{path.name}: not a connector-{kind}-YYYYMMDD*.md file"
+        return None, f"{path.name}: not a connector-{kind}-YYYYMMDD*.md or {kind}-YYYY-MM-DD.md file"
+    stamp = m.group("date").replace("-", "")
     try:
-        day = datetime.strptime(m.group("date"), "%Y%m%d").date()
+        day = datetime.strptime(stamp, "%Y%m%d").date()
         fm = _FRONTMATTER.match(path.read_text(encoding="utf-8"))
         meta = (yaml.safe_load(fm.group(1)) if fm else None) or {}
     except (ValueError, OSError, yaml.YAMLError) as exc:
@@ -52,7 +61,7 @@ def parse_evidence(path: Path, kind: str) -> tuple[Evidence | None, str | None]:
     missing = [k for k in REQUIRED if not meta.get(k)]
     if missing:
         return None, f"{path.name}: frontmatter lacks {', '.join(missing)}"
-    if str(meta["kind"]) != kind or str(meta["date"]).replace("-", "") != m.group("date"):
+    if str(meta["kind"]) != kind or str(meta["date"]).replace("-", "") != stamp:
         return None, f"{path.name}: frontmatter kind/date do not match the file name"
     if str(meta["result"]).lower() != "pass":
         return None, f"{path.name}: result is {meta['result']!r}, not pass"
@@ -63,34 +72,39 @@ def parse_evidence(path: Path, kind: str) -> tuple[Evidence | None, str | None]:
     return Evidence(kind=kind, date=day, path=rel, engine=str(meta["engine"]), test=str(meta["test"])), None
 
 
-def evidence_for(kind: str, evidence_dir: Path | None = None) -> Evidence | None:
-    """The newest valid live evidence file for `kind`, if any."""
-    folder = evidence_dir or EVIDENCE_DIR
-    if not folder.is_dir():
-        return None
-    found = [e for p in folder.glob(f"connector-{kind}-*.md") for e, _ in [parse_evidence(p, kind)] if e is not None]
+def _folders(evidence_dir: Path | None) -> list[Path]:
+    return [evidence_dir] if evidence_dir is not None else [EVIDENCE_DIR, KIT_EVIDENCE_DIR]
+
+
+def evidence_for(kind: str, evidence_dir: Path | None = None, *, today: date | None = None) -> Evidence | None:
+    """The newest valid live evidence file for `kind` younger than MAX_AGE_DAYS, if any."""
+    oldest = (today or date.today()) - timedelta(days=MAX_AGE_DAYS)
+    found = [e for folder in _folders(evidence_dir) if folder.is_dir()
+             for p in [*folder.glob(f"connector-{kind}-*.md"), *folder.glob(f"{kind}-*.md")]
+             for e, _ in [parse_evidence(p, kind)] if e is not None and e.date >= oldest]
     return max(found, key=lambda e: (e.date, e.path)) if found else None
 
 
-def certification(kind: str, evidence_dir: Path | None = None) -> dict[str, Any]:
-    ev = evidence_for(kind, evidence_dir)
+def certification(kind: str, evidence_dir: Path | None = None, *, today: date | None = None) -> dict[str, Any]:
+    ev = evidence_for(kind, evidence_dir, today=today)
     if ev is not None:
         return {"status": "certified", "evidence": ev.path, "evidence_date": ev.date.isoformat(), "engine": ev.engine}
     return {"status": "tested", "evidence": UNIT_EVIDENCE, "evidence_date": None, "engine": None}
 
 
 @lru_cache(maxsize=1)
-def _cached_statuses(folder: str, stamp: tuple[tuple[str, float], ...]) -> dict[str, dict[str, Any]]:
+def _cached_statuses(folder: str | None, stamp: tuple[tuple[str, float], ...], today: date) -> dict[str, dict[str, Any]]:
     from analystos.connectors import kinds
 
-    return {k: certification(k, Path(folder)) for k in kinds.kind_ids()}
+    return {k: certification(k, Path(folder) if folder else None, today=today) for k in kinds.kind_ids()}
 
 
-def statuses(evidence_dir: Path | None = None) -> dict[str, dict[str, Any]]:
-    """Certification of every kind; recomputed whenever an evidence file appears, changes or goes."""
-    folder = evidence_dir or EVIDENCE_DIR
-    stamp = tuple(sorted((p.name, p.stat().st_mtime) for p in folder.glob("connector-*.md"))) if folder.is_dir() else ()
-    return _cached_statuses(str(folder), stamp)
+def statuses(evidence_dir: Path | None = None, *, today: date | None = None) -> dict[str, dict[str, Any]]:
+    """Certification of every kind; recomputed whenever an evidence file appears, changes or goes, and daily
+    (evidence ages out)."""
+    stamp = tuple(sorted((str(p), p.stat().st_mtime) for folder in _folders(evidence_dir) if folder.is_dir()
+                         for p in folder.glob("*.md")))
+    return _cached_statuses(str(evidence_dir) if evidence_dir is not None else None, stamp, today or date.today())
 
 
 def connector_manifests(evidence_dir: Path | None = None) -> list[dict[str, Any]]:

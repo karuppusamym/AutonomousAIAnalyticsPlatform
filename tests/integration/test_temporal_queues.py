@@ -271,7 +271,7 @@ def test_full_run_on_temporal_worker_pools(temporal, control_db, servicenow_url,
 
     prefix = f"aostest-s1-{uuid.uuid4().hex[:10]}"
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.setenv("SERVICENOW_PASSWORD", "admin")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_SERVICENOW", "admin")
     monkeypatch.setenv("ANALYSTOS_SUPERSET_URL", "http://127.0.0.1:9")
     monkeypatch.setenv("ANALYSTOS_ORCHESTRATOR", "temporal")
     monkeypatch.setenv("ANALYSTOS_TEMPORAL_QUEUE_PREFIX", prefix)
@@ -310,7 +310,7 @@ def test_full_run_on_temporal_worker_pools(temporal, control_db, servicenow_url,
             add_member(s, admin, ws.id, "approver@analystos.local", "approver")
             src = register_source(s, admin, ws.id, kind="servicenow", name="SN",
                                   config={"instance_url": servicenow_url, "username": "admin", "tables": ["incident"]},
-                                  secret_ref="env:SERVICENOW_PASSWORD")
+                                  secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
             s.flush()
             ws_id, src_id = ws.id, src.id
             s.expunge(admin)

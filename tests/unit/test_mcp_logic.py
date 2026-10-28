@@ -71,7 +71,7 @@ def test_url_and_secret_ref_validation():
         mc._validate_url("ftp://x/mcp")
     with pytest.raises(InvalidInput):
         mc._validate_url("https://u:p@x/mcp")
-    assert mc._validate_secret_ref("env:SUPERSET_MCP_TOKEN") == "env:SUPERSET_MCP_TOKEN"
+    assert mc._validate_secret_ref("env:ANALYSTOS_SOURCE_SECRET_SUPERSET_MCP") == "env:ANALYSTOS_SOURCE_SECRET_SUPERSET_MCP"
     with pytest.raises(InvalidInput):
         mc._validate_secret_ref("sk-live-abcdef")
 

@@ -52,7 +52,12 @@ def default_gateway():
         cache = QueryCache(settings)
     except Exception:
         cache = None
-    return QueryGateway(settings, cache=cache, on_event=on_event)
+    gateway = QueryGateway(settings, cache=cache, on_event=on_event)
+    if getattr(settings, "query_transport", "inprocess") == "temporal":  # S02-T1: statements run in worker:query
+        from analystos.gateway.protocol import RemoteQueryGateway, TemporalQueryService
+
+        return RemoteQueryGateway(gateway, TemporalQueryService(settings))
+    return gateway
 
 
 def workspace_call_ctx(workspace_id: str, **kwargs: Any) -> CallContext:

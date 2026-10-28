@@ -171,6 +171,9 @@ def test_registry_builds_every_catalog_kind(monkeypatch, tmp_path) -> None:
     (tmp_path / "a.csv").write_text("x\n1\n", encoding="utf-8")
     for spec in kinds.list_kinds():
         config = {"path": "a.csv"} if spec.kind == "csv" else ({"username": "u"} if spec.kind == "servicenow" else sample)
+        if spec.kind == "rest":  # a declarative description (S02-T8)
+            config = {"base_url": "https://api.example.com", "endpoints": [
+                {"name": "t", "path": "/t", "columns": [{"name": "id", "path": "id"}]}]}
         con = build_connector(SimpleNamespace(kind=spec.kind, config=config, secret_ref=None), settings)
         assert con.kind == spec.kind
         if spec.is_sql:

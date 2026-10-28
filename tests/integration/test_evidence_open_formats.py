@@ -66,7 +66,7 @@ def _wait(run_id: str, statuses: set[str], timeout: float = 600) -> str:
 
 def test_run_evidence_in_open_formats(control_db, servicenow_url, monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.setenv("SERVICENOW_PASSWORD", "admin")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_SERVICENOW", "admin")
     monkeypatch.setenv("ANALYSTOS_SUPERSET_URL", "http://127.0.0.1:9")  # the preview destination
     monkeypatch.setenv("ANALYSTOS_GRAPH_ENABLED", "false")
     from analystos.core.config import get_settings
@@ -105,7 +105,7 @@ def test_run_evidence_in_open_formats(control_db, servicenow_url, monkeypatch):
             add_member(s, admin, ws.id, "approver@analystos.local", "approver")
             src = register_source(s, admin, ws.id, kind="servicenow", name="SN",
                                   config={"instance_url": servicenow_url, "username": "admin", "tables": ["incident", "change_request"]},
-                                  secret_ref="env:SERVICENOW_PASSWORD")
+                                  secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
             s.flush()
             ws_id, src_id, admin_email = ws.id, src.id, admin.email
             s.expunge(admin)

@@ -199,14 +199,14 @@ def pushdown_source(dp_control_url, dp_session_factory, dp_workspace, monkeypatc
         conn.execute(text("ANALYZE shop.customer; ANALYZE shop.orders"))
     admin.dispose()
     url = make_url(dp_control_url)
-    monkeypatch.setenv("DP_PUSHDOWN_PASSWORD", url.password or "")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_DP_PUSHDOWN_PASSWORD", url.password or "")
     config = {"host": url.host, "port": url.port or 5432, "database": url.database, "username": url.username, "schemas": ["shop"]}
     source_id = new_id("pg")
     with dp_session_factory() as s:
         s.add(Source(id=source_id, workspace_id=dp_workspace["workspace_id"], kind="postgres", name="shop",
-                     config=config, secret_ref="env:DP_PUSHDOWN_PASSWORD", status="ready", execution_mode="pushdown"))
+                     config=config, secret_ref="env:ANALYSTOS_SOURCE_SECRET_DP_PUSHDOWN_PASSWORD", status="ready", execution_mode="pushdown"))
         s.commit()
-    return {"source_id": source_id, "connector": PostgresConnector(config, "env:DP_PUSHDOWN_PASSWORD")}
+    return {"source_id": source_id, "connector": PostgresConnector(config, "env:ANALYSTOS_SOURCE_SECRET_DP_PUSHDOWN_PASSWORD")}
 
 
 def test_postgres_connector_discovery(pushdown_source) -> None:

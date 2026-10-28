@@ -51,6 +51,9 @@ class FakeSession:
     def execute(self, stmt):  # noqa: ANN001
         return SimpleNamespace(one=lambda: (1, None, 10))
 
+    def scalar(self, stmt):  # noqa: ANN001 - the workspace policy row (S02 budget / data movement): none
+        return None
+
     def add(self, obj) -> None:  # noqa: ANN001
         self.sink.append(obj)
 
@@ -159,7 +162,7 @@ def test_effective_row_limit_is_minimum(env, scope: DataScope) -> None:
     gw, audit, _, _ = env
     captured: dict[str, Any] = {}
 
-    def fake_run(source, validated, max_rows, timeout):  # noqa: ANN001, ANN202
+    def fake_run(source, validated, max_rows, timeout, **_):  # noqa: ANN001, ANN202
         captured.update(max_rows=max_rows, timeout=timeout, sql=validated.executable_sql)
         return ["number"], [[str(i)] for i in range(max_rows + 1)]
 
@@ -219,3 +222,26 @@ def test_reader_identity_guard() -> None:
     with pytest.raises(InvalidInput):
         QueryGateway(Settings(analytics_loader_url="postgresql+psycopg://analystos_loader:loader@localhost:5432/analytics",
                               analytics_reader_url="postgresql+psycopg://analystos_loader:loader@localhost:5432/analytics"))
+
+
+def test_run_scan_budget_is_charged_and_stops_the_run(env, scope, monkeypatch):
+    """S06 x S02: a goal run's max_scan_bytes is charged each admitted statement's estimate (record_scan) and a
+    statement that would pass it is refused before it runs (check_scan), audited as budget.run_scan_bytes."""
+    from analystos.autonomy import budget
+    from analystos.core.errors import BudgetExceeded
+    from analystos.gateway.types import CostEstimate
+
+    gw, audit, _, _ = env
+    monkeypatch.setattr(budget, "run_limits", lambda session, run_id: {"max_scan_bytes": 1000} if run_id == "run_s" else {})
+    gw._estimate = lambda *a, **k: CostEstimate(rows=10, bytes=600, basis="explain")  # type: ignore[method-assign]
+    ran: list = []
+    gw._run = lambda *a, **k: (ran.append(1), (["number"], [["INC1"]]))[1]  # type: ignore[method-assign]
+    gw.execute(scope, "SELECT number FROM incident", actor="agent:a", run_id="run_s", use_cache=False)
+    assert ran == [1]
+    with pytest.raises(BudgetExceeded, match="run scan budget"):
+        gw.execute(scope, "SELECT number FROM incident", actor="agent:a", run_id="run_s", use_cache=False)
+    assert ran == [1]  # the refused statement never ran
+    refused = [a for a in audit if isinstance(a, QueryExecution) and a.status == "rejected"][-1]
+    assert refused.reason_code == "budget.run_scan_bytes" and refused.cost_estimate["run_budget"] == 1000
+    gw.execute(scope, "SELECT number FROM incident", actor="agent:a", run_id="run_other", use_cache=False)  # no limit
+    assert ran == [1, 1]

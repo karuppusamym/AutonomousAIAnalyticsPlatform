@@ -20,7 +20,7 @@ def main() -> int:
     parser.add_argument("--approve", action="store_true")
     args = parser.parse_args()
     os.environ["ANALYSTOS_ORCHESTRATOR"] = "local"
-    os.environ.setdefault("SERVICENOW_PASSWORD", "admin")
+    os.environ.setdefault("ANALYSTOS_SOURCE_SECRET_SERVICENOW", "admin")
     if args.no_llm:
         os.environ.pop("OPENROUTER_API_KEY", None)
     from sqlalchemy import select
@@ -45,7 +45,7 @@ def main() -> int:
         src = register_source(s, admin, ws.id, kind="servicenow", name="ServiceNow (mock)",
                               config={"instance_url": settings.servicenow_mock_url, "username": "admin",
                                       "tables": ["incident", "change_request", "sys_user_group", "cmdb_ci"]},
-                              secret_ref="env:SERVICENOW_PASSWORD")
+                              secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
         s.flush()
         ws_id, src_id = ws.id, src.id
         s.expunge(admin)

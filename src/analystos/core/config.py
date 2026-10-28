@@ -237,6 +237,48 @@ class Settings(BaseSettings):
     query_timeout_seconds: int = 30
     query_max_rows: int = 50_000
     query_cache_ttl_seconds: int = 3600
+    # Pre-execution cost guard (S02-T4): refuse a statement whose estimated scan exceeds this many bytes.
+    # 0 = no platform ceiling (a request's own budget still applies).
+    query_max_scan_bytes: int = Field(default=0, ge=0)
+    # Result handles (S02-T3, ADR-010): results above either threshold are written as Parquet to the result
+    # store (`tenant/{t}/results/{query_execution_id}.parquet`) and returned as a ResultHandle.
+    result_inline_max_rows: int = Field(default=256, ge=1)
+    result_inline_max_bytes: int = Field(default=65_536, ge=1024)
+    result_store_dir: Path = STATE_ROOT / "var" / "results"
+    result_ttl_hours: int = Field(default=24, ge=1, le=24 * 90)
+    # Query worker (S02-T1): where gateway execution runs. inprocess = this process (lite, tests);
+    # temporal = the `query` task queue served by `analystos worker --queues query` (worker:query role).
+    query_transport: Literal["inprocess", "temporal"] = "inprocess"
+    query_transport_timeout_seconds: int = Field(default=300, ge=5)
+    # This process's role. Source credentials resolve only in roles listed in `credential_roles`
+    # (comma-separated): `all` (lite / one process), `query` (worker:query), and the ingest pools that extract
+    # staged sources (`crawl`, `elt`). Set ANALYSTOS_PROCESS_ROLE=api on an API that sends queries to worker:query.
+    process_role: str = "all"
+    credential_roles: str = "all,query,crawl,elt"
+
+    # Secret references (`secret_ref`) that workspace users register on sources and MCP servers. Only the
+    # operator decides which process secrets they may name: an `env:` ref must start with one of
+    # `secret_env_prefixes` or be listed in `secret_env_names` (both comma-separated); a `file:` ref must sit
+    # under one of `secret_file_dirs`. Secret-manager refs (vault:, aws-sm:, azure-kv:, gcp-sm:) must start with
+    # the scheme's prefix below; `{tenant}` in a prefix is replaced with the caller's tenant id.
+    secret_env_prefixes: str = "ANALYSTOS_SOURCE_SECRET_"
+    secret_env_names: str = ""
+    secret_file_dirs: str = "/run/secrets"
+    secret_cache_seconds: int = Field(default=300, ge=0, le=300)
+    secret_timeout_seconds: float = Field(default=10.0, gt=0)
+    vault_addr: str = ""
+    vault_token_ref: str = ""  # operator-configured (env:NAME / file:/path) Vault token
+    vault_namespace: str = ""
+    vault_prefix: str = "secret/data/analystos/"
+    aws_region: str = ""
+    aws_sm_prefix: str = "analystos/"
+    azure_kv_vaults: str = ""  # comma-separated vault names users may reference
+    azure_kv_prefix: str = "analystos-"
+    gcp_sm_projects: str = ""  # comma-separated project ids users may reference
+    gcp_sm_prefix: str = "analystos-"
+    # Governed REST connector (S02-T8): POST endpoints a source may call, as `host/path` entries
+    # (comma-separated). Only an endpoint marked `safe: true` AND listed here is ever POSTed.
+    rest_safe_post_allowlist: str = ""
 
     # Governed ML (P5-01, ADR-0024): hard ceilings every MLSpec search budget is clamped to.
     ml_max_trials: int = Field(default=50, ge=1, le=1000)

@@ -33,6 +33,9 @@
 #                    table functions; duckdb-engine's reflection is not reliable on SQLAlchemy 2.1).
 #   system_schemas   fnmatch patterns (case-insensitive) never discovered.
 #   default_schemas  schemas used when config.schemas is absent; null = every non-system schema.
+#   capabilities.session_identity  (S02-T5) statements the gateway runs on a pushdown connection before the
+#                    query, so the source's own row security sees the end user. Driver-bound parameters only:
+#                    %(user)s (AnalystOS user id), %(user_email)s, %(workspace)s. Never string-formatted.
 
 kinds:
   postgres:
@@ -53,6 +56,9 @@ kinds:
     catalog: inspector
     system_schemas: [pg_catalog, information_schema, pg_toast, "pg_temp_*", "pg_toast_temp_*"]
     default_schemas: null
+    capabilities:
+      # transaction-local GUCs: an RLS policy reads current_setting('app.user', true)
+      session_identity: ["SELECT set_config('app.user', %(user)s, true), set_config('app.user_email', %(user_email)s, true), set_config('app.workspace', %(workspace)s, true)"]
     docs: >-
       Pushdown. Use a login with USAGE on the schemas and SELECT on the tables (ideally
       default_transaction_read_only=on); the gateway also opens every query READ ONLY with a
@@ -141,6 +147,11 @@ kinds:
     catalog: inspector
     system_schemas: [sys, INFORMATION_SCHEMA, guest, "db_*"]
     default_schemas: [dbo]
+    capabilities:
+      # SESSION_CONTEXT, read-only for the rest of the session: a security policy reads SESSION_CONTEXT(N'app.user')
+      session_identity:
+        - "EXEC sp_set_session_context @key = N'app.user', @value = %(user)s, @read_only = 1"
+        - "EXEC sp_set_session_context @key = N'app.user_email', @value = %(user_email)s, @read_only = 1"
     docs: >-
       Pushdown (tsql). SQL Server has no session read-only switch: the login MUST be a least-privilege
       reader (db_datareader or explicit SELECT grants). The query timeout is the driver's `timeout`.
@@ -188,6 +199,9 @@ kinds:
     catalog: inspector
     system_schemas: [information_schema]
     default_schemas: null
+    capabilities:
+      # session variables a row access policy can read (GETVARIABLE('APP_USER')); applies once Snowflake pushes down
+      session_identity: ["SET (APP_USER, APP_USER_EMAIL) = (%(user)s, %(user_email)s)"]
     docs: >-
       Staged. Use a role granted only USAGE on the warehouse/database/schemas and SELECT on the tables;
       Snowflake has no session read-only switch.
@@ -345,6 +359,27 @@ kinds:
     system_schemas: []
     default_schemas: null
     docs: "Staged through the Table API (connectors/servicenow.py)."
+
+  rest:
+    label: REST API (declarative)
+    category: api
+    url_template: null
+    required: [base_url, endpoints]
+    optional: [auth, rate_limit, timeout_seconds, max_response_bytes]
+    secret: {field: credential, required: false}
+    default_port: null
+    driver: {modules: [httpx], packages: [], extra: null}
+    sqlglot_dialect: postgres
+    session_sql: {readonly: [], timeout: []}
+    connect_timeout_arg: null
+    row_estimate: none
+    catalog: none
+    system_schemas: []
+    default_schemas: null
+    docs: >-
+      Staged from a declarative description (connectors/rest.py, S02-T8): base_url, endpoints with typed
+      params, pagination and a response-to-table mapping, rate limit, auth through secret_ref. GET only, or a
+      POST marked safe: true that the platform administrator allowlisted (ANALYSTOS_REST_SAFE_POST_ALLOWLIST).
 
   csv:
     label: Files (CSV / Parquet / Excel)

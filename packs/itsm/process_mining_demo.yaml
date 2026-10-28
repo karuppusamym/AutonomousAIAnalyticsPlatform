@@ -12,7 +12,7 @@ workspace:
 source:
   kind: servicenow
   name: ServiceNow task activity
-  secret_ref: env:SERVICENOW_PASSWORD
+  secret_ref: env:ANALYSTOS_SOURCE_SECRET_SERVICENOW
   username: admin
   page_size: 10000
   # u_task_activity is the flattened lifecycle log (see process_models.yaml); the records it describes come along

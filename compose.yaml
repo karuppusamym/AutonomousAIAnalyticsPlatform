@@ -45,7 +45,7 @@ x-app-env: &app-env
   ANALYSTOS_SUPERSET_PUBLIC_URL: http://localhost:8088
   ANALYSTOS_SERVICENOW_MOCK_URL: ${ANALYSTOS_SERVICENOW_MOCK_URL:-}
   # Development credential for the bundled synthetic ServiceNow source (profile `demo`).
-  SERVICENOW_PASSWORD: ${SERVICENOW_PASSWORD:-admin}
+  ANALYSTOS_SOURCE_SECRET_SERVICENOW: ${ANALYSTOS_SOURCE_SECRET_SERVICENOW:-admin}
   # Tier 1 (.env.example): set these three (the database URL is this compose file's own) for a shared install.
   ANALYSTOS_JWT_SECRET: ${ANALYSTOS_JWT_SECRET:-dev-only-change-me-please-32bytes!!}
   ANALYSTOS_BOOTSTRAP_ADMIN_PASSWORD: ${ANALYSTOS_BOOTSTRAP_ADMIN_PASSWORD:-ChangeMe123!}

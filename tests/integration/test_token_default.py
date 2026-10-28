@@ -79,7 +79,7 @@ class CountingTransport:
 
 
 def measure_standard_run(servicenow_url: str, monkeypatch) -> dict:
-    monkeypatch.setenv("SERVICENOW_PASSWORD", "admin")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_SERVICENOW", "admin")
     monkeypatch.setenv("ANALYSTOS_SUPERSET_URL", "http://127.0.0.1:9")  # preview destination
     from analystos.core.config import get_settings
     from analystos.db.base import session_scope
@@ -112,7 +112,7 @@ def measure_standard_run(servicenow_url: str, monkeypatch) -> dict:
         add_member(s, admin, ws.id, "approver@analystos.local", "approver")
         src = register_source(s, admin, ws.id, kind="servicenow", name="SN",
                               config={"instance_url": servicenow_url, "username": "admin", "tables": ["incident", "change_request"]},
-                              secret_ref="env:SERVICENOW_PASSWORD")
+                              secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
         s.flush()
         ws_id, src_id = ws.id, src.id
         s.expunge(admin)

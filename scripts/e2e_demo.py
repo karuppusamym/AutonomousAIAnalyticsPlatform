@@ -3,7 +3,9 @@
     python scripts/e2e_demo.py [--api http://localhost:8000] [--out docs/60-delivery/evidence]
 
 Needs the running stack (API, worker or ANALYSTOS_ORCHESTRATOR=local, ServiceNow mock, Superset)
-and OPENROUTER_API_KEY in the API's environment. Writes e2e-<timestamp>.md (readable) and .json
+and OPENROUTER_API_KEY in the API's environment, plus ANALYSTOS_SOURCE_SECRET_SERVICENOW (the mock's password,
+`admin`): the source is registered as env:ANALYSTOS_SOURCE_SECRET_SERVICENOW, and source env refs must use
+the ANALYSTOS_SOURCE_SECRET_ prefix (S02). Writes e2e-<timestamp>.md (readable) and .json
 (raw evidence). Each DoD item is checked against API responses, not assumed.
 """
 from __future__ import annotations
@@ -102,7 +104,7 @@ def main() -> int:
     src = analyst.post(f"/api/workspaces/{wid}/sources", {"kind": "servicenow", "name": "ServiceNow",
                                                           "config": {"instance_url": args.servicenow, "username": "admin",
                                                                      "tables": ["incident", "change_request", "sys_user_group", "cmdb_ci"]},
-                                                          "secret_ref": "env:SERVICENOW_PASSWORD"})
+                                                          "secret_ref": "env:ANALYSTOS_SOURCE_SECRET_SERVICENOW"})
     disc = analyst.post(f"/api/workspaces/{wid}/sources/{src['id']}/discover")
     sel = analyst.put(f"/api/workspaces/{wid}/sources/{src['id']}/selection", {"assets": ["incident", "change_request"]})
     check["2_servicenow_source_added"] = len(disc["assets"]) >= 2

@@ -627,7 +627,34 @@ class QueryExecution(Base):
     result_preview: Mapped[list[Any]] = mapped_column(JSON, default=list)  # first rows (masked), for evidence UI
     cache_hit: Mapped[bool] = mapped_column(Boolean, default=False)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    # S02: why a statement was refused (validator / budget / policy), the hash of the submitted text (a
+    # rejected statement keeps only its redacted text), the pre-execution estimate and the actual size.
+    reason_code: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    sql_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    cost_estimate: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    result_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    result_uri: Mapped[str | None] = mapped_column(String(300), nullable=True)  # a ResultHandle (ADR-010)
     created_at: Mapped[datetime] = _ts()
+
+
+class ResultHandle(Base):
+    """A large query result written as Parquet to the result store (S02-T3, ADR-010). Steps, compute and
+    multi-source joins read the file through the handle; the TTL purge deletes it at `expires_at`."""
+
+    __tablename__ = "result_handle"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)  # the query_execution id
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[str | None] = mapped_column(String(40), index=True, nullable=True)
+    source_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    uri: Mapped[str] = mapped_column(String(300))  # tenant/{t}/results/{qe_id}.parquet, relative to the store
+    result_schema: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    row_count: Mapped[int] = mapped_column(BigInteger, default=0)
+    bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    sha256: Mapped[str] = mapped_column(String(64))
+    classification_max: Mapped[str] = mapped_column(String(20), default="internal")
+    created_at: Mapped[datetime] = _ts()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Hypothesis(Base):

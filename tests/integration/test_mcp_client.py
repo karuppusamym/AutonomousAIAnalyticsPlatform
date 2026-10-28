@@ -34,7 +34,7 @@ def _user(s, email):
 
 @pytest.fixture()
 def double(monkeypatch):
-    monkeypatch.setenv("MCP_DOUBLE_TOKEN", TOKEN)
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_MCP_DOUBLE_TOKEN", TOKEN)
     with double_server(TOKEN) as d:
         yield d
 
@@ -63,7 +63,7 @@ def U(uid):
 def _registered(world, double, *, allow=True, refresh=True, config=None) -> str:
     with session_scope() as s:
         srv = mc.register_server(s, U(world["owner"]), world["ws"], name="bi_double", url=double.url,
-                                 secret_ref="env:MCP_DOUBLE_TOKEN", config=config)
+                                 secret_ref="env:ANALYSTOS_SOURCE_SECRET_MCP_DOUBLE_TOKEN", config=config)
         sid = srv.id
     if allow:
         with session_scope() as s:
@@ -282,7 +282,7 @@ def test_http_api_register_refresh_invoke(world, double):
     c = TestClient(app)
     ws = world["ws"]
     r = c.post(f"/api/workspaces/{ws}/mcp/servers", json={"name": "bi_double", "url": double.url,
-                                                           "secret_ref": "env:MCP_DOUBLE_TOKEN"}, headers=h)
+                                                           "secret_ref": "env:ANALYSTOS_SOURCE_SECRET_MCP_DOUBLE_TOKEN"}, headers=h)
     assert r.status_code == 201 and "secret_ref" not in r.json() and r.json()["has_secret"]
     sid = r.json()["id"]
     assert c.post(f"/api/workspaces/{ws}/mcp/servers/{sid}/refresh", headers=h).status_code == 403

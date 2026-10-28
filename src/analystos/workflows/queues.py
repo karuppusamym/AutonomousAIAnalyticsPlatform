@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-WORKLOADS = ("analysis", "compute", "publish", "crawl", "elt")
+# `query` (S02-T1) is worker:query: the only pool that opens source connections when ANALYSTOS_QUERY_TRANSPORT=temporal.
+WORKLOADS = ("analysis", "compute", "publish", "crawl", "elt", "query")
 # Isolated pools (ADR-0022, P7-06): no database or provider credentials, egress to the artifact store only.
 # Never part of `all`: a worker that serves them runs `analystos.workers.main`, not the engine activities.
 ISOLATED_POOLS = ("compute-py", "compute-ml")
@@ -56,6 +57,7 @@ DEFAULT_SPECS: dict[str, QueueSpec] = {
     "publish": QueueSpec(900, 120, 4),
     "crawl": QueueSpec(1800, 120, 2),
     "elt": QueueSpec(3600, 120, 2),
+    "query": QueueSpec(600, 30, 16),
     "compute-py": QueueSpec(1800, 60, 2, isolated=True, budget={"cpu_seconds": 600, "memory_mb": 2048, "wall_seconds": 900,
                                                                "max_output_bytes": 256 * 1024 * 1024}),
     "compute-ml": QueueSpec(3600, 60, 2, isolated=True, budget={"cpu_seconds": 1800, "memory_mb": 4096,

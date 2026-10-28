@@ -45,6 +45,11 @@ def build_connector(source: Any, settings: Any | None = None, **overrides: Any) 
         if not config.get("instance_url") and settings is not None:
             config["instance_url"] = getattr(settings, "servicenow_mock_url", None)
         return ServiceNowConnector(config, secret_ref, **overrides)
+    if kind == "rest":  # S02-T8: a declarative, read-only REST description (always staged)
+        from analystos.connectors.rest import RESTConnector
+
+        overrides.setdefault("settings", settings)
+        return RESTConnector(config, secret_ref, **overrides)
     if isinstance(mode, str) and mode:
         overrides.setdefault("execution_mode", mode)
     if kind == "postgres":

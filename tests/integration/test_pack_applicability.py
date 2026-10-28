@@ -29,7 +29,7 @@ def world(control_db):
         for key, table in (("itsm", "incident"), ("sales", "orders"), ("none", "widgets"), ("policy", "incident")):
             ws = create_workspace(s, owner, name=f"packs {key} {new_id('t')}", objective="", autonomy_level=3)
             src = register_source(s, owner, ws.id, kind="postgres", name="app",
-                                  config={"host": "db.example", "database": "app", "username": "reader"}, secret_ref="env:PGPASS")
+                                  config={"host": "db.example", "database": "app", "username": "reader"}, secret_ref="env:ANALYSTOS_SOURCE_SECRET_PGPASS")
             s.flush()
             _asset(s, ws.id, src.id, table)
             out[key] = ws.id

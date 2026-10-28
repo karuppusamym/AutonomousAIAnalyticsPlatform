@@ -114,7 +114,7 @@ def test_context_economy_of_the_standard_flow(control_db, servicenow_url, monkey
     from analystos.services import platform_settings
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-000000000000000000000000")
-    monkeypatch.setenv("SERVICENOW_PASSWORD", "admin")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_SERVICENOW", "admin")
     monkeypatch.setenv("ANALYSTOS_SUPERSET_URL", "http://127.0.0.1:9")
     monkeypatch.setattr(router_mod, "HttpTransport", EconomyTransport)
     original = router_mod.ModelRouter.complete
@@ -160,7 +160,7 @@ def test_context_economy_of_the_standard_flow(control_db, servicenow_url, monkey
             src = register_source(s, admin, ws.id, kind="servicenow", name="SN",
                                   config={"instance_url": servicenow_url, "username": "admin",
                                           "tables": ["incident", "change_request"]},
-                                  secret_ref="env:SERVICENOW_PASSWORD")
+                                  secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
             s.flush()
             # The independent-model review is opt-in per workspace; on here so verification prompts are measured.
             set_policy(s, admin, ws.id, {"independent_model_verification": True})

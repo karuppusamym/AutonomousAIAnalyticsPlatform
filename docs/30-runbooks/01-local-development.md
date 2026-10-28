@@ -10,7 +10,8 @@ uv venv -p 3.11 .venv && uv pip install -e ".[dev]"
 docker compose up -d postgres redis temporal superset   # + neo4j only if ANALYSTOS_GRAPH_ENABLED=true
 .venv/bin/analystos migrate && .venv/bin/analystos seed
 set -a; . ./.env; set +a
-export SERVICENOW_PASSWORD=admin           # the mock's password, referenced as env:SERVICENOW_PASSWORD
+export ANALYSTOS_SOURCE_SECRET_SERVICENOW=admin  # the mock's password, referenced as env:ANALYSTOS_SOURCE_SECRET_SERVICENOW
+                                                 # (source env refs must use the ANALYSTOS_SOURCE_SECRET_ prefix, S02)
 .venv/bin/uvicorn analystos.connectors.servicenow_mock:app --port 8090 &
 .venv/bin/analystos worker &               # Temporal worker, every queue (or ANALYSTOS_ORCHESTRATOR=local for the API)
 .venv/bin/uvicorn analystos.api.app:app --port 8000 &

@@ -112,12 +112,12 @@ def test_evidence_manifest_staleness_and_confirmation(control_db, pg_orders, wit
     from analystos.services.workspaces import create_workspace
 
     url = pg_orders["url"]
-    monkeypatch.setenv("P403_PG_PASSWORD", url.password or "")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_P403_PG_PASSWORD", url.password or "")
     with session_scope() as s:
         admin = s.scalar(select(User).where(User.email == get_settings().bootstrap_admin_email))
         ws = create_workspace(s, admin, name="p403 evidence", objective=OBJECTIVE)
         s.flush()
-        src = register_source(s, admin, ws.id, kind="postgres", name="p403 shop", secret_ref="env:P403_PG_PASSWORD",
+        src = register_source(s, admin, ws.id, kind="postgres", name="p403 shop", secret_ref="env:ANALYSTOS_SOURCE_SECRET_P403_PG_PASSWORD",
                               config={"host": url.host, "port": url.port or 5432, "database": url.database,
                                       "username": url.username, "schemas": [SOURCE_SCHEMA], "execution_mode": "staged"})
         s.flush()
