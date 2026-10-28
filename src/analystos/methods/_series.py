@@ -63,14 +63,10 @@ def decompose(y: Sequence[float], m: int) -> dict[str, Any]:
     """trend, seasonal, resid and the engine used. STL is robust to outliers; it needs the `ml` extra."""
     arr = np.asarray(y, dtype=float)
     try:
-        from analystos.core.profiles import require_extra
+        from analystos.skills.forecast import stl_components
 
-        require_extra("ml", "STL decomposition")
-        from statsmodels.tsa.seasonal import STL
-
-        fit = STL(arr, period=m, robust=True).fit()
-        return {"trend": np.asarray(fit.trend), "seasonal": np.asarray(fit.seasonal), "resid": np.asarray(fit.resid),
-                "engine": "stl"}
+        trend, seasonal, resid = stl_components(arr, m)
+        return {"trend": trend, "seasonal": seasonal, "resid": resid, "engine": "stl"}
     except Exception:  # noqa: BLE001 - no statsmodels (lite) or a numerical failure: the classical decomposition
         trend, seasonal, resid = _classical(arr, m)
         return {"trend": trend, "seasonal": seasonal, "resid": resid, "engine": "classical"}

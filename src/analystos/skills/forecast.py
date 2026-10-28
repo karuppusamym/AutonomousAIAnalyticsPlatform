@@ -295,3 +295,35 @@ def forecast_deviation(values: Sequence[float], periods: Sequence[Any] | None = 
                       warnings=warns, supported=bool(last["outside"]),
                       details={"train_n": int(train.size), "residual_sigma": _f(r["sigma"]),
                                "seasonal_periods": r["seasonal_periods"]})
+
+
+# --------------------------------------------------------------------------------------------
+# the `ml`-extra models the time-series method pack uses (S07-T6); methods never import statsmodels
+# --------------------------------------------------------------------------------------------
+def stl_components(y: Sequence[float], period: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Robust STL (trend, seasonal, remainder). Raises FeatureUnavailable without the `ml` extra."""
+    from analystos.core.profiles import require_extra
+
+    require_extra("ml", "STL decomposition")
+    from statsmodels.tsa.seasonal import STL
+
+    fit = STL(np.asarray(y, dtype=float), period=int(period), robust=True).fit()
+    return np.asarray(fit.trend), np.asarray(fit.seasonal), np.asarray(fit.resid)
+
+
+def arima_point(train: Sequence[float], horizon: int, seasonal_periods: int | None = None) -> np.ndarray:
+    """ARIMA(1,1,1) point forecast, seasonal (0,1,1)_m when `seasonal_periods` is given. Raises
+    FeatureUnavailable without the `ml` extra, FloatingPointError on a non-finite forecast."""
+    from analystos.core.profiles import require_extra
+
+    require_extra("ml", "ARIMA forecasting")
+    from statsmodels.tsa.arima.model import ARIMA
+
+    seasonal = (0, 1, 1, int(seasonal_periods)) if seasonal_periods else (0, 0, 0, 0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fit = ARIMA(np.asarray(train, dtype=float), order=(1, 1, 1), seasonal_order=seasonal).fit()
+    point = np.asarray(fit.forecast(int(horizon)), dtype=float)
+    if not np.all(np.isfinite(point)):
+        raise FloatingPointError("non-finite ARIMA forecast")
+    return point

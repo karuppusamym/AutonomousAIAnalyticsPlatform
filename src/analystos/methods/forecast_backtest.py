@@ -14,7 +14,6 @@ verification  ARIMA(1,1,1) (seasonal (0,1,1) with two full seasons; statsmodels)
 from __future__ import annotations
 
 import math
-import warnings
 from collections.abc import Mapping
 from typing import Any
 
@@ -69,18 +68,7 @@ def _naive(train: np.ndarray, h: int, m: int | None) -> np.ndarray:
 def _arima(train: np.ndarray, h: int, m: int | None = None) -> tuple[np.ndarray, str]:
     """ARIMA(1,1,1), seasonal (0,1,1)_m when two full seasons are there to fit it."""
     try:
-        from analystos.core.profiles import require_extra
-
-        require_extra("ml", "ARIMA forecasting")
-        from statsmodels.tsa.arima.model import ARIMA
-
-        seasonal = (0, 1, 1, m) if m else (0, 0, 0, 0)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            fit = ARIMA(train, order=(1, 1, 1), seasonal_order=seasonal).fit()
-        point = np.asarray(fit.forecast(h), dtype=float)
-        if np.all(np.isfinite(point)):
-            return point, f"sarima_1_1_1_0_1_1_{m}" if m else "arima_1_1_1"
+        return fc.arima_point(train, h, m), f"sarima_1_1_1_0_1_1_{m}" if m else "arima_1_1_1"
     except Exception:  # noqa: BLE001 - no statsmodels, or a numerical failure: drift stands in
         pass
     drift = float(np.diff(train).mean()) if train.size > 1 else 0.0
