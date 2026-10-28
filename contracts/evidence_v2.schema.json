@@ -1,0 +1,377 @@
+{
+  "$defs": {
+    "EvidenceDatasetVersion": {
+      "additionalProperties": false,
+      "properties": {
+        "asset": {
+          "title": "Asset",
+          "type": "string"
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Id"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        },
+        "mode": {
+          "default": "unknown",
+          "title": "Mode",
+          "type": "string"
+        },
+        "rows": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rows"
+        },
+        "staged_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Staged At"
+        }
+      },
+      "required": [
+        "asset"
+      ],
+      "title": "EvidenceDatasetVersion",
+      "type": "object"
+    },
+    "EvidenceEffect": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "ci": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ci"
+        }
+      },
+      "title": "EvidenceEffect",
+      "type": "object"
+    },
+    "EvidenceMethod": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        },
+        "test": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Test"
+        },
+        "claim_kind": {
+          "default": "association",
+          "enum": [
+            "observation",
+            "association"
+          ],
+          "title": "Claim Kind",
+          "type": "string"
+        }
+      },
+      "title": "EvidenceMethod",
+      "type": "object"
+    },
+    "EvidenceSample": {
+      "additionalProperties": false,
+      "properties": {
+        "n": {
+          "default": 0,
+          "title": "N",
+          "type": "integer"
+        },
+        "coverage": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Coverage"
+        }
+      },
+      "title": "EvidenceSample",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The API shape of one piece of evidence (v1 \u00a77.3): the existing `Insight` + its `VerificationRecord` +\ncitations, read through one contract. A VOID record always carries `void_reason`.",
+  "properties": {
+    "v": {
+      "const": 2,
+      "default": 2,
+      "title": "V",
+      "type": "integer"
+    },
+    "evidence_id": {
+      "title": "Evidence Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "claim_id": {
+      "title": "Claim Id",
+      "type": "string"
+    },
+    "code": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Code"
+    },
+    "label": {
+      "enum": [
+        "observed",
+        "supported_association",
+        "possible_contributor",
+        "rejected",
+        "unknown"
+      ],
+      "title": "Label",
+      "type": "string"
+    },
+    "title": {
+      "default": "",
+      "title": "Title",
+      "type": "string"
+    },
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "dataset_versions": {
+      "items": {
+        "$ref": "#/$defs/EvidenceDatasetVersion"
+      },
+      "title": "Dataset Versions",
+      "type": "array"
+    },
+    "metric_version": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Metric Version"
+    },
+    "query_execution_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Query Execution Ids",
+      "type": "array"
+    },
+    "method": {
+      "$ref": "#/$defs/EvidenceMethod"
+    },
+    "effect": {
+      "$ref": "#/$defs/EvidenceEffect"
+    },
+    "sample": {
+      "$ref": "#/$defs/EvidenceSample"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "review_status": {
+      "title": "Review Status",
+      "type": "string"
+    },
+    "validation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Validation"
+    },
+    "fingerprint": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fingerprint"
+    },
+    "verification_record_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Verification Record Id"
+    },
+    "void_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Void Reason"
+    },
+    "citations": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Citations"
+    }
+  },
+  "required": [
+    "evidence_id",
+    "run_id",
+    "claim_id",
+    "label",
+    "description",
+    "method",
+    "effect",
+    "sample",
+    "review_status"
+  ],
+  "title": "EvidenceV2",
+  "type": "object"
+}

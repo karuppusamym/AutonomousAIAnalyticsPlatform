@@ -1,0 +1,29 @@
+apiVersion: analystos/v1
+kind: Method
+id: method.distribution_shift
+version: 1.0.0
+summary: Distribution of a numeric outcome in the latest period vs before -> Kolmogorov-Smirnov + population stability index (+ Anderson-Darling)
+entry: python:analystos.methods.distribution_shift:DistributionShift
+determinism: deterministic
+side_effect: read_source
+cost_class: query
+permissions: [scope:read]
+requires: [engine:sql]
+certification:
+  status: certified
+  evidence: tests/methods/test_timeseries_pack.py
+tags: [statistical, time_series, drift]
+spec:
+  order: 87
+  claim: observation
+  min_sample: 60          # rows: 30 in the latest period and 30 before it
+  inputs:
+    time: {type: date_trunc, grain: [day, week, month, quarter], required: true}
+    outcome: {type: numeric, derivations: [column, duration_hours], required: true}
+  outputs:
+    statistic: ks_statistic
+    effect: population_stability_index
+    highlights: [psi, ks_statistic, latest_period, reference_median, latest_median, latest_n, reference_n]
+    table: [group, n, median, mean]
+  assumptions: [independent rows, PSI over ten reference quantile bins, the latest period is complete,
+                deterministic bounded row sample]

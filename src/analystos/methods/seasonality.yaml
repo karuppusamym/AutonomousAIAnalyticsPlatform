@@ -1,0 +1,30 @@
+apiVersion: analystos/v1
+kind: Method
+id: method.seasonality
+version: 1.0.0
+summary: Seasonal pattern of volume or a numeric outcome over time -> STL seasonal strength + Kruskal-Wallis (+ seasonal-lag autocorrelation)
+entry: python:analystos.methods.seasonality:Seasonality
+determinism: deterministic
+side_effect: read_source
+cost_class: query
+permissions: [scope:read]
+requires: [engine:sql]
+certification:
+  status: certified
+  evidence: tests/methods/test_timeseries_pack.py
+tags: [statistical, time_series]
+spec:
+  order: 84
+  claim: observation      # describes one measure over time (S07-T3)
+  seasonality: true       # the alternatives gate counts it as the seasonality check (S07-T5)
+  min_sample: 24          # periods: two full seasons of the shortest common cycle (month grain)
+  inputs:
+    time: {type: date_trunc, grain: [day, week, month, quarter], required: true}
+    outcome: {type: [null, numeric], required: false, note: "null = row volume per period"}
+  outputs:
+    statistic: kruskal_wallis_h
+    effect: seasonal_strength (0..1)
+    highlights: [seasonal_strength, season_length, peak_season, trough_season, seasonal_amplitude_share, n_periods]
+    table: [period, value, trend, seasonal, remainder]
+  assumptions: [additive seasonality, "season length from the grain (7 days, 52 weeks, 12 months, 4 quarters)",
+                two or more full seasons, equally spaced periods]

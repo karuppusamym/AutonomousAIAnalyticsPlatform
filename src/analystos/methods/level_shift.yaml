@@ -1,0 +1,29 @@
+apiVersion: analystos/v1
+kind: Method
+id: method.level_shift
+version: 1.0.0
+summary: One sustained level shift in volume or a numeric outcome over time -> CUSUM split + permutation test (+ binary segmentation)
+entry: python:analystos.methods.level_shift:LevelShift
+determinism: deterministic
+side_effect: read_source
+cost_class: query
+permissions: [scope:read]
+requires: [engine:sql]
+certification:
+  status: certified
+  evidence: tests/methods/test_timeseries_pack.py
+tags: [statistical, time_series, change_point]
+spec:
+  order: 85
+  claim: observation
+  min_sample: 8           # periods, at least 3 on each side of the shift
+  inputs:
+    time: {type: date_trunc, grain: [day, week, month, quarter], required: true}
+    outcome: {type: [null, numeric], required: false, note: "null = row volume per period"}
+  outputs:
+    statistic: standardized max |CUSUM|
+    effect: pct_change_level (after vs before the shift)
+    highlights: [change_period, change_before_mean, change_after_mean, pct_change, n_before, n_after, direction]
+    table: [period, value, segment]
+  assumptions: [one shift in the mean, periods exchangeable under no change (permutation test, seed 0),
+                "ruptures is not a dependency: CUSUM is the change-point method (spec S07 §3.5)"]

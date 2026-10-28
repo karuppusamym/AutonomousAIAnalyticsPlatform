@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "analystos"
 PORTED = ["rate_by_segment", "numeric_by_segment", "trend", "pareto", "correlation", "driver_model"]
 NEW = ["cohort_retention", "contribution_decomposition"]
+PACK = ["seasonality", "level_shift", "forecast_backtest", "distribution_shift"]  # S07-T6 time-series pack
 # Files that may name a method although they are outside src/analystos/methods/, and why.
 ALLOWED = {"skills/stats.py": "statistical primitives label their result family (StatResult.method); the method "
                               "runner (skills/analysis) stamps the calling method's own name on every result"}
@@ -36,7 +37,7 @@ ALLOWED = {"skills/stats.py": "statistical primitives label their result family 
 
 # ------------------------------------------------------------------------------------ the vocabulary
 def test_every_builtin_method_is_one_module_plus_one_manifest():
-    assert methods.names() == PORTED + NEW
+    assert methods.names() == PORTED + NEW + PACK
     for name in methods.names():
         m = methods.current().manifests[name]
         assert m.id == f"method.{name}" and m.kind == "Method" and m.source == "builtin"
@@ -48,7 +49,7 @@ def test_every_builtin_method_is_one_module_plus_one_manifest():
         assert "primary" in methods.get(name).purposes and methods.get(name).vocabulary
     analysis = [m for m in cap_registry.load(packs_dir=None, entry_points=False).list("Method")
                 if (m.spec or {}).get("family") != "ml"]  # the ML method pack (P5-04) is not analysis vocabulary
-    assert {m.id for m in analysis} == {f"method.{n}" for n in PORTED + NEW}
+    assert {m.id for m in analysis} == {f"method.{n}" for n in PORTED + NEW + PACK}
 
 
 def test_prompt_schema_validation_and_purposes_are_derived():

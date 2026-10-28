@@ -1,0 +1,32 @@
+apiVersion: analystos/v1
+kind: Method
+id: method.forecast_backtest
+version: 1.0.0
+summary: Forecast of volume or a numeric outcome over time -> ETS with a rolling-origin backtest vs naive and prediction intervals (+ ARIMA)
+entry: python:analystos.methods.forecast_backtest:ForecastBacktest
+determinism: deterministic
+side_effect: read_source
+cost_class: query
+permissions: [scope:read]
+requires: [engine:sql]
+certification:
+  status: certified
+  evidence: tests/methods/test_timeseries_pack.py
+tags: [statistical, time_series, forecast]
+spec:
+  order: 86
+  claim: observation
+  min_sample: 12          # periods
+  inputs:
+    time: {type: date_trunc, grain: [day, week, month, quarter], required: true}
+    outcome: {type: [null, numeric], required: false, note: "null = row volume per period"}
+  outputs:
+    statistic: diebold_mariano (absolute errors, one-sided)
+    effect: skill_vs_naive (1 - relative MAE)
+    highlights: [backtest_folds, horizon, relative_mae, interval_coverage, backtest_mae, naive_mae, next_value,
+                 next_lower, next_upper, forecast_direction]
+    details: {backtest: [folds (origin, train_n, horizon, mae, naive_mae, coverage, engine), mae, naive_mae,
+                         relative_mae, coverage, dm_statistic, p_value, level], forecast: [method, horizon, level]}
+    groups: history and forecast points with the 90% prediction interval
+  assumptions: [equally spaced periods, additive errors, "ETS = Holt-Winters additive damped trend (statsmodels, `ml` extra; drift without it)",
+                each backtest fold is fitted only on earlier periods, 90% prediction intervals]
