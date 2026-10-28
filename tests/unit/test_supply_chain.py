@@ -72,8 +72,9 @@ def test_ci_runs_the_release_gates_after_migrate_and_nightly_runs_the_matrix():
     backend = _wf("ci.yml")["jobs"]["backend"]["steps"]
     runs = [s.get("run", "") for s in backend]
     migrate = runs.index(".venv/bin/analystos migrate")
+    seed = runs.index(".venv/bin/analystos seed")  # the matrix's Ask suite runs as the seeded admin
     gate = next(i for i, r in enumerate(runs) if "release_safety,model_matrix_fake" in r)
-    assert gate > migrate
+    assert gate > seed > migrate
     nightly = _wf("nightly-eval.yml")
     assert "model_matrix" in _steps(nightly["jobs"]["live"]) and nightly["permissions"] == {"contents": "read"}
     assert nightly["jobs"]["live"]["env"]["OPENROUTER_API_KEY"] == "${{ secrets.OPENROUTER_API_KEY }}"
