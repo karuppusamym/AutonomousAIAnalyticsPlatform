@@ -28,6 +28,7 @@ from analystos.publishing import _rison as rison
 from analystos.publishing.base import ExternalId, PublishContext, workspace_slug
 from analystos.publishing.layout import build_position_json, parse_position_json
 from analystos.publishing.preview import chart_metric_names, validate_bundle
+from analystos.publishing.superset_access import SupersetAccess
 from analystos.publishing.superset_charts import build_chart, metric_d3format
 
 if TYPE_CHECKING:
@@ -232,7 +233,7 @@ def _schema_of(dataset: DatasetDef) -> str | None:
     return m.group(1) if m else None
 
 
-class SupersetPublisher:
+class SupersetPublisher(SupersetAccess):
     destination = "superset"
 
     def __init__(
@@ -247,6 +248,7 @@ class SupersetPublisher:
         timeout: float = 30.0,
         transport: httpx.BaseTransport | None = None,
         bi_login: Callable[[str], tuple[str, str]] | None = None,
+        tenant_of: Callable[[str], str | None] | None = None,
     ) -> None:
         if settings is None and base_url is None:
             from analystos.core.config import get_settings
@@ -263,6 +265,9 @@ class SupersetPublisher:
             def bi_login(workspace_id: str) -> tuple[str, str]:
                 return ensure_bi_login(settings, workspace_id)
         self._bi_login = bi_login
+        if tenant_of is None and settings is not None:
+            from analystos.tenancy.background import workspace_tenant as tenant_of
+        self._tenant_of = tenant_of or (lambda _workspace_id: None)
         self.client = SupersetClient(
             self.base_url,
             username or (settings.superset_username if settings else "admin"),
@@ -334,13 +339,15 @@ class SupersetPublisher:
 
         return hashlib.sha256(uri.encode()).hexdigest()[:16]
 
-    def _database_extra(self, uri: str, current: str | None = None) -> str:
+    def _database_extra(self, uri: str, current: str | None = None, workspace_id: str | None = None) -> str:
         try:
             extra = json.loads(current or "{}")
         except ValueError:
             extra = {}
         extra.setdefault("allows_virtual_table_explore", True)
         extra["aos_bi_login"] = self._login_fingerprint(uri)
+        if workspace_id:
+            self._stamp(extra, workspace_id)
         return json.dumps(extra)
 
     def _reconcile_database_uri(self, database_id: int, workspace_id: str) -> None:
@@ -360,19 +367,20 @@ class SupersetPublisher:
         except Exception:  # noqa: BLE001 - unparseable: rewrite it
             same_login = False
         try:
-            fingerprint = json.loads(current.get("extra") or "{}").get("aos_bi_login")
+            stamps = json.loads(current.get("extra") or "{}")
         except ValueError:
-            fingerprint = None
-        if same_login and fingerprint == self._login_fingerprint(wanted):
+            stamps = {}
+        wanted_extra = self._database_extra(wanted, current.get("extra"), workspace_id)
+        if same_login and stamps.get("aos_bi_login") == self._login_fingerprint(wanted) and                 all(stamps.get(k) == v for k, v in json.loads(wanted_extra).items() if k.startswith("aos_")):
             return
-        self.client.put(f"/api/v1/database/{database_id}",
-                        {"sqlalchemy_uri": wanted, "extra": self._database_extra(wanted, current.get("extra"))})
+        self.client.put(f"/api/v1/database/{database_id}", {"sqlalchemy_uri": wanted, "extra": wanted_extra})
 
     def ensure_database(self, workspace_id: str) -> tuple[int, bool]:
         """(id, created). Read-only analytics identity bound to the workspace's reader role; not
         exposed in SQL Lab; no DML."""
         existing = self.find_database(workspace_id)
         if existing is not None:
+            self.check_database_tenant(existing, workspace_id)  # never reuse another tenant's connection
             if self.analytics_uri:
                 self._reconcile_database_uri(existing, workspace_id)
             return existing, False
@@ -391,7 +399,7 @@ class SupersetPublisher:
                 "allow_run_async": False,
                 "allow_file_upload": False,
                 "impersonate_user": False,
-                "extra": self._database_extra(uri),
+                "extra": self._database_extra(uri, None, workspace_id),
             },
         )
         return int(body["id"]), True
@@ -401,7 +409,8 @@ class SupersetPublisher:
 
     @staticmethod
     def workspace_role_name(workspace_id: str) -> str:
-        return f"AnalystOS workspace {workspace_slug(workspace_id)}"
+        """The viewer role (S08: `ws_{slug}_viewer`; `ws_{slug}_editor` adds write, superset_access.py)."""
+        return f"ws_{workspace_slug(workspace_id)}_viewer"
 
     def _security_api(self, resource: str, filters: list[dict[str, Any]]) -> list[dict[str, Any]]:
         try:
@@ -447,14 +456,17 @@ class SupersetPublisher:
         return role_id
 
     def sync_user(self, *, username: str, email: str, workspace_ids: list[str], first_name: str = "", last_name: str = "",
-                  password: str | None = None, sql_lab: bool = False, active: bool = True) -> int:
-        """Make a Superset user's roles exactly: Gamma (+ sql_lab) + the roles of ``workspace_ids``.
+                  password: str | None = None, sql_lab: bool = False, active: bool = True,
+                  editor_workspace_ids: list[str] | None = None) -> int:
+        """Make a Superset user's roles exactly: Gamma (+ sql_lab) + the viewer roles of ``workspace_ids`` + the
+        editor roles of ``editor_workspace_ids`` (a subset: authors of those workspaces).
         Admin/Alpha (all-data roles) are never granted here, and are removed from a synced user."""
         import secrets
 
         role_ids = [rid for rid in (self._role_id(n) for n in (*self.BASE_USER_ROLES, *(["sql_lab"] if sql_lab else [])))
                     if rid is not None]
         role_ids += [self.ensure_workspace_role(ws) for ws in sorted(set(workspace_ids))]
+        role_ids += [self.ensure_editor_role(ws) for ws in sorted(set(editor_workspace_ids or []) & set(workspace_ids))]
         body = {"username": username, "email": email, "first_name": first_name or username,
                 "last_name": last_name or "-", "active": active, "roles": role_ids}
         existing = [u for u in self._security_api("users", [{"col": "username", "opr": "eq", "value": username}])

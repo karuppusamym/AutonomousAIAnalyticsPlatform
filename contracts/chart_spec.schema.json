@@ -1,0 +1,188 @@
+{
+  "properties": {
+    "key": {
+      "title": "Key",
+      "type": "string"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "chart_type": {
+      "enum": [
+        "kpi",
+        "line",
+        "bar",
+        "stacked_bar",
+        "histogram",
+        "scatter",
+        "heatmap",
+        "table",
+        "pie",
+        "treemap"
+      ],
+      "title": "Chart Type",
+      "type": "string"
+    },
+    "intent": {
+      "title": "Intent",
+      "type": "string"
+    },
+    "dataset": {
+      "title": "Dataset",
+      "type": "string"
+    },
+    "metric": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Metric"
+    },
+    "metrics": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Metrics",
+      "type": "array"
+    },
+    "dimension": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Dimension"
+    },
+    "series": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Series"
+    },
+    "time_grain": {
+      "anyOf": [
+        {
+          "enum": [
+            "day",
+            "week",
+            "month"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Time Grain"
+    },
+    "filters": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Filters",
+      "type": "array"
+    },
+    "limit": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Limit"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "insight_codes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Insight Codes",
+      "type": "array"
+    },
+    "rationale": {
+      "default": "",
+      "title": "Rationale",
+      "type": "string"
+    },
+    "preview": {
+      "additionalProperties": true,
+      "title": "Preview",
+      "type": "object"
+    },
+    "governance": {
+      "default": "ad_hoc",
+      "enum": [
+        "governed",
+        "ad_hoc"
+      ],
+      "title": "Governance",
+      "type": "string"
+    },
+    "semantic_model_version": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Semantic Model Version"
+    },
+    "compiler_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Compiler Version"
+    },
+    "value_basis": {
+      "default": "observed",
+      "enum": [
+        "observed",
+        "simulated"
+      ],
+      "title": "Value Basis",
+      "type": "string"
+    }
+  },
+  "required": [
+    "key",
+    "title",
+    "chart_type",
+    "intent",
+    "dataset"
+  ],
+  "title": "ChartSpec",
+  "type": "object"
+}

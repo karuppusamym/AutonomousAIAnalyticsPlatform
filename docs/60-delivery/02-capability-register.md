@@ -58,6 +58,27 @@ with strict tenancy (2026-10-27, Windows dev host): a full deterministic investi
 its findings, serves Evidence v2 objects, publishes to the preview destination; a policy change voids them, the
 dashboards show the banner, an escalated Desk task exists, and another tenant sees none of it. Not verified: a gVisor
 node, the web banner in a browser, the banner inside Superset.
+## 2026-10-27 — S08 Dashboards, conversational authoring and publishing (T1–T6)
+
+Builder dashboards are typed documents (`contracts/dashboard_dsl.py`, JSON Schemas in `contracts/`) changed only by
+validated ops: a person (or the `dashboard_design` ladder: rules first, a small model only when no rule matches, every
+proposed op parsed and re-validated) proposes, `dashboards/ops.py` decides, and each applied batch is a new artifact
+version with the ops as its diff (migration `0070_dashboards_publishing`). Editing a published dashboard forks a draft.
+Publishing is a hash-bound, single-use approval of {artifact, version, content hash, destination, audience, bundle},
+re-derived from the stored artifact and verified immediately before the call; dataset SQL comes only from verified
+queries, recorded gateway executions or approved metrics (compiled), with filters and period comparisons as
+sqlglot-built wrappers. Superset: tenant/workspace-stamped connections (another tenant's refused), `ws_{slug}_viewer|editor`
+roles, dashboard RBAC from the audience, policy row filters as RLS rules (fail closed when they need the viewer), guest
+tokens minted after a request-time recheck with the viewer's own RLS, and a reconcile job that flags drift and repairs
+only under `verify_for_reapply`. Exports are watermarked and audited; at or above the policy's sensitivity they are
+publish-class approvals. PDFs print Tamil, CJK and Arabic from bundled OFL fonts. Evidence (2026-10-27, Windows dev
+host, Postgres 16 with strict tenancy and RLS): `tests/unit/test_dashboard_{dsl,ops,bundle,exports}.py` and
+`test_superset_access.py` (56), `tests/integration/test_dashboards_publishing.py` (9: migration up/down/up,
+`test_patch_ops_versioning`, `test_edit_published_forks_draft`, `test_guest_token_rechecks_auth`,
+`test_cross_tenant_superset_denied`, publish, failed-publish retry, reconcile, exports), `web/src/test/dashboardBuilder.test.tsx`
+(5), and a browser check of the builder against a local API. Superset is an in-memory fake throughout: Done (mock)
+for T4/T5 until guest tokens and RLS rules run against a live Superset (AT-07/AT-08).
+
 ## 2026-10-27 — S01-T6 ABAC on every call + OPA adapter, S01-T7 tenant-scoped cache keys
 
 ABAC (`governance/abac.py`): the policy decision input carries `{classification, purpose, region,

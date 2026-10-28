@@ -7,6 +7,7 @@ import { ChartView } from "../components/Chart";
 import { PublishCard } from "../components/DashboardPublish";
 import { PublishedOutputs } from "../components/PublishedOutputs";
 import { DashboardPreview } from "../components/DashboardPreview";
+import { DashboardBuilder, NewBuilderDashboard } from "../components/DashboardBuilder";
 import { ExistingDashboards } from "../components/ExistingDashboards";
 import { LineageGraph } from "../components/LineageGraph";
 import { Markdown } from "../components/Markdown";
@@ -178,6 +179,15 @@ export function OutputsPage() {
           </div>
         </details>
       )}
+      {type === "dashboard" && role && role !== "viewer" && role !== "approver" && (
+        <details className="card generate-report">
+          <summary>Build a dashboard</summary>
+          <div className="card-body">
+            <p className="small muted">Start empty, then change it by asking: every change is a typed, versioned operation.</p>
+            <NewBuilderDashboard wsId={wsId} onCreated={(id) => { void artifacts.reload(); set({ artifact: id }); }} />
+          </div>
+        </details>
+      )}
       {type === "dashboard" && (
         <details className="card generate-report">
           <summary>Import an existing BI dashboard</summary>
@@ -224,7 +234,7 @@ export function OutputsPage() {
             </div>}
             {open?.kind === "finding" ? <FindingDetail id={open.id} wsId={wsId} />
               : open?.kind === "prepared" ? <PreparedView run={open.run} wsId={wsId} />
-                : selected ? <ArtifactView id={selected} wsId={wsId} onSelect={(id) => set({ artifact: id })} />
+                : selected ? <ArtifactView id={selected} wsId={wsId} role={role ?? null} onSelect={(id) => set({ artifact: id })} />
                   : <EmptyState title="Select an output">A dashboard shows a live preview from its charts&apos; data before anything is published.</EmptyState>}
           </div>
         </div>
@@ -291,7 +301,7 @@ function PreparedView({ run, wsId }: { run: RecipeRun; wsId: string }) {
   );
 }
 
-function ArtifactView({ id, wsId, onSelect }: { id: string; wsId: string; onSelect: (id: string) => void }) {
+function ArtifactView({ id, wsId, role, onSelect }: { id: string; wsId: string; role: string | null; onSelect: (id: string) => void }) {
   const d = useAsync(() => api.getArtifact(id), [id]);
   if (d.error) return <ErrorBox error={d.error} onRetry={d.reload} />;
   if (!d.data) return <Loading />;
@@ -310,7 +320,7 @@ function ArtifactView({ id, wsId, onSelect }: { id: string; wsId: string; onSele
         ]} />
         <TechnicalDetails><p className="small">Content hash <code title={a.content_hash}>{shortHash(a.content_hash, 16)}</code></p></TechnicalDetails>
       </Card>
-      <ArtifactContent a={a} wsId={wsId} />
+      <ArtifactContent a={a} wsId={wsId} role={role} onSelect={onSelect} />
       <Card title={`Versions (${a.versions.length})`}>
         <ul className="list compact">
           {a.versions.map((v) => (
@@ -329,7 +339,7 @@ function ArtifactView({ id, wsId, onSelect }: { id: string; wsId: string; onSele
   );
 }
 
-function ArtifactContent({ a, wsId }: { a: ArtifactDetail; wsId: string }) {
+function ArtifactContent({ a, wsId, role, onSelect }: { a: ArtifactDetail; wsId: string; role: string | null; onSelect: (id: string) => void }) {
   const c = a.content as Record<string, unknown>;
   switch (a.type) {
     case "chart":
@@ -344,6 +354,7 @@ function ArtifactContent({ a, wsId }: { a: ArtifactDetail; wsId: string }) {
         </Card>
       );
     case "dashboard":
+      if (c.schema_version === "dashboard.v2") return <DashboardBuilder artifactId={a.id} role={role} onSwitch={onSelect} />;  // S08 builder
       return <><PublishCard wsId={wsId} artifact={a} /><DashboardPreview wsId={wsId} artifact={a} /></>;
     case "report":
       return <ReportRow wsId={wsId} report={a} />;

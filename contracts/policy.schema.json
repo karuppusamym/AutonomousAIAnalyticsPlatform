@@ -498,6 +498,17 @@
       "default": false,
       "title": "Share Conversation Summaries",
       "type": "boolean"
+    },
+    "export_approval_min_sensitivity": {
+      "default": "confidential",
+      "enum": [
+        "public",
+        "internal",
+        "confidential",
+        "restricted"
+      ],
+      "title": "Export Approval Min Sensitivity",
+      "type": "string"
     }
   },
   "title": "WorkspacePolicyDoc",

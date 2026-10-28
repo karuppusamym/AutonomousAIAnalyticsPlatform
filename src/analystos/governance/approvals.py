@@ -114,18 +114,39 @@ def verify_for_execution(session: Session, approval_id: str, *, payload: dict[st
     if approval.expires_at < utcnow():
         approval.status = "expired"
         raise ApprovalRequired("approval expired")
+    return _verify_binding(session, approval, payload=payload, plan_hash=plan_hash)
+
+
+def verify_for_reapply(session: Session, approval_id: str, *, payload: dict[str, Any], plan_hash: str | None) -> Approval:
+    """Reconcile repair (S08): re-apply exactly what an executed approval already published, e.g. recreate a
+    dashboard someone deleted in the BI tool. The approval must be `executed` and still bind the payload,
+    plan and policy version, and both people must still hold their rights; anything else needs a new approval.
+    Its decision expiry does not apply: it limits deciding, not keeping the approved state in place."""
+    approval = session.get(Approval, approval_id)
+    if approval is None:
+        raise ApprovalRequired("no approval on record")
+    if approval.status != "executed":
+        raise ApprovalRequired(f"approval is {approval.status}; only an executed approval can be re-applied")
+    return _verify_binding(session, approval, payload=payload, plan_hash=plan_hash, mark=False)
+
+
+def _verify_binding(session: Session, approval: Approval, *, payload: dict[str, Any], plan_hash: str | None,
+                    mark: bool = True) -> Approval:
+    """Payload, plan and policy binding plus both parties' current rights. `mark` records an invalidation
+    on the approval (a re-apply check leaves an executed approval as it is)."""
+    def invalid(reason: str) -> None:
+        if mark:
+            approval.status, approval.reason = "invalidated", reason
+
     if stable_hash(payload) != approval.payload_hash:
-        approval.status = "invalidated"
-        approval.reason = "payload changed after approval"
+        invalid("payload changed after approval")
         raise ApprovalRequired("payload changed after approval; a new approval is required")
     if plan_hash != approval.plan_hash:
-        approval.status = "invalidated"
-        approval.reason = "plan changed after approval"
+        invalid("plan changed after approval")
         raise ApprovalRequired("plan changed after approval; a new approval is required")
     ws = session.get(Workspace, approval.workspace_id)
     if ws is None or ws.status != "active" or ws.deleted_at is not None or ws.policy_version != approval.policy_version:
-        approval.status = "invalidated"
-        approval.reason = "policy changed after approval"
+        invalid("policy changed after approval")
         raise ApprovalRequired("policy changed after approval; a new approval is required")
     requester = session.get(User, approval.requested_by)
     approver = session.get(User, approval.decided_by) if approval.decided_by else None

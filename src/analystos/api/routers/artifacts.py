@@ -231,7 +231,9 @@ def rollback(publication_id: str, user: User = Depends(current_user), session: S
         raise Conflict(f"publication {pub.id} is {pub.status}; only a succeeded or partial publication can be rolled back")
     removed = get_publisher(pub.destination, get_settings()).rollback(pub.external_ids)
     pub.status = "rolled_back"
-    if pub.run_id:
+    if pub.artifact_id:  # S08 builder dashboard: the artifact this publication published
+        published = select(Artifact).where(Artifact.id == pub.artifact_id, Artifact.status == "published")
+    elif pub.run_id:
         published = select(Artifact).where(Artifact.run_id == pub.run_id, Artifact.status == "published")
     else:  # an Ask answer publication: only the charts this publication placed (never every run-less artifact)
         charts = [str(v) for v in ((pub.external_ids or {}).get("charts") or {}).values()]

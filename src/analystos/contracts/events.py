@@ -104,3 +104,6 @@ TASK_STATUSES = ["NEW", "READY", "RUNNING", "WAITING_USER", "COMPLETED", "FAILED
 # Tool, agent and data-product registry (S10): signed versions published, quarantined at admission, status changes,
 # invocations
 EVENT_TYPES |= {"tool.published", "tool.quarantined", "tool.deprecated", "tool.status_changed", "tool.invoked"}
+# Dashboards and publishing (S08): op versions, forks of published dashboards, publish requests, reconcile drift, exports
+EVENT_TYPES |= {"dashboard.version_created", "dashboard.forked", "dashboard.publish_requested",
+                "publication.drift_detected", "export.created"}

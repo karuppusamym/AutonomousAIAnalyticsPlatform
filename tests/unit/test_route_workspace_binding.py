@@ -30,6 +30,9 @@ NOT_A_CHILD_ID = {
     "tenant_id": "above workspaces (ADR-009): must equal the tenant the request acts for, else 404 (tenants.py)",
     "tool_id": "a registry tool id, resolved only inside the workspace_id the caller names (S10: toolreg.store filters "
                "workspace_id; the caller's role or grant there is checked first)",
+    "kind": "a contract schema name (chart | dashboard), not an object",
+    "n": "a version number of the dashboard the route binds by dashboard_id (S08)",
+    "fmt": "an export format (csv | xlsx | pdf), not an object",
 }
 # Routes whose child id is never read (a fixed answer for any id), or that no user session can reach.
 WORKER_TOKEN = ("isolated-worker route (P7-06): authenticated only by a scoped task token bound to its workspace, "

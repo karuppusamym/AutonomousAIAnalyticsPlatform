@@ -73,7 +73,7 @@ def test_non_latin_text_renders_as_written():
 def test_uncovered_characters_fall_back_instead_of_blank_boxes():
     cov = font_coverage()
     assert all(ord(c) in cov for c in "ЖΩЁ→≥…€日한")
-    assert ord("🚀") not in cov and ord("த") not in cov
+    assert ord("🚀") not in cov and ord("ह") not in cov  # Devanagari: no bundled face (Tamil has one, S08)
     assert pdf_text("a → b 日本語 🚀\tz\x07​") == "a → b 日本語 ?    z"
     assert pdf_text("a → b", "DejaVuMono") == "a → b"
     b = render_pdf(ReportData(title="報告 🚀", workspace_name="ws", objective="Ω\x00", run_id="r",
