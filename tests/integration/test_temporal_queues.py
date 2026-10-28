@@ -13,6 +13,7 @@ import json
 import os
 import signal
 import socket
+import sys
 import time
 import uuid
 from dataclasses import replace
@@ -24,6 +25,10 @@ from tests import temporal_probe as probe
 from analystos.workflows.queues import queue_options
 
 pytestmark = pytest.mark.integration
+
+# The compute pool runs activities in a process pool (spawned children, killed with SIGKILL on teardown): POSIX
+# only, like the worker conformance suite. On Windows the pool child dies and the run never finishes.
+process_pool = pytest.mark.skipif(sys.platform == "win32", reason="the compute pool is a POSIX process pool; run on Linux")
 
 PROBE_ACTIVITIES = {
     "analysis": [probe.plan_run, probe.get_state, probe.finish_run, probe.execute_task, probe.queue_ping],
@@ -131,6 +136,7 @@ def _scheduled(histories) -> dict[str, dict]:
     return out
 
 
+@process_pool
 def test_steps_run_on_their_workload_queue_and_long_runs_continue_as_new(temporal, probe_dir):
     run_id = f"run_{uuid.uuid4().hex[:8]}"
     probe.SCRIPTS[run_id] = [["context", "profile", "quality"], ["test:h1", "test:h2", "publish_request"],
@@ -160,6 +166,7 @@ def test_steps_run_on_their_workload_queue_and_long_runs_continue_as_new(tempora
     assert all(ran[k]["pid"] == os.getpid() for k, w in expected.items() if w != "compute")
 
 
+@process_pool
 def test_a_hung_statistics_task_is_detected_within_its_heartbeat_window(temporal, probe_dir, monkeypatch):
     """test:hang freezes its pool process in GIL-holding native code; test:slow runs longer than the
     heartbeat timeout but keeps heartbeating. Only the hung one may time out, and it must be caught
@@ -256,6 +263,7 @@ def servicenow_url():
     server.should_exit = True
 
 
+@process_pool
 def test_full_run_on_temporal_worker_pools(temporal, control_db, servicenow_url, probe_dir, monkeypatch):
     """The real engine through the real pools: the run starts on Temporal, its statistics steps run in
     the compute process pool (spawned processes with their own DB connections), publication on the

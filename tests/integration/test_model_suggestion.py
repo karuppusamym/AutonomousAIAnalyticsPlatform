@@ -74,7 +74,7 @@ def _assets(ws: str) -> dict:
 
 def test_selection_profiles_in_the_background_and_measures_joins(api, env):
     from analystos.db.base import session_scope
-    from analystos.db.models import CrawlRun, SemanticRelationshipCandidate
+    from analystos.db.models import CrawlRun, Relationship
 
     assert not any((a.stats or {}).get("profile_meta") for a in _assets(env["ws"]).values())  # discovery: not ready
     r = api.put(f"/api/workspaces/{env['ws']}/sources/{env['src']}/selection", headers=env["analyst"],
@@ -85,22 +85,25 @@ def test_selection_profiles_in_the_background_and_measures_joins(api, env):
     with session_scope() as s:  # TestClient runs background tasks before returning
         run = s.get(CrawlRun, pc["crawl_id"])
         assert run.status == "succeeded", run.error
-        assert run.trigger == "selection" and run.stats["profiled"] == 3 and run.stats["relationship_candidates"] >= 1
+        assert run.trigger == "selection" and run.stats["profiled"] == 3 and run.stats["relationships_validated"] >= 1
     assets = _assets(env["ws"])
     meta = assets["orders"].stats["profile_meta"]
     assert meta["fingerprint"] == assets["orders"].fingerprint and meta["source"] == "snapshot" and meta["rows_profiled"] == 60
+    # a measured join that corroborates (target unique, every value found, no fan-out) is validated in code, not
+    # queued for a person (crawler + agents.metadata.auto_validates since 2026-09-28)
     with session_scope() as s:
-        cands = {(c.from_asset.split(".")[-1], tuple(c.from_columns), c.to_asset.split(".")[-1]): c
-                 for c in s.scalars(select(SemanticRelationshipCandidate).where(
-                     SemanticRelationshipCandidate.workspace_id == env["ws"]))}
-    c = cands[("orders", ("customer_id",), "customers")]
-    assert c.status == "pending" and c.origin == "crawler" and c.cardinality == "many_to_one"
-    assert c.assessment["approvable"]
-    # a column profile's facts reach the rule description; a small enumeration is listed
+        rel = s.scalar(select(Relationship).where(Relationship.workspace_id == env["ws"],
+                                                  Relationship.from_asset_id == assets["orders"].id,
+                                                  Relationship.from_column == "customer_id",
+                                                  Relationship.to_asset_id == assets["customers"].id))
+        assert rel is not None and rel.validated and rel.origin == "discovered" and rel.cardinality == "many_to_one"
+        assert rel.evidence["validated_by"] == "measurement" and rel.evidence["assessment"] == "corroborated"
+    # a column profile's facts reach the rule description
     cat = {a["name"]: a for a in api.get(f"/api/workspaces/{env['ws']}/catalog", headers=env["analyst"]).json()}
     seg = next(col for col in cat["customers"]["columns"] if col["name"] == "segment")
     assert seg["profile"]["values_complete"] and sorted(seg["profile"]["values"]) == ["Enterprise", "SMB"]
-    assert (seg["description_origin"], seg["description"]) == ("rule", "Descriptive attribute; always present; one of Enterprise, SMB.")
+    # the list of values reaches prompts, so a description names them only where the workspace allows data samples
+    assert (seg["description_origin"], seg["description"]) == ("rule", "Descriptive attribute; always present; 2 distinct values.")
     amount = next(col for col in cat["orders"]["columns"] if col["name"] == "amount")
     assert amount["description"] == "Monetary amount; always present; from 10 to 69."
     assert cat["orders"]["time_column"] == "ordered_at" and cat["orders"]["profile_meta"]["rows_profiled"] == 60
@@ -117,8 +120,8 @@ def test_model_suggestion_validate_and_propose(api, env):
     assert tables["customers"]["primary_key"]["columns"] == ["customer_id"]
     assert tables["customers"]["primary_key"]["evidence"] in ("profile_unique", "measured_unique")
     rel = next(r for r in doc["relationships"] if r["from"]["fq"].endswith(".orders") and r["to"]["fq"].endswith(".customers"))
-    assert rel["status"] == "pending" and rel["candidate_id"] and rel["cardinality"] == "many_to_one"
-    assert doc["summary"]["tables"] == 3 and doc["summary"]["relationships_pending"] >= 1
+    assert rel["status"] == "validated" and rel["cardinality"] == "many_to_one"  # validated by measurement
+    assert doc["summary"]["tables"] == 3
     assert any(m["expression"] == "SUM(amount)" for m in doc["metrics"])
     val = api.post(f"{base}/model/suggestion/validate", headers=analyst)
     assert val.status_code == 200, val.text
@@ -143,23 +146,19 @@ def test_model_suggestion_validate_and_propose(api, env):
     assert own.status_code == 403
 
 
-def test_accepting_the_join_flips_readiness(api, env):
-    base, analyst, approver = env["base"], env["analyst"], env["approver"]
+def test_a_measured_join_is_validated_by_code_and_readiness_passes(api, env):
+    """The orders -> customers join was measured and corroborated at selection, so no person has to accept it before a
+    comparison across the two tables: the join-fanout readiness check passes and nothing waits in the review queue.
+    Accepting a candidate (separation of duties, hash-bound) is covered by test_semantic_review."""
+    base, analyst = env["base"], env["analyst"]
     assets = _assets(env["ws"])
     pair = [f"{assets['orders'].schema_name}.orders", f"{assets['customers'].schema_name}.customers"]
-
-    def fanout() -> dict:
-        r = api.post(f"/api/workspaces/{env['ws']}/readiness", headers=analyst, json={"job_kind": "compare", "assets": pair})
-        assert r.status_code == 201, r.text
-        return next(c for c in r.json()["checks"] if c["check"] == "join_fanout")
-
-    assert fanout()["status"] == "needs_input"
-    cand = next(c for c in api.get(f"{base}/relationships/candidates?status=pending", headers=analyst).json()
-                if c["from_asset"] == pair[0] and c["to_asset"] == pair[1])
-    ok = api.post(f"{base}/relationships/candidates/{cand['id']}/accept", headers=approver, json={"reason": "FK by design"})
-    assert ok.status_code == 200, ok.text
-    check = fanout()
+    r = api.post(f"/api/workspaces/{env['ws']}/readiness", headers=analyst, json={"job_kind": "compare", "assets": pair})
+    assert r.status_code == 201, r.text
+    check = next(c for c in r.json()["checks"] if c["check"] == "join_fanout")
     assert check["status"] == "pass", check
+    pending = api.get(f"{base}/relationships/candidates?status=pending", headers=analyst).json()
+    assert not [c for c in pending if c["from_asset"] == pair[0] and c["to_asset"] == pair[1]]
     suggestion = api.get(f"{base}/model/suggestion", headers=analyst).json()
-    rel = next(r for r in suggestion["relationships"] if r["candidate_id"] == cand["id"])
+    rel = next(r for r in suggestion["relationships"] if r["from"]["fq"] == pair[0] and r["to"]["fq"] == pair[1])
     assert rel["status"] == "validated"

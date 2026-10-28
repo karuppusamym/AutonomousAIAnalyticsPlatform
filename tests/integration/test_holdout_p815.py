@@ -55,7 +55,7 @@ def _wait(run_id: str, timeout: float = 900) -> str:
     while time.time() - started < timeout:
         with session_scope() as s:
             status = s.get(AnalysisRun, run_id).status
-        if status in ("COMPLETED", "FAILED"):
+        if status in ("COMPLETED", "FAILED", "WAITING_USER"):  # nobody answers a question here
             return status
         time.sleep(0.5)
     raise AssertionError(f"run {run_id} did not finish")
@@ -111,6 +111,16 @@ def test_a_governed_run_locks_before_it_reads_the_held_out_rows(control_db, reta
         s.expunge(admin)
     discover_source(admin, src_id)
     select_assets(admin, src_id, ["orders"])
+    # The objective uses the sales pack's "order value" and "channel": context grounding waits for the owner to map
+    # them to this table, as a workspace owner would before an unattended run.
+    from evaluation.analytical import _record_definitions
+
+    _record_definitions(admin, ws_id, "orders", [
+        {"term": "Average order value (AOV)", "columns": ["quantity", "unit_price", "discount_pct"],
+         "definition": "Order value is quantity times unit_price less discount_pct percent; AOV is its mean per order.",
+         "examples": "2 units at 50 with a 10 percent discount is an order value of 90."},
+        {"term": "Sales channel", "columns": ["sales_channel"],
+         "definition": "The channel recorded on the order (sales_channel).", "examples": "web, store, marketplace"}])
     run = create_run(admin, ws_id, objective=None, origin={"type": "user", "publish": "skip"})
     assert _wait(run.id) == "COMPLETED"
 

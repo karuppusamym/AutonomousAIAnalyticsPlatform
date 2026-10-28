@@ -32,7 +32,9 @@ def test_concurrent_saves_get_distinct_versions(control_db):
         except Exception as exc:  # recorded, asserted below
             errors.append(exc)
 
-    threads = [threading.Thread(target=save, args=(i,)) for i in range(n)]
+    from analystos.tenancy.background import carry_context  # the savers act for the test's tenant
+
+    threads = [threading.Thread(target=carry_context(save), args=(i,)) for i in range(n)]
     for t in threads:
         t.start()
     for t in threads:

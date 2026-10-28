@@ -196,7 +196,9 @@ def test_watermark_refresh_equals_a_full_reload_through_updates_inserts_deletes_
             _refresh(world)
         except Exception as exc:  # noqa: BLE001
             errors.append(exc)
-    threads = [threading.Thread(target=go) for _ in range(2)]
+    from analystos.tenancy.background import carry_context  # the refreshes act for the test's tenant
+
+    threads = [threading.Thread(target=carry_context(go)) for _ in range(2)]
     for t in threads:
         t.start()
     for t in threads:
@@ -561,7 +563,7 @@ def test_migration_0039_up_down_up_matches_the_models(control_db):
         command.upgrade(cfg, "0039")
         for m in models:
             cols = {c["name"] for c in inspect(engine).get_columns(m.__tablename__)}
-            assert cols == {c.name for c in m.__table__.columns}, m.__tablename__
+            assert cols == {c.name for c in m.__table__.columns} - {"tenant_id"}, m.__tablename__  # tenant_id: 0057
         command.downgrade(cfg, "0035")
         assert not {m.__tablename__ for m in models} & set(inspect(engine).get_table_names())
         command.upgrade(cfg, "0039")

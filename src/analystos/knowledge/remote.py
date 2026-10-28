@@ -26,6 +26,14 @@ _BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/\-]{0,119}$")
 _SCP = re.compile(r"^[A-Za-z0-9._\-]+@[A-Za-z0-9.\-]+:[A-Za-z0-9._/\-]+$")
 
 
+def _windows_absolute(url: str) -> bool:
+    """A drive-rooted local path (C:/packs/r.git) on a Windows host: the same kind of remote as /srv/packs/r.git."""
+    import os
+    from pathlib import PureWindowsPath
+
+    return os.name == "nt" and bool(re.match(r"^[A-Za-z]:[\\/]", url)) and PureWindowsPath(url).is_absolute()
+
+
 def validate_remote(url: str) -> str:
     url = url.strip()
     if re.match(r"^(https|ssh)://", url):
@@ -33,7 +41,7 @@ def validate_remote(url: str) -> str:
         if re.match(r"^[a-z]+://[^/@]*:[^/@]*@", url) or re.match(r"^https://[^/]*@", url):
             raise InvalidInput("put no credentials in the remote URL; use the host's credential helper or SSH keys")
         return url
-    if _SCP.match(url) or url.startswith("file://") or url.startswith("/"):
+    if _SCP.match(url) or url.startswith("file://") or url.startswith("/") or _windows_absolute(url):
         return url
     raise InvalidInput("remote must be an https://, ssh://, user@host:path, file:// or absolute path URL")
 

@@ -307,7 +307,8 @@ def test_migration_0017_applies_and_reverts(control_db):
         cfg.set_main_option("sqlalchemy.url", url)
         command.upgrade(cfg, "0017")
         insp = inspect(engine)
-        later = {"semantic_model": {"approval_id", "decided_by", "decided_at"}}  # added by 0034 (P4-05)
+        later = {"semantic_model": {"approval_id", "decided_by", "decided_at", "tenant_id"},  # 0034 (P4-05), 0057
+                 "semantic_metric": {"tenant_id"}}
         for model in (SemanticModel, SemanticMetric):
             assert {c["name"] for c in insp.get_columns(model.__tablename__)} == \
                 set(model.__table__.columns.keys()) - later.get(model.__tablename__, set())

@@ -18,3 +18,16 @@ def test_credentials_in_an_https_remote_are_refused(url):
                                  "/srv/packs/r.git"])
 def test_plain_remotes_pass(url):
     assert validate_remote(url) == url
+
+
+def test_a_drive_rooted_path_is_a_local_remote_only_on_windows(monkeypatch):
+    import os
+
+    monkeypatch.setattr(os, "name", "nt")
+    assert validate_remote(r"C:\packs\r.git") == r"C:\packs\r.git"
+    assert validate_remote("C:/packs/r.git") == "C:/packs/r.git"
+    with pytest.raises(InvalidInput):
+        validate_remote(r"C:relative\r.git")
+    monkeypatch.setattr(os, "name", "posix")
+    with pytest.raises(InvalidInput):
+        validate_remote(r"C:\packs\r.git")
