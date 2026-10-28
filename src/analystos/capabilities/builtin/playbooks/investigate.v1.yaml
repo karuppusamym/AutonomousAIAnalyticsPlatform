@@ -1,10 +1,13 @@
 # The v1 analyst lifecycle (spec v2 §5) as data. It reproduces the v1 plan hash for the same inputs
 # (tests/unit/test_playbooks.py pins it), so the order, titles, agents and dependencies below are
 # part of the hash: change them only with a new playbook version.
+# 1.1.0 (S07-T5): the investigation checks of v1 §7.2 as gates (`checks:`; evidence/investigation.py), in the
+# analyst's order baseline -> hypotheses -> segmentation -> statistics -> alternatives -> conclusions. Gates
+# are not in the plan dict, so the plan hash for the same inputs is unchanged.
 apiVersion: analystos/v1
 kind: Playbook
 id: playbook.investigate
-version: 1.0.0
+version: 1.1.0
 summary: Investigate a business objective end to end (context, hypotheses, verified findings, dashboards, approved publication)
 determinism: model
 side_effect: write_external  # contains a publication step; it only acts under an approved, hash-bound approval
@@ -30,7 +33,7 @@ spec:
       title: Discover and validate relationships
       after: [metadata]
       optional: true
-    - {key: profile, use: agent.profiler, title: Profile selected tables, after: [metadata]}
+    - {key: profile, use: agent.profiler, title: Profile selected tables, after: [metadata], checks: [baseline]}
     - key: quality
       use: agent.data_quality
       title: Detect data-quality issues
@@ -41,6 +44,7 @@ spec:
       title: Generate analytical questions and prioritised hypotheses
       after: [context, profile, quality]
       replan_boundary: [{trigger: redirect, reset: self_and_downstream}]
+      checks: [hypotheses]
       expands:
         - {prefix: "test:", use: agent.data_scientist}
         - {prefix: "followups:", use: agent.investigator, behaviour: follow_ups}
@@ -48,11 +52,13 @@ spec:
       use: agent.insight
       title: Turn supported results into evidence-backed findings
       after: [hypotheses, "test:*", "followups:*"]
+      checks: [segmentation, {name: statistics, on_fail: block}]
     - key: verify
       use: agent.critic
       title: REV verification of every finding
       after: [insights]
       replan_boundary: [{trigger: finding_rejected, reset: downstream}]
+      checks: [alternatives, {name: conclusions, on_fail: block}]
     - {key: dataset, use: agent.sql, title: Build the reusable analytical dataset, after: [verify]}
     - {key: semantic, use: agent.semantic, title: Define and validate KPIs, after: [dataset]}
     - {key: visualize, use: agent.visualization, title: Design charts and executive + operational dashboards, after: [semantic]}

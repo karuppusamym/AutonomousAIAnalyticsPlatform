@@ -15,3 +15,4 @@ certification:
 tags: [statistical, segment, time_series]
 spec:
   order: 80
+  mix_effects: true   # separates mix from within-segment change (the segmentation gate, S07-T5)

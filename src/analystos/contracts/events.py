@@ -92,6 +92,9 @@ EVENT_TYPES |= {"context.binding_saved", "context.binding_validated", "context.e
 # Autonomy engine (S06): goals, remaining budget, budget exhaustion, typed replans
 EVENT_TYPES |= {"goal.created", "goal.signal", "run.budget", "run.limited"}
 
+# Analysis, verification and evidence (S07): an investigation gate's result; a published artifact's void banner
+EVENT_TYPES |= {"investigation.check", "publication.void_banner", "publication.banner_cleared"}
+
 # COMPLETED_WITH_LIMITATIONS: a budget ran out; validated partial results stand (S06 §3.4, AT-04).
 # EXPIRED: the run outlived its wall-clock limit while waiting for a person (architecture §5.2).
 RUN_TERMINAL = {"COMPLETED", "FAILED", "REJECTED", "CANCELLED", "COMPLETED_WITH_LIMITATIONS", "EXPIRED"}

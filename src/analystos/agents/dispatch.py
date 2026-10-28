@@ -33,5 +33,11 @@ def dispatch(ctx: RunContext) -> dict:
         if entry == GENERIC_ENTRY:
             from analystos.agents.generic import run_agent
 
-            return run_agent(ctx, manifest)
-        return registry.resolve_python(entry)(ctx)
+            output = run_agent(ctx, manifest)
+        else:
+            output = registry.resolve_python(entry)(ctx)
+    if step is not None and step.checks:  # S07-T5: investigation gates, judged on what the step persisted
+        from analystos.evidence.investigation import run_gates
+
+        output = {**(output or {}), "checks": run_gates(ctx.run.id, key, step.checks)}
+    return output
