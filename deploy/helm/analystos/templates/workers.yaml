@@ -1,20 +1,11 @@
 {{- /* One Deployment per Temporal task-queue pool (P4-S01): each runs `analystos worker` with
        ANALYSTOS_WORKER_QUEUES set to its queue(s), so every pool scales on its own. Isolated pools
        (`isolated: true`, ADR-0022 / P7-06) are opt-in (rendered only with replicas > 0) and get no ConfigMap
-       and no Secret: only the queue, the artifact store URL and the Temporal address. They run under a
-       sandboxed RuntimeClass (gVisor by default, S07-T1 / ADR-012), with no service account token, no
-       service links and a size-capped ephemeral scratch volume. */ -}}
+       and no Secret: only the queue, the artifact store URL and the Temporal address. */ -}}
 {{- range $name, $pool := .Values.workers }}
 {{- if or (not $pool.isolated) (gt (int $pool.replicas) 0) }}
 {{- $component := printf "worker-%s" $name }}
-{{- $runtime := "" }}
-{{- if $pool.isolated }}
-{{- $runtime = (hasKey $pool "runtimeClassName") | ternary $pool.runtimeClassName $.Values.isolatedPools.runtimeClassName }}
-{{- if and (not $runtime) (eq (lower (toString $.Values.env)) "production") }}
-{{- fail (printf "workers.%s is an isolated compute pool: in production it needs a sandboxed RuntimeClass (isolatedPools.runtimeClassName, gVisor or Kata; ADR-012)" $name) }}
-{{- end }}
-{{- end }}
-{{- $ctx := dict "root" $ "component" $component "podSecurityContext" $pool.podSecurityContext "isolated" $pool.isolated "runtimeClassName" $runtime }}
+{{- $ctx := dict "root" $ "component" $component "podSecurityContext" $pool.podSecurityContext }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -65,11 +56,6 @@ spec:
             - {name: ANALYSTOS_TEMPORAL_NAMESPACE, value: {{ $.Values.config.temporalNamespace | quote }}}
             - {name: ANALYSTOS_TEMPORAL_QUEUE_PREFIX, value: {{ $.Values.config.temporalQueuePrefix | quote }}}
             - {name: ANALYSTOS_ENV, value: {{ $.Values.env | quote }}}
-            {{- $kernel := get $.Values.isolatedPools.runtimeKernels (toString $runtime) }}
-            {{- if $kernel }}
-            # The worker checks its kernel and refuses to start outside the sandboxed runtime it was given.
-            - {name: ANALYSTOS_WORKER_REQUIRE_RUNTIME, value: {{ $kernel | quote }}}
-            {{- end }}
           volumeMounts:
             - {name: tmp, mountPath: /tmp}
           securityContext:
@@ -83,10 +69,7 @@ spec:
             {{- toYaml $pool.resources | nindent 12 }}
       volumes:
         {{- if $pool.isolated }}
-        # The only writable place: ephemeral, size-capped, gone with the pod. Inputs and outputs travel as
-        # artifact-store URLs (ADR-0022), never as volumes.
-        - name: tmp
-          emptyDir: {sizeLimit: {{ default $.Values.isolatedPools.scratchSizeLimit $pool.scratchSizeLimit | quote }}}
+        - {name: tmp, emptyDir: {}}
         {{- else }}
         {{- include "analystos.appVolumes" $ | nindent 8 }}
         {{- end }}

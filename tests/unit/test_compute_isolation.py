@@ -1,8 +1,8 @@
-"""S07-T1 (ADR-012): compute isolation is a release gate. Isolated compute pods run under a sandboxed
-RuntimeClass (gVisor by default) with no service account token and a size-capped scratch volume; the
-worker refuses to start outside the runtime it was given; the Docker dev pools and the container sandbox
-carry the no-network / read-only / no-capability flags; and the in-process sandbox runs only for
-`profile=lite` on synthetic data (a development host keeps its explicit `off` opt-in)."""
+"""S07-T1 (ADR-012): compute isolation is a release gate. The isolated worker refuses to start outside the
+sandboxed runtime it was given (`ANALYSTOS_WORKER_REQUIRE_RUNTIME`; the Helm runtimeClass that sets it is S12's,
+branch claude/competent-curran-ad80fc); the Docker dev pools and the container sandbox carry the no-network /
+read-only / no-capability flags; and the in-process sandbox runs only for `profile=lite` on synthetic data
+(a development host keeps its explicit `off` opt-in)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,19 +20,6 @@ CHART = ROOT / "deploy" / "helm" / "analystos"
 
 def _values() -> dict:
     return yaml.safe_load((CHART / "values.yaml").read_text(encoding="utf-8"))
-
-
-def test_isolated_pools_default_to_gvisor_with_a_capped_scratch_volume():
-    iso = _values()["isolatedPools"]
-    assert iso["runtimeClassName"] == "gvisor" and iso["runtimeKernels"]["gvisor"] == "gvisor"
-    assert iso["scratchSizeLimit"] == "2Gi" and iso["runtimeClass"]["handler"] == "runsc"
-    workers = (CHART / "templates" / "workers.yaml").read_text(encoding="utf-8")
-    helpers = (CHART / "templates" / "_helpers.tpl").read_text(encoding="utf-8")
-    # isolated pods: no token, no service links, the runtime class, the worker's own kernel check
-    assert "automountServiceAccountToken: {{ and (not .isolated)" in helpers and "enableServiceLinks: false" in helpers
-    assert "runtimeClassName: {{ . }}" in helpers and "ANALYSTOS_WORKER_REQUIRE_RUNTIME" in workers
-    assert "sizeLimit" in workers and "needs a sandboxed RuntimeClass" in workers  # refused unsandboxed in production
-    assert "kind: RuntimeClass" in (CHART / "templates" / "runtimeclass.yaml").read_text(encoding="utf-8")
 
 
 def test_isolated_pool_budgets_are_time_cpu_and_memory_limited():
