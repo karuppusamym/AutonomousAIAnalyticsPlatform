@@ -45,6 +45,9 @@ reports = ["matplotlib>=3.9", "fpdf2>=2.7", "fonttools>=4.50", "openpyxl>=3.1", 
 temporal = ["temporalio>=1.7"]
 # The optional Neo4j projection (ANALYSTOS_GRAPH_ENABLED, the `graph` profile).
 graph = ["neo4j>=5.23"]
+# OpenTelemetry SDK + OTLP/HTTP exporter for traces (S12 §2; ANALYSTOS_OTEL_ENABLED). The API alone is enough for
+# no-op spans; metrics need nothing (analystos.observability.metrics renders the Prometheus format itself).
+otel = ["opentelemetry-sdk>=1.44", "opentelemetry-exporter-otlp-proto-http>=1.44"]
 # Everything a standard/scale deployment image carries.
 standard = ["analystos[ml,reports,temporal,graph]"]
 dev = [

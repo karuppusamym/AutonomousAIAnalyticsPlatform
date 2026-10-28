@@ -1,0 +1,71 @@
+{{- /* Production checks (S12 §5) as CronJobs. A failed Job pages through the PrometheusRule
+       (kube_job_status_failed). `audit verify` exits 4 on a broken chain; `ops rls-check` exits 6 when a
+       tenant-owned table lacks RLS, its policy or its fill trigger, or the runtime role can bypass RLS. */ -}}
+{{- $jobs := list }}
+{{- if .Values.ops.auditVerify.enabled }}
+{{- $cmd := "analystos audit verify" }}
+{{- if .Values.ops.auditVerify.exportDir }}
+{{- if not .Values.ops.auditVerify.exportVolume }}
+{{- fail "ops.auditVerify.exportDir needs ops.auditVerify.exportVolume (the WORM volume mounted there)" }}
+{{- end }}
+{{- $cmd = printf "analystos audit verify && analystos audit export --out %s" .Values.ops.auditVerify.exportDir }}
+{{- end }}
+{{- $jobs = append $jobs (dict "name" "audit-verify" "schedule" .Values.ops.auditVerify.schedule "cmd" $cmd "worm" (and .Values.ops.auditVerify.exportDir .Values.ops.auditVerify.exportVolume)) }}
+{{- end }}
+{{- if .Values.ops.rlsCheck.enabled }}
+{{- $jobs = append $jobs (dict "name" "rls-check" "schedule" .Values.ops.rlsCheck.schedule "cmd" "analystos ops rls-check") }}
+{{- end }}
+{{- range $jobs }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "analystos.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "analystos.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ .name }}
+spec:
+  schedule: {{ .schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0                # a failed check is a finding, not something to retry away
+      template:
+        metadata:
+          labels:
+            {{- include "analystos.labels" $ | nindent 12 }}
+            app.kubernetes.io/component: {{ .name }}
+            analystos.io/role: ops
+        spec:
+          {{- include "analystos.podCommon" (dict "root" $ "component" .name) | nindent 10 }}
+          restartPolicy: Never
+          containers:
+            - name: {{ .name }}
+              image: {{ include "analystos.image" $ }}
+              imagePullPolicy: {{ $.Values.image.pullPolicy }}
+              command: ["sh", "-c", {{ .cmd | quote }}]
+              envFrom:
+                - configMapRef:
+                    name: {{ include "analystos.fullname" $ }}-config
+                - secretRef:
+                    name: {{ $.Values.secrets.existingSecret }}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: var, mountPath: /app/var}
+                {{- if .worm }}
+                - {name: audit-worm, mountPath: {{ $.Values.ops.auditVerify.exportDir }}}
+                {{- end }}
+              securityContext:
+                {{- toYaml $.Values.containerSecurityContext | nindent 16 }}
+              resources:
+                {{- toYaml $.Values.ops.resources | nindent 16 }}
+          volumes:
+            - {name: tmp, emptyDir: {}}
+            - {name: var, emptyDir: {}}
+            {{- if .worm }}
+            - name: audit-worm
+              {{- toYaml $.Values.ops.auditVerify.exportVolume | nindent 14 }}
+            {{- end }}
+{{- end }}

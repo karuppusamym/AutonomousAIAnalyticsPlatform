@@ -1,0 +1,93 @@
+{{- /* Alert and recording rules (S12 §2), rendered through `tpl` by templates/monitoring.yaml. Every
+       analystos_* name must exist in analystos.observability.metrics.CATALOG (tests/unit/test_observability.py). */ -}}
+{{- $r := .Values.monitoring.prometheusRule }}
+{{- $slo := $r.slo }}
+{{- $job := include "analystos.fullname" . }}
+groups:
+  - name: analystos-slo-recording
+    rules:
+      {{- range $w := list "5m" "30m" "1h" "6h" }}
+      - record: analystos:ask_latency_bad:ratio_rate{{ $w }}
+        expr: |
+          1 - (
+            sum(rate(analystos_http_request_duration_seconds_bucket{class="ask",method="POST",le="{{ $slo.askLatencySeconds }}"}[{{ $w }}]))
+            / clamp_min(sum(rate(analystos_http_request_duration_seconds_count{class="ask",method="POST"}[{{ $w }}])), 1e-9)
+          )
+      - record: analystos:run_failure:ratio_rate{{ $w }}
+        expr: |
+          sum(rate(analystos_runs_total{outcome=~"FAILED|EXPIRED"}[{{ $w }}]))
+          / clamp_min(sum(rate(analystos_runs_total{outcome!="CANCELLED"}[{{ $w }}])), 1e-9)
+      - record: analystos:unavailable:ratio_rate{{ $w }}
+        expr: |
+          sum(rate(analystos_http_requests_total{status=~"5..",class!~"health|metrics"}[{{ $w }}]))
+          / clamp_min(sum(rate(analystos_http_requests_total{class!~"health|metrics"}[{{ $w }}])), 1e-9)
+      {{- end }}
+  - name: analystos-slo-burn
+    rules:
+      {{- range $s := list (list "AskLatency" "ask_latency_bad" $slo.askLatencyTarget "Ask p95 time to first byte")
+                           (list "RunSuccess" "run_failure" $slo.runSuccessTarget "Run success rate")
+                           (list "Availability" "unavailable" $slo.availabilityTarget "API availability") }}
+      {{- $budget := subf 1.0 (index $s 2) }}
+      - alert: AnalystOS{{ index $s 0 }}BudgetBurnFast
+        expr: |
+          analystos:{{ index $s 1 }}:ratio_rate1h > {{ mulf 14.4 $budget }}
+          and analystos:{{ index $s 1 }}:ratio_rate5m > {{ mulf 14.4 $budget }}
+        for: 2m
+        labels: {severity: page, slo: {{ index $s 0 | lower }}}
+        annotations:
+          summary: "{{ index $s 3 }}: error budget burning 14.4x (2% of the 30-day budget in 1 h)"
+          runbook_url: docs/30-runbooks/12-observability.md#slo-burn
+      - alert: AnalystOS{{ index $s 0 }}BudgetBurnSlow
+        expr: |
+          analystos:{{ index $s 1 }}:ratio_rate6h > {{ mulf 6.0 $budget }}
+          and analystos:{{ index $s 1 }}:ratio_rate30m > {{ mulf 6.0 $budget }}
+        for: 15m
+        labels: {severity: ticket, slo: {{ index $s 0 | lower }}}
+        annotations:
+          summary: "{{ index $s 3 }}: error budget burning 6x (5% of the 30-day budget in 6 h)"
+          runbook_url: docs/30-runbooks/12-observability.md#slo-burn
+      {{- end }}
+  - name: analystos-platform
+    rules:
+      - alert: AnalystOSQueueBacklog
+        expr: |
+          sum by (task_queue) ({{ $r.temporalBacklogMetric }}{task_queue=~"{{ .Values.config.temporalQueuePrefix }}-.*"}) > {{ $r.queueBacklogThreshold }}
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "Temporal task queue {{ "{{ $labels.task_queue }}" }} backlog above {{ $r.queueBacklogThreshold }} for 10 min"
+          runbook_url: docs/30-runbooks/12-observability.md#queue-backlog
+      - alert: AnalystOSModelProviderErrors
+        expr: |
+          sum by (provider) (rate(analystos_model_calls_total{status="error"}[10m]))
+          / clamp_min(sum by (provider) (rate(analystos_model_calls_total{status=~"ok|error"}[10m])), 1e-9) > {{ $r.providerErrorRate }}
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "Model provider {{ "{{ $labels.provider }}" }} error rate above {{ mulf 100.0 $r.providerErrorRate }}%"
+          runbook_url: docs/30-runbooks/12-observability.md#provider-errors
+      - alert: AnalystOSSpendNearBudget
+        expr: max by (scope_kind, scope) (analystos_budget_used_ratio) > {{ $r.budgetRatio }}
+        for: 5m
+        labels: {severity: ticket}
+        annotations:
+          summary: "{{ "{{ $labels.scope_kind }} {{ $labels.scope }}" }} spent more than {{ mulf 100.0 $r.budgetRatio }}% of its budget"
+          runbook_url: docs/30-runbooks/12-observability.md#spend
+      - alert: AnalystOSAuditChainVerifyFailed
+        expr: max(kube_job_status_failed{job_name=~"{{ $job }}-audit-verify-.*"}) > 0
+        labels: {severity: page}
+        annotations:
+          summary: "The nightly audit chain verification failed: the audit trail may have been altered"
+          runbook_url: docs/30-runbooks/12-observability.md#audit-chain
+      - alert: AnalystOSRlsCoverageFailed
+        expr: max(kube_job_status_failed{job_name=~"{{ $job }}-rls-check-.*"}) > 0
+        labels: {severity: page}
+        annotations:
+          summary: "A tenant-owned table lacks row-level security, its policy or its fill trigger in production"
+          runbook_url: docs/30-runbooks/12-observability.md#rls-coverage
+      - alert: AnalystOSRlsDenied
+        expr: sum(increase(analystos_rls_denied_total[15m])) > 0
+        labels: {severity: ticket}
+        annotations:
+          summary: "Postgres row-level security refused statements: a code path crossed tenants"
+          runbook_url: docs/30-runbooks/12-observability.md#rls-denied

@@ -1,4 +1,4 @@
-"""analystos CLI: migrate | provision-analytics-roles | seed | demo-seed | worker | scheduler | api | export-contracts | replay-run | packs | calibrate | knowledge | check-semantics | audit"""
+"""analystos CLI: migrate | provision-analytics-roles | seed | demo-seed | worker | scheduler | api | export-contracts | replay-run | packs | calibrate | knowledge | check-semantics | audit | ops"""
 from __future__ import annotations
 
 import argparse
@@ -312,6 +312,10 @@ def _main(argv: list[str]) -> int:
         return audit_main(argv[1:])
     if argv[:1] == ["context"]:
         return context_main(argv[1:])
+    if argv[:1] == ["ops"]:  # S12: rls-check, spend, spend-export, model-matrix
+        from analystos.ops.cli import main as ops_main
+
+        return ops_main(argv[1:])
     if argv[:1] == ["demo-seed"]:  # a ready demo workspace through the running API (`analystos demo-seed --help`)
         from analystos.demo.seed import main as demo_seed
 
@@ -324,13 +328,14 @@ def _main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="analystos")
     parser.add_argument("command", choices=["migrate", "provision-analytics-roles", "seed", "worker", "scheduler", "api",
                                             "export-contracts", "replay-run", "packs", "calibrate", "knowledge", "schedules", "audit", "context",
-                                            "bi-sync", "sandbox-status", "check-semantics", "demo-seed"],
+                                            "bi-sync", "sandbox-status", "check-semantics", "demo-seed", "ops"],
                         help="knowledge: `analystos knowledge --help` (reindex, reembed, import, export, ...); "
                              "demo-seed: `analystos demo-seed --help` (a ready demo workspace through the API); "
                              "check-semantics: `analystos check-semantics PATH... [--json]` (offline model validation); "
                              "schedules: `analystos schedules disable-demo [--all] [--workspace W] [--dry-run]`; "
                              "audit: `analystos audit seal|verify|export [--tenant T | --platform] [--full] [--out DIR]`; "
-                             "context: `analystos context reconcile [--workspace W]` (Context Ledger projection)")
+                             "context: `analystos context reconcile [--workspace W]` (Context Ledger projection); "
+                             "ops: `analystos ops rls-check|spend|spend-export|model-matrix --help` (S12)")
     parser.add_argument("run_id", nargs="?", help="replay-run: the analysis run id")
     parser.add_argument("--check", action="store_true", help="replay-run: re-execute recorded calls offline and compare")
     parser.add_argument("--out", help="replay-run: write the JSON report to this file; export-contracts: the directory")
@@ -355,14 +360,18 @@ def _main(argv: list[str]) -> int:
     elif args.command == "seed":
         seed()
     elif args.command == "worker":
+        from analystos.observability.server import serve_metrics
         from analystos.workflows.worker import run_worker
 
+        serve_metrics(f"worker-{args.queues or 'all'}")
         code = run_worker(args.queues, conformance=True) if args.conformance else run_worker(args.queues)
         if isinstance(code, int) and code:
             return code
     elif args.command == "scheduler":
+        from analystos.observability.server import serve_metrics
         from analystos.services.schedules import run_scheduler
 
+        serve_metrics("scheduler")
         run_scheduler()
     elif args.command == "api":
         import uvicorn

@@ -35,7 +35,9 @@ RUN --mount=type=secret,id=pipcert,required=false \
     --mount=type=bind,from=wheel,source=/dist,target=/dist \
     if [ -f /run/secrets/pipcert ]; then export PIP_CERT=/run/secrets/pipcert; fi; \
     whl=$(ls /dist/analystos-*.whl); if [ -n "$EXTRAS" ]; then target="$whl[$EXTRAS]"; else target="$whl"; fi; \
-    pip install --no-cache-dir "$target" && useradd --create-home --uid 10001 analystos && mkdir -p /app/var && chown -R analystos /app/var
-USER analystos
+    pip install --no-cache-dir "$target" && useradd --create-home --uid 10001 --gid 0 analystos     && mkdir -p /app/var && chown -R 10001:0 /app/var && chmod -R g=u /app/var
+# Numeric user (runAsNonRoot can verify it); group 0 owns the writable paths, so OpenShift's arbitrary UID
+# (restricted-v2 SCC, always in group 0) can write them too (S12 §1).
+USER 10001
 EXPOSE 8000
 CMD ["uvicorn", "analystos.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

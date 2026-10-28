@@ -1,0 +1,73 @@
+{{- /* Observability objects (S12 §2), each opt-in: PodMonitors (Prometheus Operator), the PrometheusRule
+       (files/prometheus/rules.yaml) and Grafana dashboards (files/grafana/*.json, picked up by the Grafana
+       sidecar through the label in monitoring.grafanaDashboards.labels). */ -}}
+{{- $m := .Values.monitoring }}
+{{- if $m.podMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "analystos.fullname" . }}-api
+  labels:
+    {{- include "analystos.labels" . | nindent 4 }}
+    {{- with $m.podMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: api
+  podMetricsEndpoints:
+    - {port: http, path: /metrics, interval: {{ $m.podMonitor.interval }}}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "analystos.fullname" . }}-workers
+  labels:
+    {{- include "analystos.labels" . | nindent 4 }}
+    {{- with $m.podMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      analystos.io/metrics: "true"
+  podMetricsEndpoints:
+    - {port: metrics, path: /metrics, interval: {{ $m.podMonitor.interval }}}
+{{- end }}
+{{- if $m.prometheusRule.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "analystos.fullname" . }}
+  labels:
+    {{- include "analystos.labels" . | nindent 4 }}
+    {{- with $m.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- tpl (.Files.Get "files/prometheus/rules.yaml") . | nindent 2 }}
+{{- end }}
+{{- if $m.grafanaDashboards.enabled }}
+{{- range $path, $_ := .Files.Glob "files/grafana/*.json" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "analystos.fullname" $ }}-dashboard-{{ base $path | trimSuffix ".json" }}
+  labels:
+    {{- include "analystos.labels" $ | nindent 4 }}
+    {{- with $m.grafanaDashboards.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    grafana_folder: {{ $m.grafanaDashboards.folder | quote }}
+data:
+  {{ base $path }}: |-
+    {{- $.Files.Get $path | nindent 4 }}
+{{- end }}
+{{- end }}

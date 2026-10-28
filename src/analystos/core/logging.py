@@ -20,6 +20,11 @@ class JsonFormatter(logging.Formatter):
             "correlation_id": correlation_id.get(),
             "run_id": run_id_var.get(),
         }
+        from analystos.observability.telemetry import current_ids
+
+        trace_id, span_id = current_ids()
+        if trace_id:
+            payload["trace_id"], payload["span_id"] = trace_id, span_id
         if record.exc_info:
             payload["exc"] = self.formatException(record.exc_info)
         return json.dumps(payload, default=str)

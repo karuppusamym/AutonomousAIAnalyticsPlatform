@@ -1,0 +1,98 @@
+{
+ "date": "2026-10-28",
+ "pitr": {
+  "image": "pgvector/pgvector:pg16",
+  "archive_timeout_s": 60,
+  "steps": {
+   "primary_ready_s": 44.1,
+   "base_backup_s": 5.8,
+   "recovery_s": 16.9
+  },
+  "checks": {
+   "promoted": true,
+   "phase_a_present": true,
+   "incident_row_absent": true,
+   "deleted_rows_restored": true,
+   "alembic_head_unchanged": true,
+   "rls_check": true,
+   "audit_chain_verify": true
+  },
+  "alembic_head": "0066_platform_ops",
+  "base_backup_bytes": 5479898,
+  "target_time": "2026-10-28 01:36:02.196448+00",
+  "incident_at": "2026-10-28 01:36:29.980277+00",
+  "workspaces_deleted": 1,
+  "phase_a": {
+   "workspace_id": "ws_8428706ff66f",
+   "audit_sealed": true
+  },
+  "last_archived": "000000010000000000000005|2026-10-28 01:36:31.304129+00",
+  "counts_at_target": {
+   "workspace": 1,
+   "workspace_member": 1,
+   "audit_event": 6,
+   "audit_chain": 6,
+   "app_user": 3,
+   "tenant": 1
+  },
+  "rpo_bound_s": 60
+ },
+ "temporal": {
+  "image": "temporalio/auto-setup:1.25",
+  "workflows": 5,
+  "steps": {
+   "temporal_ready_s": 40.1,
+   "backup_s": 13.9,
+   "restore_s": 62.0
+  },
+  "checks": {
+   "all_running_after_restore": true,
+   "histories_preserved": true,
+   "all_completed": true,
+   "each_ran_once": true
+  },
+  "before": {
+   "history": {
+    "aosdr-probe-s12-0": 4,
+    "aosdr-probe-s12-1": 4,
+    "aosdr-probe-s12-2": 4,
+    "aosdr-probe-s12-3": 4,
+    "aosdr-probe-s12-4": 4
+   }
+  },
+  "dump_bytes": {
+   "temporal.dump": 56050,
+   "temporal_visibility.dump": 31671
+  },
+  "after": {
+   "status_before_signal": {
+    "aosdr-probe-s12-0": "RUNNING",
+    "aosdr-probe-s12-1": "RUNNING",
+    "aosdr-probe-s12-2": "RUNNING",
+    "aosdr-probe-s12-3": "RUNNING",
+    "aosdr-probe-s12-4": "RUNNING"
+   },
+   "history_before_signal": {
+    "aosdr-probe-s12-0": 4,
+    "aosdr-probe-s12-1": 4,
+    "aosdr-probe-s12-2": 4,
+    "aosdr-probe-s12-3": 4,
+    "aosdr-probe-s12-4": 4
+   },
+   "results": {
+    "aosdr-probe-s12-0": "ok:aosdr-probe-s12-0",
+    "aosdr-probe-s12-1": "ok:aosdr-probe-s12-1",
+    "aosdr-probe-s12-2": "ok:aosdr-probe-s12-2",
+    "aosdr-probe-s12-3": "ok:aosdr-probe-s12-3",
+    "aosdr-probe-s12-4": "ok:aosdr-probe-s12-4"
+   },
+   "completions": {
+    "aosdr-probe-s12-0": 1,
+    "aosdr-probe-s12-1": 1,
+    "aosdr-probe-s12-2": 1,
+    "aosdr-probe-s12-3": 1,
+    "aosdr-probe-s12-4": 1
+   }
+  }
+ }
+}

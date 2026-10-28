@@ -1,0 +1,49 @@
+{{- /* KEDA ScaledObjects on Temporal task queues (S12 §1): one per pool with keda.enabled (and keda.enabled
+       globally). One `temporal` trigger per queue the pool serves; KEDA scales on the larger. A pool serving
+       every queue (`all`, values-small) cannot name its queues and must not enable KEDA. */ -}}
+{{- if .Values.keda.enabled }}
+{{- range $name, $pool := .Values.workers }}
+{{- if and $pool (include "analystos.kedaActive" (dict "root" $ "pool" $pool)) (or (not $pool.isolated) (gt (int $pool.replicas) 0)) }}
+{{- if eq $pool.queues "all" }}
+{{- fail (printf "workers.%s serves every queue (`all`): KEDA needs named queues; set workers.%s.keda.enabled=false" $name $name) }}
+{{- end }}
+{{- $k := $pool.keda }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "analystos.fullname" $ }}-worker-{{ $name }}
+  labels:
+    {{- include "analystos.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: worker-{{ $name }}
+spec:
+  scaleTargetRef:
+    name: {{ include "analystos.fullname" $ }}-worker-{{ $name }}
+  minReplicaCount: {{ default 1 $k.minReplicas }}
+  maxReplicaCount: {{ default 10 $k.maxReplicas }}
+  pollingInterval: {{ $.Values.keda.pollingInterval }}
+  cooldownPeriod: {{ $.Values.keda.cooldownPeriod }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:          # in-flight activities finish on their pod (terminationGracePeriodSeconds 180)
+          stabilizationWindowSeconds: 300
+          policies: [{type: Pods, value: 1, periodSeconds: 60}]
+  triggers:
+    {{- range $queue := splitList "," $pool.queues }}
+    - type: temporal
+      metadata:
+        endpoint: {{ default $.Values.config.temporalAddress $.Values.keda.temporal.endpoint | quote }}
+        namespace: {{ default $.Values.config.temporalNamespace $.Values.keda.temporal.namespace | quote }}
+        taskQueue: {{ printf "%s-%s" $.Values.config.temporalQueuePrefix (trim $queue) | quote }}
+        queueTypes: {{ $.Values.keda.temporal.queueTypes | quote }}
+        targetQueueSize: {{ default 5 $k.targetQueueSize | quote }}
+        activationTargetQueueSize: {{ default 0 $k.activationTargetQueueSize | quote }}
+      {{- with $.Values.keda.temporal.authenticationRef }}
+      authenticationRef:
+        name: {{ . }}
+      {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

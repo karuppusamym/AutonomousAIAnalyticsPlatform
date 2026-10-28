@@ -40,6 +40,7 @@ class Tier(BaseModel):
     suite: str
     metrics: dict[str, Bound]
     blocking: bool = True  # false: a report; its failures are listed but never fail the gate result
+    needs_database: bool = False  # runs in CI after `analystos migrate` (the integration step), not before
 
 
 class Gates(BaseModel):
@@ -160,6 +161,21 @@ def _ask(tier: str) -> Callable[[], dict[str, Any]]:
     return go
 
 
+def release_safety_metrics() -> dict[str, Any]:
+    from evaluation.release_safety import run
+
+    return run()
+
+
+def _matrix(mode: str) -> Callable[[], dict[str, Any]]:
+    def go() -> dict[str, Any]:
+        from evaluation.model_matrix import run
+
+        result = run(mode)  # rows travel in the gate result; `analystos ops model-matrix-import` stores them
+        return {**result["metrics"], "mode": mode, "rows": result["rows"], "excluded": result["excluded"]}
+    return go
+
+
 RUNNERS: dict[str, Callable[[], dict[str, Any]]] = {
     "grounding": grounding_metrics,
     "analytical_component": analytical_component_metrics,
@@ -169,6 +185,9 @@ RUNNERS: dict[str, Callable[[], dict[str, Any]]] = {
     "ask_fake": _ask("fake"),
     "ask_off": _ask("off"),
     "ask_live": _ask("live"),
+    "release_safety": release_safety_metrics,
+    "model_matrix_fake": _matrix("fake"),
+    "model_matrix": _matrix("live"),
 }
 LIVE_KEYS = ("OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "AZURE_OPENAI_API_KEY")
 
@@ -208,6 +227,8 @@ def run_gates(tiers: list[str], gates: Gates | None = None,
 
 
 def deterministic_ci_tiers(gates: Gates | None = None, *, database: bool = False) -> list[str]:
-    """The tiers CI gates on every change; the Ask tiers need Postgres (the integration step)."""
+    """The tiers CI gates on every change; the Ask tiers and `needs_database` tiers need Postgres (the
+    integration step; `database=True` adds them)."""
     gates = gates or load()
-    return [n for n, t in gates.tiers.items() if t.kind == "deterministic" and (database or not n.startswith("ask_"))]
+    needs = {n for n, t in gates.tiers.items() if t.needs_database or n.startswith("ask_")}
+    return [n for n, t in gates.tiers.items() if t.kind == "deterministic" and (database or n not in needs)]

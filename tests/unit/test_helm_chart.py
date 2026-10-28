@@ -244,7 +244,8 @@ def test_isolated_pools_get_no_credentials_and_their_own_network_policy():
         assert "envFrom" not in container  # neither the ConfigMap nor the Secret
         assert {e["name"] for e in container["env"]} == {
             "ANALYSTOS_WORKER_QUEUES", "ANALYSTOS_WORKER_ARTIFACT_URL", "ANALYSTOS_TEMPORAL_ADDRESS",
-            "ANALYSTOS_TEMPORAL_NAMESPACE", "ANALYSTOS_TEMPORAL_QUEUE_PREFIX", "ANALYSTOS_ENV"}
+            "ANALYSTOS_TEMPORAL_NAMESPACE", "ANALYSTOS_TEMPORAL_QUEUE_PREFIX", "ANALYSTOS_ENV",
+            "ANALYSTOS_METRICS_PORT", "ANALYSTOS_METRICS_DIR"}  # S12: a scrape port, no credential
         assert container["securityContext"]["readOnlyRootFilesystem"] is True
         assert [v["name"] for v in pod["spec"]["volumes"]] == ["tmp"]
     policies = _kind(docs, "NetworkPolicy")
@@ -260,3 +261,140 @@ def test_isolated_pools_get_no_credentials_and_their_own_network_policy():
     r = subprocess.run([HELM, "template", "t", str(CHART), "--set", "workers.compute-py.replicas=1"], capture_output=True,
                        text=True, timeout=60)
     assert r.returncode != 0 and "isolatedPools.temporalEgress" in r.stderr
+
+
+
+# ------------------------------------------------------------------ S12: roles, KEDA, gVisor, ESO, SCC, monitoring
+S12_FULL = ("keda.enabled=true", "gvisor.enabled=true", "gvisor.createRuntimeClass=true", "openshift.enabled=true",
+            "networkPolicy.perRole=true", "networkPolicy.ingressFrom[0].namespaceSelector.matchLabels.ingress=yes",
+            "networkPolicy.monitoringFrom[0].namespaceSelector.matchLabels.monitoring=yes",
+            "networkPolicy.egress.platform[0].ipBlock.cidr=10.1.0.0/16",
+            "networkPolicy.egress.models[0].ipBlock.cidr=10.9.0.0/24",
+            "networkPolicy.egress.sources[0].ipBlock.cidr=10.2.0.0/16",
+            "monitoring.podMonitor.enabled=true", "monitoring.prometheusRule.enabled=true",
+            "monitoring.grafanaDashboards.enabled=true", "monitoring.otel.enabled=true",
+            "monitoring.otel.endpoint=http://otel:4318", "externalSecrets.enabled=true",
+            "externalSecrets.secretStoreRef.name=vault", "externalSecrets.dataFrom[0].extract.key=analystos/prod",
+            "migrations.databaseUrlKey=ANALYSTOS_MIGRATOR_DATABASE_URL")
+
+
+def test_s12_values_name_every_worker_role():
+    pools = _values()["workers"]
+    assert pools["analysis"]["role"] == "query" and pools["compute"]["role"] == "compute"
+    assert pools["compute"]["gvisor"] and pools["compute-py"]["gvisor"] and pools["compute-ml"]["gvisor"]
+    assert pools["analysis"]["keda"]["enabled"] and pools["compute"]["keda"]["enabled"]
+    v = _values()
+    assert v["keda"]["enabled"] is False and v["gvisor"]["enabled"] is False and v["openshift"]["enabled"] is False
+    assert v["externalSecrets"]["enabled"] is False and v["networkPolicy"]["perRole"] is False  # all opt-in
+    roles = v["networkPolicy"]["roles"]
+    assert "models" not in roles["compute"] and "sources" not in roles["compute"]  # statistics never reach a model or source
+
+
+@needs_helm
+def test_helm_lint_with_every_s12_feature_on():
+    args = [HELM, "lint", str(CHART), "-f", str(CHART / "values-ha.yaml")]
+    for s in S12_FULL:
+        args += ["--set", s]
+    r = subprocess.run(args, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+@needs_helm
+def test_keda_scales_named_queues_instead_of_the_hpa():
+    docs = _render("values-ha.yaml", sets=("keda.enabled=true",))
+    scaled = _kind(docs, "ScaledObject")
+    assert set(scaled) == {"t-analystos-worker-analysis", "t-analystos-worker-compute"}
+    trig = scaled["t-analystos-worker-compute"]["spec"]["triggers"][0]
+    assert trig["type"] == "temporal" and trig["metadata"]["taskQueue"] == "analystos-compute"
+    assert trig["metadata"]["endpoint"] == "temporal-frontend.temporal.svc:7233"
+    hpas = _kind(docs, "HorizontalPodAutoscaler")
+    assert "t-analystos-worker-compute" not in hpas and "t-analystos-worker-analysis" not in hpas
+    assert "replicas" not in _kind(docs, "Deployment")["t-analystos-worker-compute"]["spec"]
+    r = subprocess.run([HELM, "template", "t", str(CHART), "-f", str(CHART / "values-small.yaml"), "--set", "keda.enabled=true",
+                        "--set", "workers.all.keda.enabled=true"], capture_output=True, text=True, timeout=60)
+    assert r.returncode != 0 and "KEDA needs named queues" in r.stderr
+
+
+@needs_helm
+def test_gvisor_openshift_and_the_migrator_login():
+    docs = _render("values-ha.yaml", sets=S12_FULL)
+    deps = _kind(docs, "Deployment")
+    for pool in ("compute", "compute-py", "compute-ml"):
+        assert deps[f"t-analystos-worker-{pool}"]["spec"]["template"]["spec"]["runtimeClassName"] == "gvisor"
+    assert "runtimeClassName" not in deps["t-analystos-worker-analysis"]["spec"]["template"]["spec"]
+    assert _kind(docs, "RuntimeClass")["gvisor"]["handler"] == "runsc"
+    for name, dep in deps.items():
+        psc = dep["spec"]["template"]["spec"]["securityContext"]
+        assert psc["runAsNonRoot"] is True and not {"runAsUser", "runAsGroup", "fsGroup"} & set(psc), name
+    job = next(iter(_kind(docs, "Job").values()))["spec"]["template"]["spec"]["containers"][0]
+    assert job["env"] == [{"name": "ANALYSTOS_DATABASE_URL", "valueFrom": {"secretKeyRef": {
+        "name": "analystos-secrets", "key": "ANALYSTOS_MIGRATOR_DATABASE_URL"}}}]
+    default = _render()  # without openshift the fixed UID stays
+    assert _kind(default, "Deployment")["t-analystos-api"]["spec"]["template"]["spec"]["securityContext"]["runAsUser"] == 10001
+
+
+@needs_helm
+def test_external_secrets_sync_the_secret_before_the_migration():
+    docs = _render(sets=S12_FULL)
+    es = _kind(docs, "ExternalSecret")["analystos-secrets"]
+    assert es["apiVersion"] == "external-secrets.io/v1" and es["spec"]["secretStoreRef"]["name"] == "vault"
+    assert es["metadata"]["annotations"]["helm.sh/hook-weight"] == "-10" and es["spec"]["target"]["creationPolicy"] == "Orphan"
+    assert not _kind(docs, "Secret")
+    r = subprocess.run([HELM, "template", "t", str(CHART), "--set", "externalSecrets.enabled=true"], capture_output=True,
+                       text=True, timeout=60)
+    assert r.returncode != 0 and "secretStoreRef.name is required" in r.stderr
+
+
+@needs_helm
+def test_per_role_network_policies_limit_each_role():
+    docs = _render("values-ha.yaml", sets=S12_FULL)
+    pol = _kind(docs, "NetworkPolicy")
+    assert "t-analystos-egress" not in pol  # replaced by the per-role ones
+    assert {"t-analystos-role-api", "t-analystos-role-web", "t-analystos-role-query", "t-analystos-role-compute",
+            "t-analystos-role-publish", "t-analystos-role-scheduler", "t-analystos-role-ops"} <= set(pol)
+
+    def cidrs(name):
+        return {b["ipBlock"]["cidr"] for rule in pol[name]["spec"]["egress"] for b in rule.get("to", []) if "ipBlock" in b}
+
+    assert cidrs("t-analystos-role-query") == {"10.1.0.0/16", "10.9.0.0/24", "10.2.0.0/16"}
+    assert cidrs("t-analystos-role-compute") == {"10.1.0.0/16"}  # no model host, no source
+    assert cidrs("t-analystos-role-web") == set()
+    ingress = pol["t-analystos-role-compute"]["spec"]["ingress"]
+    assert ingress[0]["ports"] == [{"protocol": "TCP", "port": 9464}]  # metrics only
+    # every pod of the release (but the isolated pools) carries a role the policies select
+    for name, dep in _kind(docs, "Deployment").items():
+        labels = dep["spec"]["template"]["metadata"]["labels"]
+        assert labels.get("analystos.io/role") or labels.get("analystos.io/isolated") or "pgbouncer" in name, name
+    r = subprocess.run([HELM, "template", "t", str(CHART), "--set", "networkPolicy.enabled=true", "--set",
+                        "networkPolicy.perRole=true"], capture_output=True, text=True, timeout=60)
+    assert r.returncode != 0 and "needs networkPolicy.ingressFrom" in r.stderr
+
+
+@needs_helm
+def test_monitoring_objects_and_ops_cronjobs():
+    docs = _render("values-ha.yaml", sets=S12_FULL)
+    monitors = _kind(docs, "PodMonitor")
+    assert monitors["t-analystos-api"]["spec"]["podMetricsEndpoints"][0]["port"] == "http"
+    assert monitors["t-analystos-workers"]["spec"]["selector"]["matchLabels"]["analystos.io/metrics"] == "true"
+    groups = next(iter(_kind(docs, "PrometheusRule").values()))["spec"]["groups"]
+    alerts = {r["alert"]: r for g in groups for r in g["rules"] if "alert" in r}
+    assert {"AnalystOSAskLatencyBudgetBurnFast", "AnalystOSRunSuccessBudgetBurnSlow", "AnalystOSAvailabilityBudgetBurnFast",
+            "AnalystOSQueueBacklog", "AnalystOSModelProviderErrors", "AnalystOSSpendNearBudget",
+            "AnalystOSAuditChainVerifyFailed", "AnalystOSRlsCoverageFailed"} <= set(alerts)
+    assert alerts["AnalystOSAuditChainVerifyFailed"]["labels"]["severity"] == "page"
+    assert alerts["AnalystOSRlsCoverageFailed"]["labels"]["severity"] == "page"
+    assert alerts["AnalystOSQueueBacklog"]["for"] == "10m" and "> 100" in alerts["AnalystOSQueueBacklog"]["expr"]
+    assert "> 0.05" in alerts["AnalystOSModelProviderErrors"]["expr"] and "> 0.8" in alerts["AnalystOSSpendNearBudget"]["expr"]
+    rec = next(r["expr"] for g in groups for r in g["rules"] if r.get("record") == "analystos:ask_latency_bad:ratio_rate5m")
+    assert 'le="3"' in rec
+    dashboards = {n: c for n, c in _kind(docs, "ConfigMap").items() if "dashboard" in n}
+    assert len(dashboards) == 3 and all(c["metadata"]["labels"]["grafana_dashboard"] == "1" for c in dashboards.values())
+    config = _kind(docs, "ConfigMap")["t-analystos-config"]["data"]
+    assert config["ANALYSTOS_OTEL_ENABLED"] == "true" and config["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://otel:4318"
+    assert config["ANALYSTOS_METRICS_PORT"] == "9464"
+    jobs = _kind(docs, "CronJob")
+    cmds = {n: j["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]["command"][-1] for n, j in jobs.items()}
+    assert cmds == {"t-analystos-audit-verify": "analystos audit verify", "t-analystos-rls-check": "analystos ops rls-check"}
+    assert all(j["spec"]["jobTemplate"]["spec"]["backoffLimit"] == 0 for j in jobs.values())
+    worker = _kind(docs, "Deployment")["t-analystos-worker-analysis"]["spec"]["template"]["spec"]["containers"][0]
+    assert {"name": "metrics", "containerPort": 9464} in worker["ports"]

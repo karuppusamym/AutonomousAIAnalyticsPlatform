@@ -5,7 +5,9 @@
 {{- range $name, $pool := .Values.workers }}
 {{- if or (not $pool.isolated) (gt (int $pool.replicas) 0) }}
 {{- $component := printf "worker-%s" $name }}
-{{- $ctx := dict "root" $ "component" $component "podSecurityContext" $pool.podSecurityContext }}
+{{- $runtime := include "analystos.poolRuntimeClass" (dict "root" $ "pool" $pool) }}
+{{- $keda := include "analystos.kedaActive" (dict "root" $ "pool" $pool) }}
+{{- $ctx := dict "root" $ "component" $component "podSecurityContext" $pool.podSecurityContext "runtimeClassName" $runtime }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -19,7 +21,7 @@ metadata:
     analystos.io/isolated: "true"
     {{- end }}
 spec:
-  {{- if not (and $pool.autoscaling $pool.autoscaling.enabled) }}
+  {{- if not (or $keda (and $pool.autoscaling $pool.autoscaling.enabled)) }}
   replicas: {{ $pool.replicas }}
   {{- end }}
   strategy:
@@ -33,6 +35,8 @@ spec:
       labels:
         {{- include "analystos.labels" $ | nindent 8 }}
         app.kubernetes.io/component: {{ $component }}
+        analystos.io/role: {{ default $name $pool.role | quote }}
+        analystos.io/metrics: "true"
         {{- if $pool.isolated }}
         analystos.io/isolated: "true"
         {{- end }}
@@ -47,6 +51,8 @@ spec:
           image: {{ include "analystos.image" $ }}
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
           command: ["analystos", "worker"]
+          ports:
+            - {name: metrics, containerPort: {{ $.Values.monitoring.metricsPort }}}
           env:
             - {name: ANALYSTOS_WORKER_QUEUES, value: {{ $pool.queues | quote }}}
           {{- if $pool.isolated }}
@@ -56,6 +62,8 @@ spec:
             - {name: ANALYSTOS_TEMPORAL_NAMESPACE, value: {{ $.Values.config.temporalNamespace | quote }}}
             - {name: ANALYSTOS_TEMPORAL_QUEUE_PREFIX, value: {{ $.Values.config.temporalQueuePrefix | quote }}}
             - {name: ANALYSTOS_ENV, value: {{ $.Values.env | quote }}}
+            - {name: ANALYSTOS_METRICS_PORT, value: {{ $.Values.monitoring.metricsPort | quote }}}
+            - {name: ANALYSTOS_METRICS_DIR, value: /tmp/analystos-metrics}
           volumeMounts:
             - {name: tmp, mountPath: /tmp}
           securityContext:
@@ -74,6 +82,8 @@ spec:
         {{- include "analystos.appVolumes" $ | nindent 8 }}
         {{- end }}
 {{- include "analystos.pdb" (dict "root" $ "component" $component "pdb" (default (dict "enabled" false) $pool.pdb)) }}
+{{- if not $keda }}
 {{- include "analystos.hpa" (dict "root" $ "component" $component "autoscaling" $pool.autoscaling) }}
+{{- end }}
 {{- end }}
 {{- end }}

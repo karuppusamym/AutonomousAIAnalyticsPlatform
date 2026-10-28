@@ -32,6 +32,7 @@ from analystos.api.routers import knowledge as knowledge_router
 from analystos.api.routers import mcp as mcp_router
 from analystos.api.routers import ml as ml_router
 from analystos.api.routers import models_admin as models_admin_router
+from analystos.api.routers import ops_v2 as ops_v2_router
 from analystos.api.routers import pilot as pilot_router
 from analystos.api.routers import pipelines as pipelines_router
 from analystos.api.routers import process as process_router
@@ -49,6 +50,7 @@ from analystos.core.config import get_settings
 from analystos.core.errors import AnalystOSError
 from analystos.core.logging import configure_logging, get_logger
 from analystos.mcp import server as mcp_server
+from analystos.observability.asgi import MetricsMiddleware
 from analystos.tenancy.middleware import TenantMiddleware
 
 configure_logging()
@@ -68,6 +70,11 @@ async def lifespan(_: FastAPI):
     from analystos.workflows.orchestrator import start_local_runtime
 
     settings = get_settings()
+    from analystos.observability import metrics as _metrics
+    from analystos.observability.telemetry import setup_tracing
+
+    setup_tracing("api")
+    _metrics.set_gauge("analystos_build_info", 1, version=app.version, component="api")
     runtime = start_local_runtime()
     from analystos.services.stale_work import sweep_quietly
 
@@ -97,6 +104,7 @@ app = FastAPI(title="Context2AI AnalystOS", version="0.1.0", lifespan=lifespan,
 app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in get_settings().cors_origins.split(",") if o.strip()],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
                    expose_headers=["ETag", "Idempotent-Replayed", "Location", "X-Request-ID"])  # P4-06
+app.add_middleware(MetricsMiddleware)  # S12: request latency per route class + the request span (inside the tenant)
 app.add_middleware(TenantMiddleware)  # binds the caller's tenant before any route code (ADR-009)
 app.add_middleware(RequestIdMiddleware)  # outermost: every response, errors included, names its request
 for r in (auth.router, workspaces.router, analysis.router, artifacts.router, admin.router, continuous.router, catalog.router,
@@ -105,6 +113,7 @@ for r in (auth.router, workspaces.router, analysis.router, artifacts.router, adm
 app.include_router(mcp_router.router)
 app.include_router(tools_v2_router.router)  # tool, agent and data-product registry (S10)
 app.include_router(models_admin_router.router)  # model gateway admin (S05)
+app.include_router(ops_v2_router.router)  # S12: model evaluation matrix, spend (cost ledger) and its export
 app.include_router(decisions_router.router)
 app.include_router(builds_router.router)
 app.include_router(ask_router.router)
@@ -154,6 +163,9 @@ async def validation_error(request: Request, exc: RequestValidationError):
 @app.exception_handler(Exception)
 async def internal_error(request: Request, exc: Exception):
     """An unexpected failure is still the one envelope, with the request id to find it in the logs."""
+    from analystos.observability.metrics import rls_denied
+
+    rls_denied(exc, "api")
     return JSONResponse(status_code=500, content=envelope({"code": "internal_error", "message": "internal error",
                                                            "details": {}, "retryable": False}, request),
                         headers={"X-Request-ID": current(request) or ""})
@@ -188,6 +200,25 @@ def _run_checks(checks: dict[str, dict], fns: list[tuple[str, object]], deadline
         except TimeoutError:
             checks[name] = {"ok": False, "error": f"no answer within {deadline_s:g} s"}
     pool.shutdown(wait=False)  # a check stuck in a DNS lookup finishes on its own; the answer does not wait
+
+
+@app.get("/metrics", include_in_schema=False)
+def prometheus_metrics(request: Request):
+    """Prometheus exposition (S12 §2). Optional bearer token ANALYSTOS_METRICS_TOKEN; the chart's NetworkPolicy
+    limits the port to the monitoring namespace either way."""
+    import hmac
+    import os
+
+    from fastapi.responses import PlainTextResponse
+
+    from analystos.observability.metrics import render
+
+    token = os.environ.get("ANALYSTOS_METRICS_TOKEN", "")
+    if token:
+        given = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+        if not hmac.compare_digest(given.encode(), token.encode()):
+            return PlainTextResponse("unauthorized", status_code=401)
+    return PlainTextResponse(render(), media_type="text/plain; version=0.0.4")
 
 
 @app.get("/api/health")

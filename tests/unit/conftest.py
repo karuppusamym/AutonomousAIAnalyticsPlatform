@@ -45,7 +45,8 @@ def sqlite_db(monkeypatch):
         "model_config_override",  # S05-T3: the router reads a workspace's model layers
         "context_ledger_entry", "context_ledger_change",  # S03-T1: owner writes project into the ledger on commit
         "goal", "run_plan_version",  # S06: goals and superseded plan versions
-        "verified_query", "mcp_server", "mcp_client", "mcp_grant", "registered_tool", "tool_invocation", "tool_signing_key")]  # S10 registry
+        "verified_query", "mcp_server", "mcp_client", "mcp_grant", "registered_tool", "tool_invocation", "tool_signing_key",  # S10 registry
+        "model_evaluation", "ask_thread", "ask_turn", "worker_task")]  # S12: evaluation matrix, cost ledger joins
     models.Base.metadata.create_all(engine, tables=tables)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     monkeypatch.setattr(base, "SessionLocal", lambda: factory())

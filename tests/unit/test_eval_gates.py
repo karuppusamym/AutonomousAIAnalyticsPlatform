@@ -23,7 +23,7 @@ def test_the_gates_file_is_versioned_and_every_ci_tier_has_a_runner():
     assert all(t in G.RUNNERS for t in ci)
     g = gates.tiers["grounding"].metrics
     assert g["fabricated_accepted"].max == 0 and g["bound_numeric_share"].min == 1.0 and g["void_on_change_recall"].min == 1.0
-    assert {n for n, t in gates.tiers.items() if t.kind == "live"} == {"ask_live", "analytical_platform_live"}
+    assert {n for n, t in gates.tiers.items() if t.kind == "live"} == {"ask_live", "analytical_platform_live", "model_matrix"}
 
 
 def test_a_version_without_a_changelog_entry_is_refused(tmp_path):

@@ -588,6 +588,30 @@ class ModelCall(Base):
     __table_args__ = (Index("ix_model_call_created_purpose_rung", "created_at", "purpose", "answered_by"),)
 
 
+class ModelEvaluation(Base):
+    """One model profile x model over the golden suite (S12 §3, FR-055): the per-model matrix behind
+    /v2/admin/models/evaluations. Platform rows (the product's golden suite, no tenant data). A model whose
+    family is blocked (config/models.yaml `blocked_families`) is never evaluated."""
+
+    __tablename__ = "model_evaluation"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    batch_id: Mapped[str] = mapped_column(String(40), index=True)  # one matrix run
+    suite: Mapped[str] = mapped_column(String(60))  # golden suite, e.g. ask
+    mode: Mapped[str] = mapped_column(String(20))  # live | fake
+    profile: Mapped[str] = mapped_column(String(60))
+    model: Mapped[str] = mapped_column(String(120))
+    provider: Mapped[str] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(20))  # passed | failed | error | skipped
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    failures: Mapped[list[str]] = mapped_column(JSON, default=list)
+    gates_version: Mapped[int] = mapped_column(Integer, default=0)
+    gates_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    commit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = _ts()
+
+    __table_args__ = (Index("ix_model_evaluation_profile_model_created", "profile", "model", "created_at"),)
+
+
 class ToolExecution(Base):
     __tablename__ = "tool_execution"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -627,6 +651,9 @@ class QueryExecution(Base):
     result_preview: Mapped[list[Any]] = mapped_column(JSON, default=list)  # first rows (masked), for evidence UI
     cache_hit: Mapped[bool] = mapped_column(Boolean, default=False)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    # Cost ledger (S12 §4): bytes scanned and warehouse credits, when the engine reports them; NULL = unknown.
+    scan_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    credits: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = _ts()
 
 

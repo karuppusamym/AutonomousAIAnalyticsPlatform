@@ -1,0 +1,46 @@
+# Nightly live evaluation (spec S12 §3, FR-055): the per-model matrix and the live Ask tier against the configured
+# low-cost OpenRouter models (Claude and Gemini are blocked families and are never called). Without the
+# OPENROUTER_API_KEY secret the live tiers report `skipped` and nothing is spent.
+#
+# The gate result (artifact `model-matrix`, nightly.json) carries the matrix rows; load them into an environment's
+# /v2/admin/models/evaluations with `analystos ops model-matrix-import nightly.json`.
+name: nightly-eval
+
+on:
+  schedule:
+    - cron: "40 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: {POSTGRES_USER: analystos, POSTGRES_PASSWORD: analystos, POSTGRES_DB: analystos}
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U analystos" --health-interval 5s --health-retries 20
+    env:
+      ANALYSTOS_ORCHESTRATOR: local
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv venv -p 3.11 .venv && uv pip install -e ".[dev,duckdb]"
+      - name: Initialise databases and roles
+        env: {PGPASSWORD: analystos}
+        run: |
+          psql -h localhost -U analystos -d analystos -f deploy/postgres/01-init.sql
+          POSTGRES_USER=analystos PGHOST=localhost sh deploy/postgres/02-extensions.sh
+      - run: .venv/bin/analystos migrate
+      - name: Per-model matrix (live) + Ask live tier
+        run: |
+          mkdir -p eval-gates
+          PYTHONPATH=src .venv/bin/python scripts/eval_gates.py --tiers model_matrix,ask_live --out eval-gates/nightly.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: model-matrix, path: eval-gates, if-no-files-found: ignore}

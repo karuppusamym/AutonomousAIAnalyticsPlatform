@@ -28,6 +28,7 @@ execute():
 """
 from __future__ import annotations
 
+import contextlib
 import time
 from collections.abc import Callable
 from typing import Any
@@ -476,6 +477,9 @@ class QueryGateway:
         )
 
     def _reject(self, audit: dict[str, Any], exc: AnalystOSError, started: float) -> None:
+        from analystos.observability.metrics import gateway_reason, inc
+
+        inc("analystos_gateway_rejections_total", reason=gateway_reason(exc))
         record = dict(audit, status="rejected", rejected_reason=exc.message[:4000],
                       duration_ms=int((time.perf_counter() - started) * 1000))
         self._persist(record, strict=False)
@@ -487,6 +491,7 @@ class QueryGateway:
         self._persist(record, strict=False)
 
     def _persist(self, record: dict[str, Any], *, strict: bool) -> None:
+        _observe_statement(record)
         session = self.session_factory()
         try:
             session.add(QueryExecution(**record))
@@ -521,6 +526,23 @@ class QueryGateway:
             self.on_event(type_, payload)
         except Exception as exc:  # noqa: BLE001 - observers never break queries
             _log.warning("gateway on_event handler failed: %s", exc.__class__.__name__)
+
+
+def _observe_statement(record: dict[str, Any]) -> None:
+    """Metrics + a span per audited statement: status, cache, duration, the statement's hash (never its text).
+    Never raises: the audit row written after it must not depend on observability."""
+    from analystos.observability import metrics, telemetry
+
+    status = str(record.get("status") or "unknown")
+    metrics.inc("analystos_gateway_statements_total", status=status)
+    if status == "ok":
+        metrics.inc("analystos_cache_requests_total", cache="query_result", result="hit" if record.get("cache_hit") else "miss")
+    if status != "explained":
+        with contextlib.suppress(Exception):
+            telemetry.record_span("gateway.execute", float(record.get("duration_ms") or 0) / 1000.0, status=status,
+                                  workspace=record.get("workspace_id"), run_id=record.get("run_id"),
+                                  purpose=record.get("purpose"), rows=record.get("row_count"),
+                                  statement_hash=record.get("fingerprint") or telemetry.digest(record.get("sql", "")))
 
 
 class _SourceView:

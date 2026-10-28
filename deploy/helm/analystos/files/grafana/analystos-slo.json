@@ -1,0 +1,174 @@
+{
+ "uid": "analystos-slo",
+ "title": "AnalystOS / SLOs and error budgets",
+ "tags": [
+  "analystos",
+  "s12"
+ ],
+ "timezone": "utc",
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "1m",
+ "time": {
+  "from": "now-24h",
+  "to": "now"
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "datasource",
+    "type": "datasource",
+    "query": "prometheus",
+    "label": "Prometheus"
+   }
+  ]
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "timeseries",
+   "title": "Ask: share slower than the target (5m / 1h / 6h)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "analystos:ask_latency_bad:ratio_rate5m",
+     "legendFormat": "5m"
+    },
+    {
+     "refId": "B",
+     "expr": "analystos:ask_latency_bad:ratio_rate1h",
+     "legendFormat": "1h"
+    },
+    {
+     "refId": "C",
+     "expr": "analystos:ask_latency_bad:ratio_rate6h",
+     "legendFormat": "6h"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 2,
+   "type": "timeseries",
+   "title": "Ask p95 time to first byte",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "histogram_quantile(0.95, sum by (le) (rate(analystos_http_request_duration_seconds_bucket{class=\"ask\",method=\"POST\"}[5m])))",
+     "legendFormat": ""
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 3,
+   "type": "timeseries",
+   "title": "Run failure share (5m / 1h / 6h)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 8,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "analystos:run_failure:ratio_rate5m",
+     "legendFormat": "5m"
+    },
+    {
+     "refId": "B",
+     "expr": "analystos:run_failure:ratio_rate1h",
+     "legendFormat": "1h"
+    },
+    {
+     "refId": "C",
+     "expr": "analystos:run_failure:ratio_rate6h",
+     "legendFormat": "6h"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 4,
+   "type": "timeseries",
+   "title": "Unavailable share (5m / 1h / 6h)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 8,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "analystos:unavailable:ratio_rate5m",
+     "legendFormat": "5m"
+    },
+    {
+     "refId": "B",
+     "expr": "analystos:unavailable:ratio_rate1h",
+     "legendFormat": "1h"
+    },
+    {
+     "refId": "C",
+     "expr": "analystos:unavailable:ratio_rate6h",
+     "legendFormat": "6h"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit"
+    },
+    "overrides": []
+   },
+   "options": {}
+  }
+ ]
+}

@@ -549,8 +549,9 @@ def _admin():
     return admin
 
 
-def configure(tier: str):
-    """Model access for a tier. Returns (restore callable, oracle or None)."""
+def configure(tier: str, disabled_models: list[str] | tuple[str, ...] = ()):
+    """Model access for a tier. Returns (restore callable, oracle or None). `disabled_models` (fake tier) takes
+    models out of routing, as the per-model matrix does to pin a profile to one model (S12 §3)."""
     import os
 
     from analystos.core.config import get_settings
@@ -574,7 +575,7 @@ def configure(tier: str):
         from analystos.runtime.usage import DbUsageSink
 
         oracle = OracleTransport()
-        settings = PlatformSettings(llm=LLMSettings(cache_enabled=False))
+        settings = PlatformSettings(llm=LLMSettings(cache_enabled=False, disabled_models=list(disabled_models)))
         router = ModelRouter(transport=oracle, api_key_lookup=lambda env: "fake", sink=DbUsageSink(), settings_provider=lambda: settings)
         services = Services(router=router, gateway=default_gateway())
         runtime_context.default_services = lambda: services
@@ -605,13 +606,13 @@ class Run:
 
 
 def run(tier: str, *, domains: tuple[str, ...] = DOMAINS, seed: int = 1, limit: int | None = None,
-        only: set[str] | None = None, probe: bool = True) -> Run:
+        only: set[str] | None = None, probe: bool = True, disabled_models: list[str] | None = None) -> Run:
     """One tier over the question sets. `limit`/`only` pick a subset (smoke runs). The live tier asks
     one model-only question first and stops (no retries) when it does not get a provider answer."""
     from analystos.runtime.context import default_gateway
 
     started = time.perf_counter()
-    restore, oracle = configure(tier)
+    restore, oracle = configure(tier, tuple(disabled_models or ()))
     try:
         admin = _admin()
         gateway = default_gateway()

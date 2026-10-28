@@ -16,6 +16,8 @@ spec:
       labels:
         {{- include "analystos.labels" . | nindent 8 }}
         app.kubernetes.io/component: scheduler
+        analystos.io/role: scheduler
+        analystos.io/metrics: "true"
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
     spec:
@@ -25,6 +27,8 @@ spec:
           image: {{ include "analystos.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["analystos", "scheduler"]
+          ports:
+            - {name: metrics, containerPort: {{ .Values.monitoring.metricsPort }}}
           {{- include "analystos.appEnv" . | nindent 10 }}
           resources:
             {{- toYaml .Values.scheduler.resources | nindent 12 }}
@@ -89,6 +93,7 @@ spec:
       labels:
         {{- include "analystos.labels" . | nindent 8 }}
         app.kubernetes.io/component: web
+        analystos.io/role: web
     spec:
       {{- include "analystos.podCommon" $web | nindent 6 }}  {{- /* nginx user 101 in nginx:alpine */}}
       containers:

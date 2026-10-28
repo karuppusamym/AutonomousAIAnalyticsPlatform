@@ -470,6 +470,21 @@ def release_orphaned_claims(run_ids: list[str] | None = None) -> list[str]:
 
 
 @owned_by("analysis_run", "run_id")
+def _observe_run(s, run: AnalysisRun, outcome: str) -> None:
+    """Run outcome, duration and step count (S12 §2 metrics)."""
+    from analystos.observability import metrics
+
+    metrics.inc("analystos_runs_total", outcome=outcome)
+    started = run.started_at or run.created_at
+    if started is not None:
+        now = utcnow()
+        if started.tzinfo is None:
+            now = now.replace(tzinfo=None)
+        metrics.observe("analystos_run_duration_seconds", max(0.0, (now - started).total_seconds()), outcome=outcome)
+    steps = s.scalar(select(func.count()).select_from(RunTask).where(RunTask.run_id == run.id)) or 0
+    metrics.observe("analystos_run_steps", steps, outcome=outcome)
+
+
 def finish_run(run_id: str, outcome: str, error: str | None = None) -> None:
     with session_scope() as s:
         run = s.get(AnalysisRun, run_id, with_for_update=True)
@@ -487,6 +502,7 @@ def finish_run(run_id: str, outcome: str, error: str | None = None) -> None:
         if outcome in LIMITED:
             _close_with_limitations(s, run, outcome, error or "budget exhausted")
         set_run_status(s, run, outcome, **({"error": error} if error else {}))
+        _observe_run(s, run, outcome)
         notify_needed = (run.origin or {}).get("type") in ("schedule", "alert")
         workspace_id, requested_by = run.workspace_id, run.requested_by
     if notify_needed:

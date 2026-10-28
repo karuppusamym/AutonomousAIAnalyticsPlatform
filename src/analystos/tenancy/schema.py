@@ -24,6 +24,7 @@ GLOBAL_TABLES: dict[str, str] = {
     "model_payload": "content-addressed redacted payloads, reachable only through tenant-scoped model_call rows",
     "spend_counter": "budget counters keyed by scope string (workspace/run keys carry their ids)",
     "verification_sweep": "platform sweep bookkeeping (counts only)",
+    "model_evaluation": "per-model scores on the product's golden suite (S12 §3), no tenant data",
 }
 
 

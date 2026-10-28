@@ -17,6 +17,13 @@ data:
   ANALYSTOS_VECTOR_BACKEND: {{ .Values.config.vectorBackend | default "pgvector" | quote }}
   ANALYSTOS_SANDBOX_ISOLATION: {{ .Values.config.sandboxIsolation | quote }}
   ANALYSTOS_AIR_GAPPED: {{ .Values.airGapped.enabled | quote }}
+  # Observability (S12 §2): workers/scheduler serve /metrics on this port; a pod's processes merge in the dir.
+  ANALYSTOS_METRICS_PORT: {{ .Values.monitoring.metricsPort | quote }}
+  ANALYSTOS_METRICS_DIR: /tmp/analystos-metrics
+  ANALYSTOS_OTEL_ENABLED: {{ .Values.monitoring.otel.enabled | quote }}
+  {{- if .Values.monitoring.otel.endpoint }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.monitoring.otel.endpoint | quote }}
+  {{- end }}
   # Isolated compute pools (ADR-0022, P7-06): the API dispatches to those this release deploys.
   ANALYSTOS_ISOLATED_POOLS: {{ include "analystos.isolatedPools" . | quote }}
   ANALYSTOS_WORKER_ARTIFACT_URL: {{ include "analystos.artifactUrl" . | quote }}

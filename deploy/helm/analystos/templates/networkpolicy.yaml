@@ -1,4 +1,4 @@
-{{- if or .Values.networkPolicy.enabled .Values.airGapped.enabled }}
+{{- if and (or .Values.networkPolicy.enabled .Values.airGapped.enabled) (not .Values.networkPolicy.perRole) }}
 # Egress lock-down (air-gapped mode forces it on): pods reach cluster DNS, each other, and only the
 # CIDRs listed in airGapped.allowedEgressCidrs (external Postgres / Redis / Temporal / Superset, the
 # local model server, the IdP, data sources). Everything else - including any public model API - is
