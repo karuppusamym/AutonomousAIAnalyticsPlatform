@@ -6,12 +6,12 @@ from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
+from tests.unit.test_verification_p701 import RUN, WS, _insight
+from tests.unit.test_verification_p701 import db as p701_db  # noqa: F401 (a fixture)
 
 from analystos.capabilities import registry
 from analystos.capabilities.playbook import Step, parse
 from analystos.evidence import investigation as inv
-from tests.unit.test_verification_p701 import RUN, WS, _insight
-from tests.unit.test_verification_p701 import db as p701_db  # noqa: F401 (a fixture)
 
 NOW = datetime(2026, 10, 27, tzinfo=UTC)
 

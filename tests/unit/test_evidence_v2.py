@@ -3,11 +3,11 @@ verification record, the run's manifest and binding. SQLite control plane, no se
 from __future__ import annotations
 
 import pytest
+from tests.unit.test_verification_p701 import ASSET, RUN, WS, _insight
+from tests.unit.test_verification_p701 import db as p701_db  # noqa: F401 (a fixture)
 
 from analystos.contracts.evidence import EvidenceV2
 from analystos.evidence import api_v2
-from tests.unit.test_verification_p701 import ASSET, RUN, WS, _insight
-from tests.unit.test_verification_p701 import db as p701_db  # noqa: F401 (a fixture)
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ FIELDS = {"evidence_id", "run_id", "claim_id", "label", "description", "dataset_
 
 def test_the_contract_has_every_v1_field():
     props = EvidenceV2.model_json_schema()["properties"]
-    assert FIELDS <= set(props)
+    assert set(props) >= FIELDS
     assert set(props["effect"]["$ref"].split("/")[-1:]) == {"EvidenceEffect"}
     assert set(EvidenceV2.model_json_schema()["$defs"]["EvidenceEffect"]["properties"]) == {"value", "unit", "ci"}
     assert set(EvidenceV2.model_json_schema()["$defs"]["EvidenceSample"]["properties"]) == {"n", "coverage"}
