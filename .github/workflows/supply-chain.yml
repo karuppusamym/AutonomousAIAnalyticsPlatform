@@ -96,8 +96,24 @@ jobs:
           severity-cutoff: high
           only-fixed: true
           output-format: sarif
+      # The findings, readable without code scanning: the SARIF as an artifact, and a table in the log on failure.
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.scan.outputs.sarif != ''
+        with:
+          name: grype-${{ matrix.name }}
+          path: ${{ steps.scan.outputs.sarif }}
+          if-no-files-found: ignore
+      - name: Findings table (on a failed scan)
+        if: failure() && steps.scan.outcome == 'failure'
+        run: |
+          docker run --rm -v "$PWD:/work" anchore/grype:v0.97.1 --only-fixed \
+            "sbom:/work/sbom-${{ matrix.name }}.spdx.json" || true
+      # Code scanning needs GitHub Advanced Security on a private repository; without it the upload answers
+      # "Resource not accessible by integration". It is a report, not the gate (the Grype step above is), so
+      # its failure must not fail the job.
       - uses: github/codeql-action/upload-sarif@v3
         if: always() && steps.scan.outputs.sarif != ''
+        continue-on-error: true
         with:
           sarif_file: ${{ steps.scan.outputs.sarif }}
           category: grype-${{ matrix.name }}

@@ -31,10 +31,13 @@ WORKDIR /app
 # Operators select a models file by path (Helm: ANALYSTOS_MODELS_CONFIG=/app/config/models*.yaml); the same
 # files are the wheel's defaults. var/ (artifacts, uploads, builds) is written below the working directory.
 COPY config ./config
+# The base image's pip/setuptools/wheel lag behind fixed CVEs (setuptools vendors jaraco.context and wheel), and
+# the Grype gate in supply-chain.yml fails on them; upgrade them before installing the app.
 RUN --mount=type=secret,id=pipcert,required=false \
     --mount=type=bind,from=wheel,source=/dist,target=/dist \
     if [ -f /run/secrets/pipcert ]; then export PIP_CERT=/run/secrets/pipcert; fi; \
     whl=$(ls /dist/analystos-*.whl); if [ -n "$EXTRAS" ]; then target="$whl[$EXTRAS]"; else target="$whl"; fi; \
+    pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir "$target" && useradd --create-home --uid 10001 --gid 0 analystos     && mkdir -p /app/var && chown -R 10001:0 /app/var && chmod -R g=u /app/var
 # Numeric user (runAsNonRoot can verify it); group 0 owns the writable paths, so OpenShift's arbitrary UID
 # (restricted-v2 SCC, always in group 0) can write them too (S12 §1).

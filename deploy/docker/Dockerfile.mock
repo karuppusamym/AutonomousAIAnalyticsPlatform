@@ -3,10 +3,12 @@
 FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app/src
 WORKDIR /app
-# Optional build secret `pipcert`: CA bundle for TLS-inspecting proxies.
+# Optional build secret `pipcert`: CA bundle for TLS-inspecting proxies. pip/setuptools/wheel are upgraded first:
+# the base image's copies carry fixed CVEs the Grype gate (supply-chain.yml) fails on.
 RUN --mount=type=secret,id=pipcert,required=false \
     if [ -f /run/secrets/pipcert ]; then export PIP_CERT=/run/secrets/pipcert; fi; \
-    pip install --no-cache-dir "fastapi>=0.121" "uvicorn>=0.30" "numpy>=1.26" "pyarrow>=17" \
+    pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir "fastapi>=0.121" "uvicorn>=0.30" "numpy>=1.26" "pyarrow>=17" \
     && useradd --create-home --uid 10001 mock
 COPY src/analystos/__init__.py ./src/analystos/__init__.py
 COPY src/analystos/connectors/__init__.py src/analystos/connectors/servicenow_mock.py \
