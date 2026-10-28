@@ -114,7 +114,7 @@ export const SCREENS: Screen[] = [
   { id: "policy", area: "settings", path: "/w/:wsId/settings/policy", title: "Members & policy", nav: true, workspace: true,
     audience: "owner", owns: ["policy", "member", "autonomy", "audit"], keywords: "roles budget limits autonomy audit log" },
   { id: "registry", area: "settings", path: "/settings/registry", title: "Capability registry", nav: true, workspace: false,
-    audience: "admin", owns: ["capability"], keywords: "agents tools skills prompts plugins" },
+    audience: "admin", owns: ["capability"], keywords: "agents tools skills prompts plugins publish mcp servers clients grants quarantine signing" },
   { id: "platform", area: "settings", path: "/settings/platform", title: "Platform settings", nav: true, workspace: false,
     audience: "admin", owns: ["platform-settings", "model-config"], keywords: "admin llm modes presets models routing features limits" },
   { id: "usage", area: "settings", path: "/settings/usage", title: "Usage & cost", nav: true, workspace: false,
