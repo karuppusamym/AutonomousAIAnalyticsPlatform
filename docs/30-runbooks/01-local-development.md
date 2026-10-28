@@ -18,7 +18,7 @@ export ANALYSTOS_SOURCE_SECRET_SERVICENOW=admin  # the mock's password, referenc
 (cd web && npm install && npm run dev)     # http://localhost:5173
 ```
 Containerised: `docker compose up -d --build` runs the **lite** profile (Postgres, API :8000, UI :5173; ADR-0025).
-The standard profile, Superset (:8088 admin/admin, published on 127.0.0.1 only; `SUPERSET_BIND=0.0.0.0` to expose it), the demo source and the rest are opt-in profiles:
+The standard profile, Superset (:8088 admin/admin, published on 127.0.0.1 only; `SUPERSET_BIND=0.0.0.0` to expose it; its `SECRET_KEY` is generated on first boot and kept in the `superset-home` volume), the demo source and the rest are opt-in profiles:
 [runbook 04](04-lite-and-profiles.md).
 
 **Worker pools.** Temporal work is split into task queues per workload — `analysis` (I/O-bound agent

@@ -74,9 +74,34 @@ Checked live on Superset 4.1.1 containers from this config:
 * `docker port` shows `127.0.0.1` only.
 * `docker compose config` renders `host_ip: 127.0.0.1`, or `0.0.0.0` with `SUPERSET_BIND`.
 
+`SECRET_KEY`, hardened afterwards (same day). It signs login sessions (a known key forges an admin session) and
+encrypts the stored connection passwords, so it must stay stable, unlike the guest secret.
+* `superset_config.py` refuses a key shorter than 32 characters, the formerly published placeholder, and Superset's
+  own sample keys.
+* With no key configured, `bootstrap.sh` generates one on first boot. It re-encrypts stored secrets from the
+  formerly published placeholder (`superset re-encrypt-secrets`), and only then saves the key, mode 600, to the
+  `superset-home` volume that compose now mounts.
+* Later boots and recreates read the saved key. `SUPERSET_PREVIOUS_SECRET_KEY` re-encrypts once for a deliberate
+  rotation.
+* If stored secrets were encrypted with a third key, the boot stops with a message saying which variable to set,
+  and no key is saved.
+
+Checked live on Superset 4.1.1, upgrading a metadata DB written by the previous config:
+1. The old config (placeholder key) stored a password-protected connection and a KPI over it (20,000 rows).
+2. The new config with no key and an empty volume generated and saved a key (64 characters, `-rw-------`) and
+   re-encrypted. The KPI still read 20,000 through the stored connection.
+3. A restart and a full container recreate on the same volume generated nothing and re-encrypted nothing; the same
+   key hash was kept and the KPI still read 20,000.
+4. The placeholder and a 13-character key each exit 1 with the refusal message.
+5. An empty volume against metadata now encrypted with another key: exit 1 with the "set SUPERSET_SECRET_KEY"
+   message, and no key file was saved.
+6. The AT-07/AT-08 live test passes against the new-config Superset.
+
+Upgrade note: the shared compose Superset re-encrypts once when it is first recreated from this config. If its
+metadata was ever written with a key other than the placeholder, set `SUPERSET_SECRET_KEY` to that key. Dropping
+the `superset-home` volume while keeping the metadata DB loses the stored connection passwords.
+
 Not changed (follow-ups):
-* `SECRET_KEY` (Superset's session signing key) still has a dev placeholder in `superset_config.py`. A known key lets
-  someone forge an admin session, so it deserves the same treatment.
 * The embed config is still written on the token path rather than inside the approved publish. It can no longer
   be widened.
 

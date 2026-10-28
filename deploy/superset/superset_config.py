@@ -1,7 +1,16 @@
 import os
 import sys
 
-SECRET_KEY = os.environ.get("SUPERSET_SECRET_KEY", "analystos-dev-superset-secret-change-me")
+# SECRET_KEY signs login sessions (a known key forges an admin session) and encrypts stored connection passwords.
+# No default: bootstrap.sh generates one on first boot and keeps it in the superset-home volume. A short or
+# published value refuses to start. To rotate, set the new key plus SUPERSET_PREVIOUS_SECRET_KEY for one boot.
+_PUBLISHED_SECRET_KEYS = {"analystos-dev-superset-secret-change-me", "change_me_to_a_complex_random_secret",
+                          "thisisasecret_1234", "change-me", "changeme"}
+SECRET_KEY = os.environ.get("SUPERSET_SECRET_KEY", "")
+if len(SECRET_KEY) < 32 or SECRET_KEY.lower() in _PUBLISHED_SECRET_KEYS:
+    raise RuntimeError("SUPERSET_SECRET_KEY must be a random value of at least 32 characters (unset: "
+                       "deploy/superset/bootstrap.sh generates and keeps one); refusing to start with a known or short key")
+PREVIOUS_SECRET_KEY = os.environ.get("SUPERSET_PREVIOUS_SECRET_KEY") or None
 SQLALCHEMY_DATABASE_URI = os.environ.get("SUPERSET_DATABASE_URI", "postgresql+psycopg2://superset:superset@postgres:5432/superset")
 WTF_CSRF_ENABLED = True
 WTF_CSRF_EXEMPT_LIST = ["superset.views.core.log", "superset.charts.data.api.data"]

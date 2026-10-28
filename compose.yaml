@@ -271,11 +271,16 @@ services:
       SUPERSET_CONFIG_PATH: /app/analystos/superset_config.py
       SUPERSET_ADMIN_USER: admin
       SUPERSET_ADMIN_PASSWORD: admin
+      # unset = generated on first boot and kept in superset-home (bootstrap.sh); short or published values refuse
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-}
+      SUPERSET_PREVIOUS_SECRET_KEY: ${SUPERSET_PREVIOUS_SECRET_KEY:-}  # one boot, to rotate SUPERSET_SECRET_KEY
       # embedding (S08-T5): unset = a random secret per container (bootstrap.sh); set one shared value for several
       # replicas. A short or published value refuses to start. Origins are the browser-facing UI origins.
       SUPERSET_GUEST_TOKEN_SECRET: ${SUPERSET_GUEST_TOKEN_SECRET:-}
       SUPERSET_EMBED_ORIGINS: ${SUPERSET_EMBED_ORIGINS:-http://localhost:5173 http://127.0.0.1:5173}
-    volumes: [./deploy/superset:/app/analystos:ro]
+    # superset-home keeps the generated SECRET_KEY (bootstrap.sh): it encrypts the stored connection passwords,
+    # so dropping this volume while keeping the metadata DB loses them. Or set SUPERSET_SECRET_KEY explicitly.
+    volumes: [./deploy/superset:/app/analystos:ro, superset-home:/app/superset_home]
     # Run through bash: a bind mount from a Windows checkout does not always keep the executable bit.
     entrypoint: ["bash", "/app/analystos/bootstrap.sh"]
     # Loopback only: Superset's admin login and guest-token API stay off the network. The UI, the API and the
@@ -360,4 +365,5 @@ volumes:
   # Shared durable uploads/artifacts: source paths must survive API/worker recreation.
   runtime-data:
   pgdata:
+  superset-home:
   neo4jdata:
