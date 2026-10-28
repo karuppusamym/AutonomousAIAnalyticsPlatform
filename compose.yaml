@@ -209,7 +209,12 @@ services:
     profiles: ["isolated"]
     environment: {<<: *isolated-env, ANALYSTOS_WORKER_QUEUES: compute-py}
     networks: [isolated]
+    runtime: ${COMPUTE_RUNTIME:-runc}   # runsc where gVisor is installed (ADR-012); see the runbook
+    user: "10001:10001"
     read_only: true
+    pids_limit: 256
+    mem_limit: 3g
+    cpus: 2
     tmpfs: ["/tmp:size=2g"]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
@@ -222,7 +227,12 @@ services:
     profiles: ["isolated"]
     environment: {<<: *isolated-env, ANALYSTOS_WORKER_QUEUES: compute-ml}
     networks: [isolated]
+    runtime: ${COMPUTE_RUNTIME:-runc}   # runsc where gVisor is installed (ADR-012); see the runbook
+    user: "10001:10001"
     read_only: true
+    pids_limit: 256
+    mem_limit: 6g
+    cpus: 4
     tmpfs: ["/tmp:size=4g"]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]

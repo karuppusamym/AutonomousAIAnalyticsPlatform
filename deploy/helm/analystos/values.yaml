@@ -218,6 +218,15 @@ workers:
     pdb: {enabled: false}
 
 isolatedPools:
+  # Compute isolation is a release gate (ADR-012, S07-T1): isolated pods run under a sandboxed RuntimeClass.
+  # `gvisor` (handler runsc) by default; a Kata class works too (map it in runtimeKernels). Per pool:
+  # workers.<pool>.runtimeClassName. Empty = the node's default runtime, refused when env is production.
+  runtimeClassName: gvisor
+  # RuntimeClass name -> the kernel the worker must see (it refuses to start otherwise). Unlisted = not checked.
+  runtimeKernels: {gvisor: gvisor, kata: kata, kata-qemu: kata, kata-clh: kata}
+  # Create the RuntimeClass object too (when the nodes have runsc but the cluster has no class yet).
+  runtimeClass: {create: false, handler: runsc, nodeSelector: {}}
+  scratchSizeLimit: 2Gi              # the emptyDir /tmp of every isolated pod (per pool: workers.<pool>.scratchSizeLimit)
   # NetworkPolicy `to` peers of the Temporal frontend, e.g.
   #   [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: temporal}}}] or [{ipBlock: {cidr: 10.0.4.0/24}}]
   temporalEgress: []

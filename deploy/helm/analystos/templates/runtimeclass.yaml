@@ -1,0 +1,16 @@
+{{- /* The sandboxed RuntimeClass isolated compute pods run under (ADR-012, S07-T1). Off by default: most
+       clusters with gVisor or Kata already define the class (GKE Sandbox: `gvisor`). */ -}}
+{{- if and .Values.isolatedPools.runtimeClass.create .Values.isolatedPools.runtimeClassName (include "analystos.isolatedPools" .) }}
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: {{ .Values.isolatedPools.runtimeClassName }}
+  labels:
+    {{- include "analystos.labels" . | nindent 4 }}
+handler: {{ .Values.isolatedPools.runtimeClass.handler }}
+{{- with .Values.isolatedPools.runtimeClass.nodeSelector }}
+scheduling:
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}

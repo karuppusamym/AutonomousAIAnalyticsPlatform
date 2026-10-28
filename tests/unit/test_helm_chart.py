@@ -244,9 +244,14 @@ def test_isolated_pools_get_no_credentials_and_their_own_network_policy():
         assert "envFrom" not in container  # neither the ConfigMap nor the Secret
         assert {e["name"] for e in container["env"]} == {
             "ANALYSTOS_WORKER_QUEUES", "ANALYSTOS_WORKER_ARTIFACT_URL", "ANALYSTOS_TEMPORAL_ADDRESS",
-            "ANALYSTOS_TEMPORAL_NAMESPACE", "ANALYSTOS_TEMPORAL_QUEUE_PREFIX", "ANALYSTOS_ENV"}
+            "ANALYSTOS_TEMPORAL_NAMESPACE", "ANALYSTOS_TEMPORAL_QUEUE_PREFIX", "ANALYSTOS_ENV",
+            "ANALYSTOS_WORKER_REQUIRE_RUNTIME"}
         assert container["securityContext"]["readOnlyRootFilesystem"] is True
         assert [v["name"] for v in pod["spec"]["volumes"]] == ["tmp"]
+        # S07-T1 (ADR-012): gVisor, no service account token, a 2 GiB ephemeral scratch volume
+        assert pod["spec"]["runtimeClassName"] == "gvisor" and pod["spec"]["automountServiceAccountToken"] is False
+        assert pod["spec"]["volumes"][0]["emptyDir"] == {"sizeLimit": "2Gi"}
+        assert {"name": "ANALYSTOS_WORKER_REQUIRE_RUNTIME", "value": "gvisor"} in container["env"]
     policies = _kind(docs, "NetworkPolicy")
     iso = policies["t-analystos-isolated-pools"]["spec"]
     assert iso["podSelector"]["matchLabels"]["analystos.io/isolated"] == "true" and iso["ingress"] == []

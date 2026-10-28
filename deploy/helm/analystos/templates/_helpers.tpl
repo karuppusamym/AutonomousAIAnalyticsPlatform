@@ -89,7 +89,13 @@ securityContext:
 
 {{- define "analystos.podCommon" -}}
 serviceAccountName: {{ include "analystos.serviceAccountName" .root }}
-automountServiceAccountToken: {{ .root.Values.serviceAccount.automountToken }}
+automountServiceAccountToken: {{ and (not .isolated) .root.Values.serviceAccount.automountToken }}
+{{- if .isolated }}
+enableServiceLinks: false
+{{- with .runtimeClassName }}
+runtimeClassName: {{ . }}
+{{- end }}
+{{- end }}
 securityContext:
   {{- toYaml (default .root.Values.podSecurityContext .podSecurityContext) | nindent 2 }}
 {{- with .root.Values.imagePullSecrets }}

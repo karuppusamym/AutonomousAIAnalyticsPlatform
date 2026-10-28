@@ -38,6 +38,7 @@ ALLOWED_ENV = frozenset({
     "PYTHONDONTWRITEBYTECODE", "VIRTUAL_ENV", "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
     "NUMEXPR_NUM_THREADS", "ANALYSTOS_ENV", "ANALYSTOS_WORKER_QUEUES", "ANALYSTOS_WORKER_ARTIFACT_URL",
     "ANALYSTOS_TEMPORAL_ADDRESS", "ANALYSTOS_TEMPORAL_NAMESPACE", "ANALYSTOS_TEMPORAL_QUEUE_PREFIX",
+    "ANALYSTOS_WORKER_REQUIRE_RUNTIME",
 })
 # A worker given any of these refuses to start (names only are reported, never values).
 _FORBIDDEN = [re.compile(p) for p in (
@@ -82,6 +83,52 @@ def check_and_scrub_environment(env: dict[str, str] | None = None) -> dict[str, 
     env.clear()
     env.update(kept)
     return kept
+
+
+# ------------------------------------------------------------------------------------ container runtime
+# What the sandboxed kernel reports (S07-T1, ADR-012). gVisor's Sentry answers uname/proc with a fixed
+# fake kernel and logs its own banner; Kata runs a real guest kernel, seen as a hypervisor CPU flag.
+RUNTIMES = ("gvisor", "kata")
+_GVISOR_VERSION = re.compile(r"#1 SMP Sun Jan 10 15:06:54 PST 2016")
+
+
+def _read(path: str) -> str:
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return f.read(65536)
+    except OSError:
+        return ""
+
+
+def detect_runtime(read: Any = None) -> str:
+    """`gvisor`, `kata` or `runc` (an ordinary container or host kernel); `unknown` off Linux."""
+    read = read or _read
+    version = read("/proc/version")
+    if not version:
+        return "unknown"
+    if _GVISOR_VERSION.search(version) or "gvisor" in read("/proc/self/mountinfo").lower():
+        return "gvisor"
+    flags = next((line for line in read("/proc/cpuinfo").splitlines() if line.startswith("flags")), "")
+    if " hypervisor" in flags and "kata" in read("/proc/cmdline").lower():
+        return "kata"
+    return "runc"
+
+
+def check_runtime(env: Mapping[str, str] | None = None, *, detect: Any = None) -> str | None:
+    """Refuse to start when the deployment asked for a sandboxed runtime (`ANALYSTOS_WORKER_REQUIRE_RUNTIME`,
+    set by the Helm chart from the pool's runtimeClassName) and the kernel says otherwise. Returns what ran."""
+    env = os.environ if env is None else env
+    wanted = (env.get("ANALYSTOS_WORKER_REQUIRE_RUNTIME") or "").strip().lower()
+    if not wanted:
+        return None
+    if wanted not in RUNTIMES:
+        raise WorkerMisconfigured(f"ANALYSTOS_WORKER_REQUIRE_RUNTIME must be one of {', '.join(RUNTIMES)} (got {wanted!r})")
+    found = (detect or detect_runtime)()
+    if found != wanted:
+        raise WorkerMisconfigured(f"this isolated worker must run under {wanted} but the kernel reports {found}; "
+                                  "check the pod's runtimeClassName and the node's RuntimeClass handler",
+                                  details={"required": wanted, "found": found})
+    return found
 
 
 # ------------------------------------------------------------------------------------ egress

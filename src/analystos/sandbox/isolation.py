@@ -16,8 +16,10 @@ Modes (``ANALYSTOS_SANDBOX_ISOLATION``):
   real root). Used inside a Kubernetes worker pod, where the pod is the outer container.
 * ``auto`` (default) - ``container`` when its image is present, else ``process`` when the host
   allows it, else unavailable.
-* ``off`` - rlimits and the Python-level policy only. Development only: refused when
-  ``ANALYSTOS_ENV`` is production, and reported as unisolated everywhere it is shown.
+* ``off`` - rlimits and the Python-level policy only (the in-process sandbox). Refused when
+  ``ANALYSTOS_ENV`` is production, and reported as unisolated everywhere it is shown. Outside a
+  development host (``ANALYSTOS_ENV`` dev/test/local) it runs only for ``profile=lite`` on synthetic data
+  (ADR-012, S07-T1: `in_process_allowed`); anything else needs a real boundary.
 
 When no backend can be established the gate refuses to run sandboxed code (fail closed) with the
 reason; ``/api/health`` reports the same status.
@@ -40,6 +42,8 @@ Mode = Literal["auto", "container", "process", "off"]
 Backend = Literal["container", "process", "none"]
 MODES = ("auto", "container", "process", "off")
 PRODUCTION_ENVS = frozenset({"prod", "production"})
+DEVELOPMENT_ENVS = frozenset({"dev", "development", "test", "local"})
+DATA_CLASSES = ("synthetic", "unclassified")  # what the caller says the inputs are; unknown = unclassified
 
 CLONE_NEWNS = 0x00020000
 CLONE_NEWUTS = 0x04000000
@@ -256,6 +260,20 @@ def _resolve(settings: Any, mode: str) -> IsolationStatus:
     return IsolationStatus(mode=mode, backend="none", available=False, isolated=False, enforced={},
                            detail="sandbox isolation unavailable, sandboxed code is refused: " + "; ".join(reasons),
                            checked_at=now)
+
+
+def in_process_allowed(settings: Any | None = None, data_class: str = "unclassified") -> tuple[bool, str]:
+    """ADR-012: the in-process rlimit sandbox (backend ``none``) is no boundary, so it may run only
+    ``profile=lite AND data_class=synthetic``. A development host (ANALYSTOS_ENV dev/test/local) keeps the
+    explicit ``off`` opt-in for its own data; production never reaches here (`_resolve` refuses ``off``)."""
+    settings = settings or _settings()
+    if getattr(settings, "profile", None) == "lite" and data_class == "synthetic":
+        return True, "lite profile, synthetic data"
+    if str(getattr(settings, "env", "")).lower() in DEVELOPMENT_ENVS:
+        return True, f"development host (ANALYSTOS_ENV={settings.env})"
+    return False, ("the in-process sandbox runs only with profile=lite on synthetic data (ADR-012); "
+                   f"profile={getattr(settings, 'profile', None)}, data_class={data_class}, ANALYSTOS_ENV={settings.env}: "
+                   "configure ANALYSTOS_SANDBOX_ISOLATION=process|container or an isolated compute pool")
 
 
 def reset_cache() -> None:
