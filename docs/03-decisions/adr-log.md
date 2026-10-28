@@ -42,6 +42,9 @@ LangGraph would add a second checkpoint store and does not supply durable schedu
 **Costs.** Temporal is an operational dependency in `standard` and above. Mitigation: the lite profile
 runs without it, and Temporal Cloud is an option.
 
+**Under review.** [ADR-015](#adr-015-langgraph-as-an-optional-third-orchestrator-backend--proposed-2026-10-27-would-supersede-adr-002)
+(Proposed) would supersede this entry's "no LangGraph" clause.
+
 ---
 
 ## ADR-003 Modular monolith with process roles — Accepted (inherits AnalystOS ADR-0001)
@@ -226,3 +229,159 @@ Postgres reads that do not need fresh state go to a replica. Large payloads live
 **Maintainability.** One package with enforced module boundaries (import-linter), contracts first (Pydantic → JSON Schema/OpenAPI),
 one migration stream, features as capability packs and profiles (lite → standard → ha) so a deployment runs only what it needs,
 ADR for every cross-cutting change, and the tracker plus evidence as the single status authority.
+
+---
+
+## ADR-015 LangGraph as an optional third orchestrator backend — Proposed (2026-10-27) (would supersede ADR-002)
+
+**Status.** Proposed, awaiting an owner decision. Nothing is built. If accepted, ADR-002 becomes
+*Superseded by ADR-015*: its decision stands except the clause "no LangGraph".
+
+**Context.** The owner asked for the run orchestrator to be a deployment choice that includes LangGraph,
+next to Temporal and the local runner. ADR-002 and spec v4 §17 (open question 5) declined LangGraph for two
+reasons: a second checkpoint store, and no durable scheduling. Spec v4 said to revisit only if a flow
+could not be written as a playbook. This request is different. Nobody has found a flow that playbooks
+cannot express. It asks for an orchestrator choice: for teams that know LangGraph, for customers that
+standardise on it, and as a place for LangGraph-style graphs inside agent steps later.
+
+The code already has the needed seam. `runtime/engine.py` is orchestrator-agnostic: `plan_run`,
+`get_state`, `execute_task`, `finish_run`, `apply_replan`, plus claims and orphan release. All state
+(tasks, claims, budgets, approvals) lives in Postgres. Two drivers run the same decision loop over it:
+
+| Backend | Where the loop lives | Waits | Durability |
+|---|---|---|---|
+| `temporal` | `workflows/analysis_workflow.py::AnalysisWorkflow` | `nudge` signal + timer (budget-capped) | Temporal history; `continue_as_new` |
+| `local` | `workflows/orchestrator.py::LocalRuntime.drive` | park (no thread held), re-driven by `signal_run` / 60 s sweep | Postgres task state; `resume()` at API start |
+
+Schedules and monitors do not depend on the orchestrator. They run in `analystos scheduler` (or in
+process under lite) with claim-then-execute. So ADR-002's "no durable scheduling" objection does not
+apply to an orchestrator *backend*. It applies only if LangGraph were to replace Temporal.
+
+**Decision (if accepted).**
+
+1. `ANALYSTOS_ORCHESTRATOR` becomes `Literal["temporal", "local", "langgraph"]`. The profile defaults
+   don't change: lite → `local`, standard/scale → `temporal`. `langgraph` is never a default. Selecting
+   it requires the new `langgraph` extra, and startup fails with a clear error if the extra is missing,
+   the same way the `temporal` extra works today.
+2. **Postgres stays the only source of run state.** The LangGraph graph is a *driver*, like
+   `LocalRuntime.drive`. It holds no state the engine does not hold. It is compiled **without a
+   persistent checkpointer**. A wait for a person or a pause ends the invocation (it *parks*, as in
+   ADR-0025), and `signal_run`, the sweep or a restart starts a fresh invocation from `get_state`. This
+   removes ADR-002's second-checkpoint-store objection.
+3. **Playbooks remain the only flow definition.** The graph is fixed in code and mirrors the engine
+   loop. It is not generated from playbooks and models cannot edit it. Its edges are chosen by
+   deterministic routing on `get_state`, never by a model (CLAUDE.md rule 3). No LangChain chat
+   model, tool, agent or retriever is used. Agents keep running through `agents/dispatch.py`, and SQL
+   keeps going through `QueryGateway.execute`.
+4. **Scope:** analysis runs (goals, conversational escalations, proactive runs). Crawls, recipe and ML
+   compute, and query transport behave as under `local`: in process or via the subprocess pool
+   transport (`isolated_transport=auto` resolves to `subprocess`). Schedules and monitors are
+   unchanged.
+5. **Hosting (phase 1):** the API process, reusing `LocalRuntime`'s machinery (driver registry,
+   nudge-while-parking guard, bounded task pool `ANALYSTOS_LOCAL_WORKERS`, resume, sweeper). It has the
+   same limit as `local`: one API process drives runs. A dedicated driver process with Postgres run
+   leases, safe for several API replicas, is phase 2 and deferred until a deployment needs it.
+   standard/scale deployments that need HA keep `temporal`.
+
+**Design.**
+
+```
+            ┌──────────┐
+ START ───▶ │  plan    │  engine.plan_run (idempotent)
+            └────┬─────┘
+                 ▼
+            ┌──────────┐   next_action(state)  (shared pure function)
+      ┌───▶ │  state   │──────────────┬───────────────┬──────────────┬─────────────┐
+      │     └──────────┘              ▼               ▼              ▼             ▼
+      │                          ┌─────────┐    ┌──────────┐    ┌─────────┐   ┌────────┐
+      │                          │ finish  │    │  replan  │    │ execute │   │  park  │
+      │                          │ outcome │    │ plan_run │    │ (Send   │   │ return │
+      │                          └────┬────┘    └────┬─────┘    │ per key)│   │ WAIT/  │
+      │                               ▼              │          └────┬────┘   │ PAUSED │
+      │                              END             │               │        └───┬────┘
+      └──────────────────────────────────────────────┴───────────────┘           END
+         (+ `idle` node: sleep ≤ poll, capped by remaining wall-clock budget, then back to `state`)
+```
+
+* **One decision function.** `runtime/loop.py::next_action(state) -> Action` (finish with outcome,
+  replan, execute keys, park, idle) is extracted from the two existing loops. `local` and `langgraph` call
+  it. The Temporal workflow keeps its inline copy until a `workflow.patched` migration is worth doing,
+  because changing workflow code risks replay. A table test asserts the three agree on every
+  `get_state` shape, so a new state field cannot be handled in one driver and missed in another.
+* **Nodes** are thin wrappers over engine calls. Each runs as the run's tenant (`as_owner_of
+  ("analysis_run", run_id)`) and does not rely on LangGraph's executor carrying context variables
+  (ADR-009, rule 5).
+* **Parallel tasks.** `Send` fans out one `execute` per ready key. `execute` submits to the shared
+  bounded pool and waits, so the global bound is unchanged. A superstep waits for all its tasks, like
+  Temporal's `asyncio.gather`. Retries use the engine's claim/attempt rules (`_execute_with_retries`,
+  `_is_last_attempt`), not a LangGraph `RetryPolicy`, so attempts count the same way under every backend.
+* **Long runs.** Each invocation is bounded by `recursion_limit`. On reaching it, the driver returns
+  and re-invokes, which is the equivalent of `continue_as_new`.
+* **Approvals.** A resumed invocation never carries a decision. Approvals stay hash-bound and are
+  checked with `verify_for_execution` inside the step (rule 6). This is the main reason
+  `interrupt()`/`Command(resume=…)` are not used: a resume value must not be treated as an approval.
+* **Egress guard.** LangChain's tracing client (LangSmith) can send run state to a hosted service.
+  Startup refuses the `langgraph` backend while `LANGSMITH_TRACING` / `LANGCHAIN_TRACING_V2` is true,
+  unless an operator opts in with `ANALYSTOS_LANGGRAPH_ALLOW_TRACING=true`.
+* **Boundaries.** An import-linter contract allows `langgraph` / `langchain_*` imports only in
+  `workflows/langgraph_backend.py`. `api/app.py` health (`worker`, `temporal` checks), `core/profiles.py`
+  and `workers/dispatch.py` read a backend capability (`durable`, `needs_worker`) instead of
+  `orchestrator == "temporal"`. About 8 call sites change.
+* **Versions.** The `langgraph` extra pins a 1.x minor range. The node and `Send` APIs used here must be
+  checked against the pinned release when it is implemented.
+
+**Why (if accepted).**
+* It gives the owner the choice they asked for, and needs no new service.
+* Keeping LangGraph as a stateless driver over the engine means the decisions that keep this platform
+  governed stay where they are: Postgres state, hash-bound approvals, the gateway, and playbooks.
+* The shared `next_action` and the conformance suite reduce drift between the existing two drivers,
+  which helps even if LangGraph is later removed.
+
+**Costs.**
+* **Limited functional gain.** Inside the platform, `langgraph` adds no behaviour that `local` lacks.
+  Its value is choice, familiarity, the graph view, and a home for agent sub-graphs later. It is not
+  more durable and it is not HA. Phase 1 has the same single-process limit as lite.
+* **Third driver to maintain.** Every change to the `get_state` contract (S06 budgets, replan codes)
+  must reach three drivers. Mitigation: `next_action` + the parity table test. The test matrix grows
+  by one backend, about 1–2 minutes of unit time.
+* **Dependencies.** `langgraph` pulls `langchain-core` and `langsmith` (MIT). The framework has had
+  breaking releases (0.x → 1.0). Budget about 0.5 day per quarter for upgrades. The extra is optional, so
+  core and lite images do not carry it.
+* **Egress risk** from tracing defaults, mitigated by the startup guard above.
+* **ADR churn.** This reverses an entry accepted the same day. If accepted, reconcile spec v4 §(open
+  question 5), the 2026-09-26 comparison review row 33, and ADR-0011's note.
+
+**Effort estimate (phase 1, one engineer).**
+
+| ID | Work | Estimate |
+|---|---|---|
+| ORC-T1 | Orchestrator seam: `workflows/backends.py` protocol (`start_run`, `signal_run`, `resume`, `health`, capabilities); `runtime/loop.py::next_action` used by `local`; replace the ~8 `orchestrator == "temporal"` checks; `orchestrator` becomes a `Literal` | 2 d |
+| ORC-T2 | Backend conformance suite (unit, parameterised over `local` and `langgraph`; `temporal` via its test environment in integration): done/fail/cancel/limited/expired, replan, approval park + signal, pause/resume, restart with orphaned claims, parallel bound, nudge-while-parking race, tenant bound in every node; `next_action` parity table vs the Temporal workflow | 2.5 d |
+| ORC-T3 | `workflows/langgraph_backend.py`: graph, nodes, `Send` fan-out on the shared pool, recursion bound + re-invoke, park semantics, hosted on `LocalRuntime` | 2.5 d |
+| ORC-T4 | Packaging and guards: `langgraph` extra, import-linter contract, tracing guard, startup validation, `/health` and profile summary, slim-install test | 1 d |
+| ORC-T5 | Docs: runbook 04 "choosing an orchestrator", README, CLAUDE.md map, `.env.example` | 0.5 d |
+| ORC-T6 | Live evidence: `scripts/e2e_demo.py` with `ANALYSTOS_ORCHESTRATOR=langgraph` (target 26/26), restart-mid-run drill, `governance-reviewer` pass | 1 d |
+| | **Phase 1 total** | **≈ 9.5 d (2 weeks)** |
+| ORC-T7 | (Deferred) Dedicated driver process with Postgres run leases (`SKIP LOCKED`, heartbeat, lease expiry) so several API replicas are safe | 3–4 d |
+
+ORC-T1 and ORC-T2 are useful even if LangGraph is rejected later, because they harden the two drivers
+that already exist.
+
+**Alternatives considered.**
+* **(a) Keep ADR-002 (two backends) and document the switch.** About 0.5 d, no new dependency. This is
+  the right choice if no customer or team needs LangGraph.
+* **(b) LangGraph only inside a step**, as the implementation of one agent, behind the generic agent's
+  propose → validate → execute path. It needs no orchestration change and fits ADR-0011, which already
+  allows Pydantic AI inside a step. Choose this if the interest is agent reasoning graphs rather than
+  run orchestration.
+* **(c) LangGraph with a Postgres checkpointer and `interrupt()` as the source of truth.** Rejected: two
+  state stores that can disagree, a resume value next to hash-bound approvals, plus new checkpoint tables
+  needing RLS, retention and a migration. That is about +3 d and a lasting audit question.
+* **(d) LangGraph Platform / hosted deployment for queues and cron.** Rejected: a commercial hosted
+  dependency, data leaving the deployment, and a second scheduler next to `analystos scheduler`.
+* **(e) Replace Temporal with LangGraph.** Rejected: standard/scale would lose durable timers, signals,
+  task-queue pools and worker isolation (ADR-0022, ADR-012), and the S02 `worker:query` transport.
+
+**Recommendation to the owner.** Accept only if there is a concrete reason, such as a customer standard,
+team skills, or a planned agent sub-graph. Otherwise choose (a), or (b) if the interest is agent
+internals. In every case, ORC-T1 and ORC-T2 are worth doing for the two existing backends.
