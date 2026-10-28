@@ -1242,6 +1242,27 @@ class ModelConfigOverride(Base):
     created_at: Mapped[datetime] = _ts()
 
 
+class ModelEvaluation(Base):
+    """One golden-suite score of a model for a purpose (S05-T5 model-switch gate, the S12 evaluation matrix).
+    Platform suites from config/model_switch_gate.yaml: prompts and grades only, no tenant data."""
+
+    __tablename__ = "model_evaluation"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    suite: Mapped[str] = mapped_column(String(80), index=True)
+    suite_version: Mapped[int] = mapped_column(Integer)
+    purpose: Mapped[str] = mapped_column(String(80), index=True)
+    profile: Mapped[str] = mapped_column(String(80))
+    model: Mapped[str] = mapped_column(String(200), index=True)
+    status: Mapped[str] = mapped_column(String(20))  # scored | unavailable
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cases: Mapped[int] = mapped_column(Integer, default=0)
+    passed: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_by: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = _ts()
+
+
 class CrawlRun(Base):
     """One metadata crawl of a source (META-005/006): what was seen, what changed, what it cost."""
 

@@ -182,6 +182,11 @@ def store(sqlite_db, monkeypatch):
     cfg = _cfg()
     platform = _platform()
     monkeypatch.setattr(model_config, "_upper", lambda config=None, plat=None: (cfg, platform))
+    from analystos.services import model_switch
+
+    # The model-switch gate (S05-T5) scores every changed primary model: here every model passes every case.
+    monkeypatch.setattr(model_switch, "router_runner", lambda **kw: {
+        "status": "scored", "results": [{"case": i, "passed": True, "problems": []} for i in range(len(kw["cases"]))]})
     with session_scope() as s:
         s.add(User(id="usr_admin", email="admin@x", name="A", password_hash="-", is_admin=True, attributes={},
                    tenant_id="tnt_a"))
@@ -214,7 +219,9 @@ def test_overrides_are_versioned_checked_and_rolled_back(store):
         eff = store.effective(s, tenant_id="tnt_a", workspace_id="ws1")
         assert eff.allowlist == ["us/b"] and eff.layers[-1] == {"layer": "workspace", "version": 2, "present": True}
         back = store.rollback(s, admin, scope="workspace", tenant_id="tnt_a", workspace_id="ws1", version=1)
-        assert back == {"scope": "workspace", "version": 3, "rolled_back_to": 1}
+        assert {k: back[k] for k in ("scope", "version", "rolled_back_to")} == {"scope": "workspace", "version": 3,
+                                                                               "rolled_back_to": 1}
+        assert back["model_switch_gate"]["gated"] is True  # us/b -> eu/a is a primary-model change
         assert store.effective(s, tenant_id="tnt_a", workspace_id="ws1").allowlist == ["eu/a"]
         # Narrowing the tenant afterwards makes the old workspace version unrestorable as-is.
         store.put(s, admin, scope="tenant", tenant_id="tnt_a", workspace_id=None, document={"allowlist": ["us/b"]},

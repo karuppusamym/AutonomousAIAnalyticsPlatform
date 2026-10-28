@@ -1584,7 +1584,114 @@ export interface ModelsView {
   routing: Record<string, string>;
   providers: Record<string, { kind: string; base_url: string }>;
   available: Record<string, boolean>;
+  /** Families the owner blocked: never routed. */
+  blocked_families?: string[];
   effective?: Record<string, EffectiveRoute>;
+}
+
+// ----------------------------------------------------------------------------- model gateway admin (S05)
+export type ModelLayer = "file" | "platform" | "tenant" | "workspace";
+
+/** GET /api/admin/models/effective: file ⊕ platform ⊕ tenant ⊕ workspace, each value with its source layer. */
+export interface EffectiveModels {
+  tenant_id: string;
+  workspace_id: string | null;
+  scope: "tenant" | "workspace";
+  version: number;
+  allowlist: string[];
+  /** Families no route may use (owner decision): always shown as blocked. */
+  blocked_families: string[];
+  residency: string[] | null;
+  budgets: { per_run_usd: number | null; per_day_usd: number | null; per_user_day_usd: number | null };
+  purposes: Record<string, { ladder: string[]; mode: string; profile: string; provider: string; models: string[];
+    rules_fallback: boolean; model_unavailable?: { purpose: string; reason: string } }>;
+  profile_models: Record<string, string[]>;
+  sources: Record<string, ModelLayer>;
+  excluded_models: Record<string, { layer: ModelLayer; reason: string }>;
+  violations: { layer: string; path: string; message: string }[];
+  layers: { layer: string; version?: number | string; present?: boolean }[];
+}
+
+export interface ModelOverrideDoc {
+  scope: "tenant" | "workspace";
+  tenant_id: string;
+  workspace_id: string | null;
+  version: number;
+  document: Dict;
+  history: { version: number; note: string; created_by: string; created_at: string; document: Dict }[];
+}
+
+export interface ProviderView extends ProviderHealth {
+  egress: "internet" | "internal";
+  region: string | null;
+  base_url_env: string | null;
+  capabilities: { json_mode?: boolean; tools?: boolean; context_window?: number; vision?: boolean; prompt_cache?: boolean };
+  models: string[] | null;
+  profiles: string[];
+  stats_24h: { calls: number; errors: number; error_rate: number | null; latency_ms_p50: number | null; latency_ms_p95: number | null };
+}
+
+export interface ProvidersView {
+  checked_at: string;
+  spend_today: ModelHealth["spend_today"];
+  providers: ProviderView[];
+}
+
+export interface ProviderTest {
+  provider: string;
+  profile?: string;
+  probed: boolean;
+  ok?: boolean;
+  model?: string;
+  latency_ms?: number;
+  cost_usd?: number;
+  code?: string;
+  error?: string;
+  detail?: string;
+}
+
+export interface ModelEvaluation {
+  id: string;
+  suite: string;
+  suite_version: number;
+  purpose: string;
+  profile: string;
+  model: string;
+  status: "scored" | "unavailable";
+  score: number | null;
+  cases: number;
+  passed: number;
+  cost_usd: number;
+  created_at: string | null;
+  reused: boolean;
+  reason?: string;
+}
+
+export interface ModelEvaluations {
+  suite_version: number;
+  tolerance: number;
+  min_score: number;
+  suites: Record<string, number>;
+  purpose_suites: Record<string, string>;
+  default_suite: string;
+  items: ModelEvaluation[];
+}
+
+/** The model-switch gate's verdicts (409 details.model_switch_gate when blocked). */
+export interface SwitchGateResult {
+  gated: boolean;
+  blocked?: boolean;
+  overridden?: boolean;
+  tolerance?: number;
+  evaluations: { purpose: string; profile: string; from: string | null; to: string; verdict: "passed" | "blocked";
+    reason: string | null; new: ModelEvaluation; current: ModelEvaluation | null }[];
+}
+
+export interface AirgapPosture {
+  air_gapped: boolean;
+  ok: boolean;
+  checks: { name: string; ok: boolean; detail: string; severity: "ok" | "warning" | "error" }[];
+  purposes: Record<string, { mode: string; rules_fallback: boolean; served_locally: boolean; reason: string | null }>;
 }
 
 export interface Usage {
@@ -3702,14 +3809,37 @@ export const api = {
   modelHealth: (probe = false) =>
     get("/api/admin/models/health", { query: probe ? { probe: true } : {} }) as Promise<ModelHealth>,
   usage: () => get("/api/admin/usage", {}) as Promise<Usage>,
+  modelsEffective: (workspace?: string) =>
+    get("/api/admin/models/effective", { query: workspace ? { workspace } : {} }) as Promise<EffectiveModels>,
+  modelOverride: (scope: "tenant" | "workspace", workspace?: string) =>
+    get("/api/admin/models/config", { query: { scope, ...(workspace ? { workspace } : {}) } }) as Promise<ModelOverrideDoc>,
+  /** A new version of the scope's override; If-Match is the version the person edited ("0" before the first). */
+  putModelOverride: (scope: "tenant" | "workspace", version: number, document: Dict, note: string,
+    workspace?: string, switchOverrideReason?: string) =>
+    request<{ scope: string; version: number; changed: boolean; model_switch_gate?: SwitchGateResult }>("PUT",
+      apiPath("put", "/api/admin/models/config", { query: { scope, ...(workspace ? { workspace } : {}) },
+        body: { document, note, switch_override_reason: switchOverrideReason ?? null } }),
+      { document, note, switch_override_reason: switchOverrideReason ?? null }, ifMatch(version)),
+  rollbackModelOverride: (scope: "tenant" | "workspace", version: number, workspace?: string, switchOverrideReason?: string) =>
+    post("/api/admin/models/config/rollback", { body: { scope, version, workspace: workspace ?? null,
+      switch_override_reason: switchOverrideReason ?? null } }) as Promise<{ version: number; rolled_back_to: number }>,
+  modelProviders: () => get("/api/admin/models/providers", {}) as Promise<ProvidersView>,
+  /** One live, billable ping through the router (recorded as a model call). */
+  testModelProvider: (provider: string) =>
+    post("/api/admin/models/providers/{provider_id}/test", { path: { provider_id: provider } }) as Promise<ProviderTest>,
+  modelEvaluations: (purpose?: string) =>
+    get("/api/admin/models/evaluations", { query: purpose ? { purpose } : {} }) as Promise<ModelEvaluations>,
+  runModelEvaluation: (purpose: string, model?: string) =>
+    post("/api/admin/models/evaluations/run", { body: { purpose, model: model ?? null } }) as Promise<ModelEvaluation>,
+  modelsAirgap: () => get("/api/admin/models/airgap", {}) as Promise<AirgapPosture>,
   audit: (limit = 300) => get("/api/admin/audit", { query: { limit } }) as Promise<AuditEvent[]>,
 
   // platform settings (admin only)
   adminSettings: () => get("/api/admin/settings", {}) as Promise<SettingsDocument>,
   updateSettings: (patchDoc: Dict, note: string) =>
     put("/api/admin/settings", { body: { patch: patchDoc, note } }) as Promise<SettingsUpdateResult>,
-  applyPreset: (preset: string) =>
-    post("/api/admin/settings/preset", { body: { preset } }) as Promise<SettingsUpdateResult>,
+  applyPreset: (preset: string, switchOverrideReason?: string) =>
+    post("/api/admin/settings/preset", { body: switchOverrideReason ? { preset, switch_override_reason: switchOverrideReason } : { preset } }) as Promise<SettingsUpdateResult>,
   settingsHistory: () => get("/api/admin/settings/history", {}) as Promise<SettingsVersion[]>,
   rollbackSettings: (version: number) =>
     post("/api/admin/settings/rollback", { body: { version } }) as Promise<SettingsUpdateResult>,

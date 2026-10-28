@@ -174,10 +174,23 @@ def _write(session: Session, user: User, *, scope: str, tenant_id: str, workspac
     invalidate()
 
 
+def _switch_gate(session: Session, user: User, scope: str, tenant_id: str, workspace_id: str | None,
+                 after: EffectiveModels, override_reason: str | None, runner: Any) -> dict[str, Any]:
+    """S05-T5: a save that changes a purpose's primary model passes the model-switch evaluation gate first."""
+    from analystos.services import model_switch
+
+    cfg, plat = _upper()
+    before = resolve(cfg, plat, _layers(session, tenant_id, workspace_id, upto=scope))
+    return model_switch.check(session, user, model_switch.changed_primaries(before, after),
+                              override_reason=override_reason, runner=runner)
+
+
 def put(session: Session, user: User, *, scope: str, tenant_id: str, workspace_id: str | None,
-        document: dict[str, Any], expected_version: int | None, note: str = "") -> dict[str, Any]:
+        document: dict[str, Any], expected_version: int | None, note: str = "",
+        switch_override: str | None = None, switch_runner: Any = None) -> dict[str, Any]:
     """Replace the scope's override with `document` as a new version. `expected_version` is the
-    If-Match version (0 = no override yet; None = `*`, any version)."""
+    If-Match version (0 = no override yet; None = `*`, any version). A changed primary model must pass
+    the model-switch gate (409 otherwise) unless a platform administrator gives `switch_override`."""
     _require(session, user, scope, tenant_id, workspace_id)
     key = scope_key(scope, tenant_id, workspace_id)
     latest = _latest_row(session, key)
@@ -192,13 +205,14 @@ def put(session: Session, user: User, *, scope: str, tenant_id: str, workspace_i
     before = latest.document if latest else {}
     if stored == before and latest is not None:
         return {"scope": scope, "version": current, "changed": False}
+    gate = _switch_gate(session, user, scope, tenant_id, workspace_id, resolved, switch_override, switch_runner)
     _write(session, user, scope=scope, tenant_id=tenant_id, workspace_id=workspace_id, version=current + 1, document=stored,
            note=note, action="models.config.updated", details={"from_version": current, "note": note, "document": stored})
-    return {"scope": scope, "version": current + 1, "changed": True, "effective": resolved.view()}
+    return {"scope": scope, "version": current + 1, "changed": True, "effective": resolved.view(), "model_switch_gate": gate}
 
 
 def rollback(session: Session, user: User, *, scope: str, tenant_id: str, workspace_id: str | None,
-             version: int) -> dict[str, Any]:
+             version: int, switch_override: str | None = None, switch_runner: Any = None) -> dict[str, Any]:
     _require(session, user, scope, tenant_id, workspace_id)
     key = scope_key(scope, tenant_id, workspace_id)
     target = session.scalar(select(ModelConfigOverride).where(ModelConfigOverride.scope_key == key,
@@ -207,13 +221,14 @@ def rollback(session: Session, user: User, *, scope: str, tenant_id: str, worksp
         raise NotFound(f"{scope} model configuration version {version} not found")
     doc = _parse(target.document)
     assert doc is not None
-    _check_narrowing(session, scope, tenant_id, workspace_id, doc)  # the upper layers may have narrowed since
+    resolved = _check_narrowing(session, scope, tenant_id, workspace_id, doc)  # the upper layers may have narrowed since
+    gate = _switch_gate(session, user, scope, tenant_id, workspace_id, resolved, switch_override, switch_runner)
     latest = _latest_row(session, key)
     new_version = (latest.version if latest else 0) + 1
     _write(session, user, scope=scope, tenant_id=tenant_id, workspace_id=workspace_id, version=new_version,
            document=dict(target.document), note=f"rollback to v{version}", action="models.config.rolled_back",
            details={"to_version": version})
-    return {"scope": scope, "version": new_version, "rolled_back_to": version}
+    return {"scope": scope, "version": new_version, "rolled_back_to": version, "model_switch_gate": gate}
 
 
 def history(session: Session, *, scope: str, tenant_id: str, workspace_id: str | None, limit: int = 50) -> list[dict[str, Any]]:

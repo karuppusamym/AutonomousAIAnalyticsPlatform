@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { Card, EmptyState, EnabledToggle, ErrorBox, Loading, Notice, PageHeader, StatusBadge, Tabs, Tag, TechnicalDetails, Value } from "../components/ui";
 import { fmtDate, fmtMs, fmtUsd } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
+import { ModelsAdmin } from "./AdminModels";
 import { PromptsView, SettingsEditor, TokenSavingsView } from "./AdminSettings";
 import { CapabilityRegistry } from "./Registry";
 
@@ -61,7 +62,7 @@ export function AdminPage({ section = "registry" }: { section?: AdminSection }) 
             {tab === "agents" && <Agents canEdit={isAdmin} />}
             {tab === "tools" && <Tools canEdit={isAdmin} />}
             {tab === "skills" && <Skills />}
-            {tab === "models" && <Models isAdmin={isAdmin} />}
+            {tab === "models" && <ModelsAdmin purposes={<Models isAdmin={isAdmin} />} />}
             {tab === "settings" && <SettingsEditor />}
             {tab === "savings" && <TokenSavingsView />}
             {tab === "prompts" && <PromptsView />}
@@ -266,7 +267,10 @@ function Models({ isAdmin }: { isAdmin: boolean }) {
           </ul>
         </Card>
         <Card title="Allowlist">
-          <div className="chip-row">{d.allowlist.map((a) => <span key={a} className={`tag ${a.startsWith("typesafe/") ? "tag-jev" : ""}`}>{a}</span>)}</div>
+          <div className="chip-row">{d.allowlist.map((a) => {
+            const blocked = (d.blocked_families ?? []).includes(a.split("/", 1)[0]);
+            return <span key={a} className={`tag ${blocked ? "tag-danger" : a.startsWith("typesafe/") ? "tag-jev" : ""}`}>{a}{blocked ? " · blocked" : ""}</span>;
+          })}</div>
         </Card>
       </div>
       <Card title="Profiles"><TechnicalDetails value={d.profiles} label="Profile settings" /></Card>

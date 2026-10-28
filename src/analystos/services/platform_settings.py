@@ -88,10 +88,28 @@ def _latest(session: Session) -> tuple[int, PlatformSettings]:
     return version, PlatformSettings.model_validate(_deep_merge(PlatformSettings().model_dump(), doc))
 
 
-def update(session: Session, user: User, patch: dict[str, Any], *, note: str = "") -> dict[str, Any]:
+class SwitchGate:
+    """Ask the model-switch evaluation gate (S05-T5) before a save. The admin API passes one; internal callers
+    (seeding, tests of other features) do not."""
+
+    def __init__(self, override_reason: str | None = None, runner: Any = None) -> None:
+        self.override_reason, self.runner = override_reason, runner
+
+    def check(self, session: Session, user: User, before: PlatformSettings, after: PlatformSettings) -> dict[str, Any]:
+        from analystos.llm.config import load_models_config
+        from analystos.llm.layers import resolve
+        from analystos.services import model_switch
+
+        cfg = load_models_config()
+        changes = model_switch.changed_primaries(resolve(cfg, before, []), resolve(cfg, after, []))
+        return model_switch.check(session, user, changes, override_reason=self.override_reason, runner=self.runner)
+
+
+def update(session: Session, user: User, patch: dict[str, Any], *, note: str = "",
+           gate: SwitchGate | None = None) -> dict[str, Any]:
     """Deep-merge `patch` into the latest version. The maps purpose_modes, ladders, purpose_run_caps,
     routing_overrides, profile_models, profile_escalation_models and escalation are replaced wholesale
-    (the only way to remove a key)."""
+    (the only way to remove a key). With `gate`, a changed primary model must pass the model-switch gate."""
     _require_admin(user)
     version, before = _latest(session)
     merged = _deep_merge(before.model_dump(), patch)
@@ -103,22 +121,23 @@ def update(session: Session, user: User, patch: dict[str, Any], *, note: str = "
     changes = _diff(before.model_dump(), after.model_dump())
     if not changes:
         return {"version": version, "changes": []}
+    gated = gate.check(session, user, before, after) if gate is not None else None
     new_version = version + 1  # a concurrent writer with the same base fails on the primary key instead of overwriting
     session.add(PlatformSetting(version=new_version, document=after.model_dump(), note=note[:500], created_by=user.id))
     audit(f"user:{user.id}", "platform.settings.updated", target=f"v{new_version}", decision="allow",
           details={"changes": changes[:100], "note": note}, session=session)
     session.flush()
     invalidate()
-    return {"version": new_version, "changes": changes}
+    return {"version": new_version, "changes": changes, **({"model_switch_gate": gated} if gated else {})}
 
 
-def apply_preset(session: Session, user: User, preset: str) -> dict[str, Any]:
+def apply_preset(session: Session, user: User, preset: str, *, gate: SwitchGate | None = None) -> dict[str, Any]:
     if preset not in PRESETS:
         raise InvalidInput(f"preset must be one of {sorted(PRESETS)}")
     # A preset is expressed as modes; per-purpose ladder overrides would shadow it, so it clears them.
     patch = _deep_merge(PRESET_PATCHES.get(preset, {}), {"llm": {"purpose_modes": PRESETS[preset], "ladders": {},
                                                                  "escalation": PRESET_ESCALATION.get(preset, {})}})
-    return update(session, user, patch, note=f"preset {preset}")
+    return update(session, user, patch, note=f"preset {preset}", gate=gate)
 
 
 def history(session: Session, limit: int = 50) -> list[dict[str, Any]]:
@@ -126,7 +145,7 @@ def history(session: Session, limit: int = 50) -> list[dict[str, Any]]:
     return [{"version": r.version, "note": r.note, "created_by": r.created_by, "created_at": r.created_at.isoformat()} for r in rows]
 
 
-def rollback(session: Session, user: User, version: int) -> dict[str, Any]:
+def rollback(session: Session, user: User, version: int, *, gate: SwitchGate | None = None) -> dict[str, Any]:
     _require_admin(user)
     row = session.get(PlatformSetting, version)
     if row is None:
@@ -138,13 +157,14 @@ def rollback(session: Session, user: User, version: int) -> dict[str, Any]:
     target = target_settings.model_dump()
     latest, current_settings = _latest(session)
     current_doc = current_settings.model_dump()
+    gated = gate.check(session, user, current_settings, target_settings) if gate is not None else None
     new_version = latest + 1
     session.add(PlatformSetting(version=new_version, document=target, note=f"rollback to v{version}", created_by=user.id))
     audit(f"user:{user.id}", "platform.settings.rolled_back", target=f"v{new_version}", decision="allow",
           details={"to_version": version, "changes": _diff(current_doc, target)[:100]}, session=session)
     session.flush()
     invalidate()
-    return {"version": new_version, "rolled_back_to": version}
+    return {"version": new_version, "rolled_back_to": version, **({"model_switch_gate": gated} if gated else {})}
 
 
 def _validate_references(settings: PlatformSettings) -> None:

@@ -209,14 +209,17 @@ def models_health(probe: bool = False, _: User = Depends(admin_user), session: S
 class SettingsPatch(BaseModel):
     patch: dict
     note: str = ""
+    switch_override_reason: str | None = None  # S05-T5: a platform admin's reason to activate a blocked model switch
 
 
 class PresetIn(BaseModel):
     preset: str
+    switch_override_reason: str | None = None
 
 
 class RollbackIn(BaseModel):
     version: int
+    switch_override_reason: str | None = None
 
 
 @router.get("/admin/settings")
@@ -233,14 +236,16 @@ def get_settings_doc(_: User = Depends(admin_user)):
 def put_settings(body: SettingsPatch, admin: User = Depends(admin_user), session: Session = Depends(db, scope="function")):
     from analystos.services import platform_settings
 
-    return platform_settings.update(session, session.merge(admin), body.patch, note=body.note)
+    return platform_settings.update(session, session.merge(admin), body.patch, note=body.note,
+                                    gate=platform_settings.SwitchGate(body.switch_override_reason))
 
 
 @router.post("/admin/settings/preset")
 def preset(body: PresetIn, admin: User = Depends(admin_user), session: Session = Depends(db, scope="function")):
     from analystos.services import platform_settings
 
-    return platform_settings.apply_preset(session, session.merge(admin), body.preset)
+    return platform_settings.apply_preset(session, session.merge(admin), body.preset,
+                                          gate=platform_settings.SwitchGate(body.switch_override_reason))
 
 
 @router.get("/admin/settings/history")
@@ -254,7 +259,8 @@ def settings_history(_: User = Depends(admin_user), session: Session = Depends(d
 def settings_rollback(body: RollbackIn, admin: User = Depends(admin_user), session: Session = Depends(db, scope="function")):
     from analystos.services import platform_settings
 
-    return platform_settings.rollback(session, session.merge(admin), body.version)
+    return platform_settings.rollback(session, session.merge(admin), body.version,
+                                      gate=platform_settings.SwitchGate(body.switch_override_reason))
 
 
 @router.get("/admin/prompts")

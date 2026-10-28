@@ -46,7 +46,7 @@ from analystos.core.ids import stable_hash
 from analystos.core.logging import get_logger
 from analystos.llm.cache import ResponseCache, estimate_tokens
 from analystos.llm.config import ModelsConfig, ProfileConfig, family, load_models_config
-from analystos.llm.providers import adapter_for
+from analystos.llm.providers import CAPABILITY_AWARE, adapter_for
 from analystos.llm.redaction import redact, redact_obj
 
 log = get_logger(__name__)
@@ -676,7 +676,7 @@ class ModelRouter:
         provider = self.config.providers[profile.provider]
         if provider.type == "openrouter":
             return self.transport.chat(base_url=base_url, api_key=key, payload=payload, timeout=timeout)
-        if provider.type == "openai_compatible":
+        if provider.type in CAPABILITY_AWARE:
             return adapter_for(provider).chat(self.transport, provider, key or None, payload, timeout,
                                               capabilities=self.config.capabilities_of(payload["model"], profile.provider))
         return adapter_for(provider).chat(self.transport, provider, key or None, payload, timeout)
