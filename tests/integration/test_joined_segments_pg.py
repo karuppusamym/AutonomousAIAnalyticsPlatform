@@ -46,7 +46,7 @@ def pg():
 
 
 def test_postgres_finds_the_causes_one_join_away(pg):
-    from test_joined_segments import CUSTOMER_JOIN, LOOKUPS, PRODUCT_JOIN, RETURNED, TYPES, scope, spec
+    from tests.unit.test_joined_segments import CUSTOMER_JOIN, LOOKUPS, PRODUCT_JOIN, RETURNED, TYPES, scope, spec
 
     conn, truth = pg
     sc = scope("postgres")

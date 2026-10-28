@@ -96,6 +96,20 @@
       ],
       "default": null,
       "title": "Max Retries"
+    },
+    "max_parallel": {
+      "anyOf": [
+        {
+          "maximum": 16,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Max Parallel"
     }
   },
   "title": "RunLimits",

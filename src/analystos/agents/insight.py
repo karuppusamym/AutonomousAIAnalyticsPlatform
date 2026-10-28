@@ -22,6 +22,7 @@ from analystos.core.ids import new_id
 from analystos.db.base import session_scope
 from analystos.db.models import Experiment, Hypothesis, Insight, QueryExecution, by_code
 from analystos.events.bus import emit
+from analystos.evidence.claims import draft_label
 from analystos.evidence.strength import grade
 from analystos.methods.base import cap, fmt_pct, text_parts
 from analystos.runtime.context import RunContext
@@ -85,7 +86,7 @@ def binding_check(spec: dict[str, Any], stat: dict[str, Any], typed: Any, facts:
         if not isinstance(data, dict) or not isinstance(data.get("finding"), str):
             return "no finding text"
         texts = (str(data.get("title") or ""), str(data["finding"]), str(data.get("recommended_action") or ""))
-        bound = bind_finding(spec, stat, typed, *texts)
+        bound = bind_finding(spec, stat, typed, *texts, claim_label=draft_label(spec.get("method")))
         if not bound.ok:
             return "does not bind to the computed facts: " + "; ".join(bound.problems[:3])
         if not _language_ok(" ".join(texts), facts):
@@ -247,7 +248,7 @@ def build_insights(ctx: RunContext) -> dict:
         data, model = narratives.get(code, (None, "deterministic"))
         if isinstance(data, dict) and isinstance(data.get("finding"), str):
             texts = (str(data.get("title") or ""), str(data["finding"]), str(data.get("recommended_action") or ""))
-            bound = bind_finding(spec, stat, typed, *texts)
+            bound = bind_finding(spec, stat, typed, *texts, claim_label=draft_label(spec.get("method")))
             fluent = _language_ok(" ".join(texts), facts)
             if bound.ok and fluent:
                 title, finding, source = str(data.get("title") or title)[:200], data["finding"], f"llm:{model}"
@@ -256,7 +257,7 @@ def build_insights(ctx: RunContext) -> dict:
                 why = ("does not bind to the computed facts (" + "; ".join(bound.problems[:3]) + ")") if not bound.ok \
                     else "was not written in English"
                 ctx.say(f"Narrative for {code} {why}; using the deterministic template.", kind="decision")
-        binding = bind_finding(spec, stat, typed, title, finding, str(action or ""))
+        binding = bind_finding(spec, stat, typed, title, finding, str(action or ""), claim_label=draft_label(spec.get("method")))
         draft = {"claim": {"facts": [f.model_dump(mode="json") for f in typed], "binding": binding.model_dump(mode="json"),
                            "rendered_from": source},
                  "data": {"manifest": {"version": manifest.version if manifest else None}}}
@@ -280,7 +281,7 @@ def build_insights(ctx: RunContext) -> dict:
                           title=title, finding=finding, confidence=0.0, population_size=int(stat.get("n") or 0),
                           business_impact={**impact, **({"recommended_action": action} if action else {})}, caveats=caveats,
                           evidence=evidence, status="draft", narrative_source=source, evidence_bundle=draft, validation="exploratory",
-                          data_version=manifest.version if manifest else None)
+                          data_version=manifest.version if manifest else None, claim_label=draft_label(spec.get("method")))
             s.add(ins)
             link(s, ctx.workspace.id, ("insight", ins.id), "supported_by", ("experiment", eid), run_id=ctx.run.id)
             link(s, ctx.workspace.id, ("hypothesis", hid), "concluded_as", ("insight", ins.id), run_id=ctx.run.id)

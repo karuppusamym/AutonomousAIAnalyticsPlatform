@@ -10,8 +10,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_skills_analysis import null_controls, planted  # noqa: E402
-from test_skills_sqlbuild import SPECS  # noqa: E402
+from tests.unit.test_skills_analysis import null_controls, planted  # noqa: E402
+from tests.unit.test_skills_sqlbuild import SPECS  # noqa: E402
 
 from analystos.gateway.validator import validate_sql  # noqa: E402
 from analystos.skills import sqlbuild as sb  # noqa: E402

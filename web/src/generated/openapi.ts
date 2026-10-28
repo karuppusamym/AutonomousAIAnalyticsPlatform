@@ -2340,6 +2340,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/evidence/{evidence_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Evidence Object
+         * @description One finding as `EvidenceV2` (spec S07 §3.3): label, dataset and metric versions, statements, method,
+         *     effect with its interval, sample and coverage, limitations, review status, fingerprint, void reason.
+         */
+        get: operations["evidence_object_api_v2_evidence__evidence_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/goals": {
         parameters: {
             query?: never;
@@ -7141,6 +7162,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/evidence/{evidence_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Evidence Object
+         * @description One finding as `EvidenceV2` (spec S07 §3.3): label, dataset and metric versions, statements, method,
+         *     effect with its interval, sample and coverage, limitations, review status, fingerprint, void reason.
+         */
+        get: operations["evidence_object_v2_evidence__evidence_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/goals": {
         parameters: {
             query?: never;
@@ -7561,9 +7603,13 @@ export interface components {
              *     driver_model: Boolean outcome vs several drivers -> logistic regression (+ random-forest permutation importance)
              *     cohort_retention: Retention of entity cohorts over time buckets -> chi-square across cohorts (+ grouped logistic and permutation check)
              *     contribution_decomposition: Mix / volume / rate decomposition of a KPI change between two periods -> z test of the within-segment effect (+ stratified CMH / Stouffer check)
+             *     seasonality: Seasonal pattern of volume or a numeric outcome over time -> STL seasonal strength + Kruskal-Wallis (+ seasonal-lag autocorrelation)
+             *     level_shift: One sustained level shift in volume or a numeric outcome over time -> CUSUM split + permutation test (+ binary segmentation)
+             *     forecast_backtest: Forecast of volume or a numeric outcome over time -> ETS with a rolling-origin backtest vs naive and prediction intervals (+ ARIMA)
+             *     distribution_shift: Distribution of a numeric outcome in the latest period vs before -> Kolmogorov-Smirnov + population stability index (+ Anderson-Darling)
              * @enum {string}
              */
-            method: "rate_by_segment" | "numeric_by_segment" | "trend" | "pareto" | "correlation" | "driver_model" | "cohort_retention" | "contribution_decomposition";
+            method: "rate_by_segment" | "numeric_by_segment" | "trend" | "pareto" | "correlation" | "driver_model" | "cohort_retention" | "contribution_decomposition" | "seasonality" | "level_shift" | "forecast_backtest" | "distribution_shift";
             /**
              * Min Group Size
              * @default 30
@@ -15535,6 +15581,40 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evidence_object_api_v2_evidence__evidence_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26401,6 +26481,40 @@ export interface operations {
                 "x-correlation-id"?: string | null;
             };
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evidence_object_v2_evidence__evidence_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                evidence_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;

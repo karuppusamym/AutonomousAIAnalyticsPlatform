@@ -18,6 +18,9 @@ are step types and step fields:
   skip_when             the step is materialized SKIPPED when the condition holds for the run.
   params                data the step's behaviour reads (e.g. `prefer_methods` for the investigator);
                         scalars and lists of scalars only, never code.
+  checks                investigation gates judged after the step (S07-T5, `evidence.investigation`):
+                        names or {name, on_fail: warn|block}; `block` fails the step on an issue. They
+                        are not part of the plan dict, so the plan hash is unchanged.
 
 A template playbook (S06 §3.8) also declares `inputs`, `outputs`, `default_limits` (contracts.goals.
 RunLimits) and `router` (the intents and tiers the complexity router maps to it). `replan_boundary`
@@ -102,6 +105,28 @@ class ReplanBoundary(BaseModel):
     reset: Literal["self_and_downstream", "downstream"]
 
 
+class Gate(BaseModel):
+    """An investigation check judged after the step's behaviour (`evidence.investigation.CHECKS`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    on_fail: Literal["warn", "block"] = "warn"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _short(cls, v: Any) -> Any:
+        return {"name": v} if isinstance(v, str) else v
+
+    @model_validator(mode="after")
+    def _known(self) -> Gate:
+        from analystos.evidence.investigation import CHECK_NAMES
+
+        if self.name not in CHECK_NAMES:
+            raise ValueError(f"unknown investigation check {self.name!r}; expected one of {', '.join(CHECK_NAMES)}")
+        return self
+
+
 class SkipWhen(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -127,6 +152,7 @@ class Step(BaseModel):
     replan_boundary: list[ReplanBoundary] = Field(default_factory=list)
     expands: list[Expansion] = Field(default_factory=list)
     params: dict[str, Any] = Field(default_factory=dict)
+    checks: list[Gate] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _shape(self) -> Step:

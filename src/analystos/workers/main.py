@@ -24,6 +24,7 @@ from analystos.workers.isolation import (
     EX_CONFIG,
     WorkerMisconfigured,
     check_and_scrub_environment,
+    check_runtime,
     install_egress_guard,
 )
 
@@ -71,6 +72,7 @@ def run_isolated(pools: tuple[str, ...], *, stdio: bool = False, conformance: bo
     faulthandler.register(signal.SIGUSR1, file=sys.stderr, all_threads=True)  # `kill -USR1` dumps every thread's stack
     try:
         check_and_scrub_environment()
+        check_runtime()
     except WorkerMisconfigured as exc:
         sys.stderr.write(json.dumps({"error": exc.to_dict()}) + "\n")
         return EX_CONFIG

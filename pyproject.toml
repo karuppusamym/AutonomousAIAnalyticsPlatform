@@ -121,7 +121,7 @@ markers = [
   "live_llm: calls OpenRouter with a real OPENROUTER_API_KEY",
   "slow: builds artifacts (the wheel); deselect with -m \"not slow\"",
 ]
-addopts = "-q"
+addopts = "-q --import-mode=importlib"
 filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.ruff]

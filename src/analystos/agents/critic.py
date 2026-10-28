@@ -15,7 +15,6 @@ and a weak or unconfirmed one says so in its own sentence."""
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any
 
 from sqlalchemy import select
@@ -34,6 +33,7 @@ from analystos.db.models import AnalysisRun, Experiment, Hypothesis, Insight, Qu
 from analystos.decisions import Question
 from analystos.events.bus import emit
 from analystos.evidence.bundle import assemble
+from analystos.evidence.claims import CAUSAL, causal_problems, causal_terms, draft_label, label_for  # noqa: F401 (CAUSAL re-exported)
 from analystos.evidence.confirmation import evaluate as confirm
 from analystos.evidence.confirmation import is_replication, prior_claim
 from analystos.evidence.facts import bind_finding
@@ -51,7 +51,6 @@ from analystos.services.citations import record as record_citations
 from analystos.services.platform_settings import get as platform
 
 log = logging.getLogger(__name__)
-CAUSAL = re.compile(r"\b(causes?|caused|drives?|driven by|because|leads? to|results? in|due to)\b", re.I)
 MIN_N = 100
 
 
@@ -252,11 +251,16 @@ def verify_insights(ctx: RunContext) -> dict:
                        "detail": f"{stat_d.get('effect_label')}={stat_d.get('effect_size')}"})
         population = representative_population(ctx, spec.asset)
         checks.append(population)
-        overreach = bool(CAUSAL.search(finding))
+        # S07-T3: causal wording only for a supported association from a causal design (`evidence.claims`); REV
+        # rewrites anything else to the method's associational template before the verdict.
+        overreach = causal_terms(f"{title}\n{finding}") if causal_problems(
+            f"{title}\n{finding}", label=draft_label(spec.method), method=spec.method) else []
         if overreach:
             title, finding = template_text(stat_d, spec_d)
             narrative_source = "template"
-        checks.append({"check": "no_overreach", "passed": True, "detail": "causal wording rewritten to association" if overreach else "associational wording"})
+        checks.append({"check": "no_overreach", "passed": True,
+                       "detail": f"causal wording ({', '.join(overreach[:3])}) rewritten to association" if overreach
+                       else "associational wording"})
         # ---- Evaluate (P4-03): the final wording binds to the typed facts; the data version held still
         facts = [Fact.model_validate(f) for f in (draft.get("claim") or {}).get("facts") or []]
         binding = bind_finding(spec_d, stat_d, facts, title, finding)
@@ -420,6 +424,8 @@ def verify_insights(ctx: RunContext) -> dict:
             ins.confidence = round(conf, 3)
             ins.caveats = list(dict.fromkeys((ins.caveats or []) + caveats_extra))
             ins.status = "verified" if deterministic_ok else "failed_verification"
+            ins.claim_label = label_for(spec.method, verified=deterministic_ok, checks=checks,
+                                        strength=strength.label if strength else None)
             ins.title = title[:200]
             ins.evidence_bundle = bundle.model_dump(mode="json")
             ins.validation = bundle.validation.state
@@ -447,6 +453,7 @@ def verify_insights(ctx: RunContext) -> dict:
                 record_citations(s, cited, workspace_id=ctx.workspace.id, run_id=ctx.run.id)
             emit(ctx.workspace.id, "insight.verified", {"code": code, "verified": deterministic_ok, "confidence": ins.confidence,
                                                         "validation": bundle.validation.state, "label": bundle.validation.label,
+                                                        "claim_label": ins.claim_label,
                                                         "strength": strength.label if strength else None,
                                                         "failed_checks": [c["check"] for c in checks if not c["passed"]],
                                                         "verification_record": record.id, "fingerprint": record.fingerprint},

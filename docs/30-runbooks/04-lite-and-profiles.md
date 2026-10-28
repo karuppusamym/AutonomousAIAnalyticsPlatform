@@ -244,6 +244,24 @@ attempts (wall budget x 3 + 2 min, at most 6 h). A session JWT is not accepted, 
   control plane writes inputs to `<artifact_dir>/worker_artifacts`, which the API serves); isolated pools never
   mount it.
 
+**Sandboxed runtime (ADR-012, S07-T1: a release gate).**
+
+* *Kubernetes:* the gVisor `runtimeClassName` for the compute pools (and the optional RuntimeClass object) is
+  delivered with the S12 Helm work (branch `claude/competent-curran-ad80fc`), not S07.
+* *The worker checks its kernel:* with `ANALYSTOS_WORKER_REQUIRE_RUNTIME=gvisor` (or `kata`) in its environment, the
+  isolated worker exits 78 when `/proc` does not show gVisor's Sentry (or a Kata guest), so a missing or misnamed
+  RuntimeClass fails loudly instead of running on runc. The Helm chart should set it next to the pool's
+  `runtimeClassName`.
+* *Docker dev:* the compose pools run as user 10001 with `read_only`, `cap_drop: [ALL]`, `no-new-privileges`,
+  `pids_limit`, memory and CPU limits, on the `internal` network (the compose form of "no network": only the API
+  and Temporal are reachable). With gVisor installed, `COMPUTE_RUNTIME=runsc docker compose ...` runs them under
+  `runsc`. The per-execution Python sandbox (`ANALYSTOS_SANDBOX_ISOLATION=container`) uses
+  `--network none --read-only --cap-drop ALL --security-opt no-new-privileges` (and `--runtime` from
+  `ANALYSTOS_SANDBOX_CONTAINER_RUNTIME`).
+* *In-process sandbox:* `ANALYSTOS_SANDBOX_ISOLATION=off` (rlimits only, no boundary) runs only for
+  `profile=lite` on synthetic data (`run_python(..., data_class="synthetic")`), or on a development host
+  (`ANALYSTOS_ENV` dev/test/local) by the developer's explicit choice; anywhere else it is refused with the remedy.
+
 **Plugging a new job in (e.g. P5-04 ML).** Register the handler
 (`workers/handlers.py`: `register_handler("ml.job", "analystos.ml.jobs:run_ml_job", pools=("compute-ml",),
 adapter="pure")`; `ML_JOB_TARGET` is that default), build a `TaskEnvelope` with `spec=MLJobSpec(job=...)`,

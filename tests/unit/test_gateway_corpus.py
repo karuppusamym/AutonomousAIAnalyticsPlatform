@@ -166,7 +166,7 @@ def test_every_function_the_compiler_emits_is_allowlisted(dialect: str) -> None:
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from test_skills_sqlbuild import SPECS
+    from tests.unit.test_skills_sqlbuild import SPECS
 
     from analystos.skills import sqlbuild as sb
 

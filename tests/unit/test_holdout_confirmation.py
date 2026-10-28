@@ -16,7 +16,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_skills_sqlbuild import SPECS  # noqa: E402
+from tests.unit.test_skills_sqlbuild import SPECS  # noqa: E402
 
 from analystos import methods  # noqa: E402
 from analystos.agents.critic import CAUSAL  # noqa: E402

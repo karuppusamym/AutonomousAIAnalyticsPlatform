@@ -248,11 +248,14 @@ def masked_paths(settings: Any) -> list[str]:
 
 def run_python(code: str, *, inputs: dict[str, list[dict]] | None = None, timeout_s: float = 30, memory_mb: int = 1024,
                allowed_imports: tuple[str, ...] = DEFAULT_ALLOWED_IMPORTS, max_output_bytes: int = 1_000_000,
-               max_result_bytes: int = 10_000_000, nofile: int = 256, fsize_mb: int = 16) -> SandboxResult:
+               max_result_bytes: int = 10_000_000, nofile: int = 256, fsize_mb: int = 16,
+               data_class: str = "unclassified") -> SandboxResult:
     """Execute `code` in an isolated, resource-limited child interpreter; returns the value of `result`.
 
     `inputs` is visible to the code as the dict `inputs` (e.g. `pd.DataFrame(inputs["rows"])`). The
-    backend comes from the isolation gate (`sandbox.isolation.status`); without one nothing runs."""
+    backend comes from the isolation gate (`sandbox.isolation.status`); without one nothing runs.
+    `data_class` says what the inputs are: the unisolated backend takes only `synthetic` outside a
+    development host (`isolation.in_process_allowed`, ADR-012)."""
     from analystos.sandbox import isolation
 
     t0 = time.monotonic()
@@ -261,6 +264,12 @@ def run_python(code: str, *, inputs: dict[str, list[dict]] | None = None, timeou
         _log.error("sandboxed code refused: %s", gate.detail)
         return SandboxResult(ok=False, error=gate.detail, isolation="unavailable", network_isolated=False,
                              duration_ms=int((time.monotonic() - t0) * 1000))
+    if gate.backend == "none":
+        allowed, why = isolation.in_process_allowed(data_class=data_class)
+        if not allowed:
+            _log.error("sandboxed code refused: %s", why)
+            return SandboxResult(ok=False, error=why, isolation="unavailable", network_isolated=False,
+                                 duration_ms=int((time.monotonic() - t0) * 1000))
     problems = check_code(code, allowed_imports)
     if problems:
         return SandboxResult(ok=False, error="rejected by sandbox policy: " + "; ".join(problems[:10]),

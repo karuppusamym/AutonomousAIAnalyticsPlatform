@@ -399,6 +399,16 @@ def bind(text: str, facts: Sequence[Fact], groups: set[str], context: set[str]) 
     return Binding(ok=not problems, mentions=mentions, problems=problems)
 
 
-def bind_finding(spec: Mapping[str, Any], stat: Mapping[str, Any], facts: Sequence[Fact], *texts: str) -> Binding:
+def bind_finding(spec: Mapping[str, Any], stat: Mapping[str, Any], facts: Sequence[Fact], *texts: str,
+                 claim_label: str | None = None) -> Binding:
+    """The numbers guard of a finding: every number bound to its fact, and (S07-T3) no causal wording the
+    claim's label and method do not license (`evidence.claims`), read with group labels masked."""
+    from analystos.evidence.claims import causal_problems
+
     groups, context = labels_from(spec, stat, facts)
-    return bind("\n".join(t for t in texts if t), facts, groups, context)
+    text = "\n".join(t for t in texts if t)
+    binding = bind(text, facts, groups, context)
+    causal = causal_problems(_mask(text, groups, context)[0], label=claim_label, method=spec.get("method"))
+    if causal:
+        return Binding(ok=False, mentions=binding.mentions, problems=[*binding.problems, *causal])
+    return binding

@@ -15,3 +15,4 @@ certification:
 tags: [statistical, time_series]
 spec:
   order: 30
+  claim: observation   # describes one measure; never an association (S07-T3)

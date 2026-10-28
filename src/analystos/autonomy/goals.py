@@ -249,9 +249,11 @@ def run_view(session: Any, run: AnalysisRun) -> dict:
 
 
 def evidence_view(session: Any, run: AnalysisRun) -> dict:
-    """Findings with their verification standing, and the statements that produced them."""
+    """Findings with their verification standing, and the statements that produced them. `evidence` is each
+    finding as the S07 Evidence v2 object (`evidence.api_v2`)."""
     from analystos.api.serialize import with_verification
     from analystos.db.models import Insight, QueryExecution
+    from analystos.evidence import api_v2
 
     insights = list(session.scalars(select(Insight).where(Insight.run_id == run.id).order_by(Insight.code)))
     queries = session.execute(select(QueryExecution.status, func.count(), func.coalesce(func.sum(QueryExecution.row_count), 0))
@@ -259,7 +261,8 @@ def evidence_view(session: Any, run: AnalysisRun) -> dict:
     return {"run_id": run.id, "state": run.status, "findings": with_verification(session, insights),
             "verified": sum(1 for i in insights if i.status == "verified"),
             "queries": {st: {"count": n, "rows": int(r)} for st, n, r in queries},
-            "data_manifest": run.data_manifest or {}}
+            "data_manifest": run.data_manifest or {},
+            "evidence": [e.model_dump(mode="json") for e in api_v2.build(session, insights, run)]}
 
 
 # ------------------------------------------------------------------------------ signals

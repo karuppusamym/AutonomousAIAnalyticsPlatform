@@ -4,7 +4,7 @@
       "description": "One executable hypothesis test. `method` must be a registered analysis method: the vocabulary,\nits JSON Schema enum and the per-method requirements come from the method registry\n(`analystos.methods`, spec v3 \u00a73.5), never from a list kept here.",
       "properties": {
         "method": {
-          "description": "A registered analysis method:\nrate_by_segment: Boolean outcome rate across segment groups -> chi-square (+ grouped logistic and permutation check)\nnumeric_by_segment: Numeric outcome across segment groups -> Mann-Whitney / Kruskal-Wallis (+ bootstrap median difference)\ntrend: Volume or numeric outcome over time -> linear trend + change point (+ Mann-Kendall / Theil-Sen)\npareto: Share of volume by segment -> concentration (top-k share, Gini, GOF) (+ multinomial bootstrap of the top share)\ncorrelation: Numeric vs numeric -> Spearman (+ Pearson and a bootstrap CI of the primary coefficient)\ndriver_model: Boolean outcome vs several drivers -> logistic regression (+ random-forest permutation importance)\ncohort_retention: Retention of entity cohorts over time buckets -> chi-square across cohorts (+ grouped logistic and permutation check)\ncontribution_decomposition: Mix / volume / rate decomposition of a KPI change between two periods -> z test of the within-segment effect (+ stratified CMH / Stouffer check)",
+          "description": "A registered analysis method:\nrate_by_segment: Boolean outcome rate across segment groups -> chi-square (+ grouped logistic and permutation check)\nnumeric_by_segment: Numeric outcome across segment groups -> Mann-Whitney / Kruskal-Wallis (+ bootstrap median difference)\ntrend: Volume or numeric outcome over time -> linear trend + change point (+ Mann-Kendall / Theil-Sen)\npareto: Share of volume by segment -> concentration (top-k share, Gini, GOF) (+ multinomial bootstrap of the top share)\ncorrelation: Numeric vs numeric -> Spearman (+ Pearson and a bootstrap CI of the primary coefficient)\ndriver_model: Boolean outcome vs several drivers -> logistic regression (+ random-forest permutation importance)\ncohort_retention: Retention of entity cohorts over time buckets -> chi-square across cohorts (+ grouped logistic and permutation check)\ncontribution_decomposition: Mix / volume / rate decomposition of a KPI change between two periods -> z test of the within-segment effect (+ stratified CMH / Stouffer check)\nseasonality: Seasonal pattern of volume or a numeric outcome over time -> STL seasonal strength + Kruskal-Wallis (+ seasonal-lag autocorrelation)\nlevel_shift: One sustained level shift in volume or a numeric outcome over time -> CUSUM split + permutation test (+ binary segmentation)\nforecast_backtest: Forecast of volume or a numeric outcome over time -> ETS with a rolling-origin backtest vs naive and prediction intervals (+ ARIMA)\ndistribution_shift: Distribution of a numeric outcome in the latest period vs before -> Kolmogorov-Smirnov + population stability index (+ Anderson-Darling)",
           "enum": [
             "rate_by_segment",
             "numeric_by_segment",
@@ -13,7 +13,11 @@
             "correlation",
             "driver_model",
             "cohort_retention",
-            "contribution_decomposition"
+            "contribution_decomposition",
+            "seasonality",
+            "level_shift",
+            "forecast_backtest",
+            "distribution_shift"
           ],
           "title": "Method",
           "type": "string"

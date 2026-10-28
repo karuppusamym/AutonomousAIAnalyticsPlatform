@@ -224,3 +224,63 @@ class EvidenceBundle(BaseModel):
     freshness: Freshness = Field(default_factory=Freshness)
     review_score: ReviewScore = Field(default_factory=ReviewScore)
     legacy: dict[str, Any] | None = None  # pre-P4-03 badge values, kept with their verifier version
+
+
+# ------------------------------------------------------------------------------------ Evidence API v2 (S07-T4)
+class EvidenceEffect(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    value: float | None = None
+    unit: str | None = None  # the effect's measure (cramers_v, rate_ratio, pct_change_fitted, mase ...)
+    ci: dict[str, float | None] | None = None  # {low, high} when the method reports an interval
+
+
+class EvidenceSample(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    n: int = 0
+    coverage: float | None = None  # rows read / rows in the source (None when the source total is unknown)
+
+
+class EvidenceDatasetVersion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    asset: str
+    source_id: str | None = None
+    version: str | None = None
+    mode: str = "unknown"
+    rows: int | None = None
+    staged_at: str | None = None
+
+
+class EvidenceMethod(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = None
+    version: str | None = None  # the method manifest version the run bound
+    test: str | None = None
+    claim_kind: Literal["observation", "association"] = "association"
+
+
+class EvidenceV2(BaseModel):
+    """The API shape of one piece of evidence (v1 §7.3): the existing `Insight` + its `VerificationRecord` +
+    citations, read through one contract. A VOID record always carries `void_reason`."""
+
+    model_config = ConfigDict(extra="forbid")
+    v: Literal[2] = 2
+    evidence_id: str  # the finding (insight) id
+    run_id: str
+    claim_id: str  # stable across runs: the claim's identity (what was tested, which group came out on top)
+    code: str | None = None
+    label: Literal["observed", "supported_association", "possible_contributor", "rejected", "unknown"]
+    title: str = ""
+    description: str
+    dataset_versions: list[EvidenceDatasetVersion] = Field(default_factory=list)
+    metric_version: dict[str, str] | None = None  # {metric, version} of the semantic metric measured, if any
+    query_execution_ids: list[str] = Field(default_factory=list)
+    method: EvidenceMethod
+    effect: EvidenceEffect
+    sample: EvidenceSample
+    limitations: list[str] = Field(default_factory=list)
+    review_status: str  # verified | failed | void | pending | superseded | legacy | unverified
+    validation: str | None = None  # exploratory | replicated | confirmed | ... (P4-03)
+    fingerprint: str | None = None
+    verification_record_id: str | None = None
+    void_reason: str | None = None
+    citations: dict[str, Any] | None = None  # counts by kind (N-8); the full set at /api/insights/{id}/citations

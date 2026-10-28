@@ -409,6 +409,10 @@ def record_verdict(session: Session, *, workspace_id: str, run_id: str | None, s
     emit(workspace_id, "verification.recorded", {"record_id": rec.id, "subject_type": subject_type, "subject_id": subject_id,
                                                  "verdict": verdict, "state": state, "fingerprint": rec.fingerprint,
                                                  "dependencies": len(deps)}, run_id=run_id, session=session)
+    if subject_type == "insight" and state == "ACTIVE" and verdict == "verified":
+        from analystos.evidence.banners import clear_for
+
+        clear_for(session, workspace_id, subject_id)  # S07-T7: a re-verified finding lifts its banners
     return rec
 
 
@@ -460,7 +464,21 @@ def void_dependents(session: Session, kind: str, ref: str, new_version: str | No
             continue
         _void(session, rec, kind=kind, ref=ref, recorded=recorded, current=new_version, reason=reason, event=event, late=late)
         voided.append(rec.id)
+    if voided:
+        _raise_banners(session, voided)
     return voided
+
+
+def _raise_banners(session: Session, record_ids: list[str]) -> None:
+    """S07-T7: published artifacts presenting a voided finding get a banner and a Desk task, in this transaction.
+    In a savepoint: a banner that cannot be raised is logged, and never undoes the void itself."""
+    from analystos.evidence.banners import raise_for_voids
+
+    try:
+        with session.begin_nested():
+            raise_for_voids(session, record_ids)
+    except Exception:  # noqa: BLE001 - the void stands; the nightly sweep re-raises banners it finds missing
+        log.exception("could not raise publication banners for %s voided record(s)", len(record_ids))
 
 
 def dependency_changed(session: Session, kind: str, ref: str, reason: str, *, event: str | None = None) -> list[str]:

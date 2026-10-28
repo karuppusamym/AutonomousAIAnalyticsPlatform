@@ -296,6 +296,27 @@
       "title": "Max Queries Per Run",
       "type": "integer"
     },
+    "max_scan_bytes": {
+      "default": 0,
+      "title": "Max Scan Bytes",
+      "type": "integer"
+    },
+    "data_movement": {
+      "default": "staged_ok",
+      "enum": [
+        "none",
+        "staged_ok"
+      ],
+      "title": "Data Movement",
+      "type": "string"
+    },
+    "max_parallel_steps": {
+      "default": 4,
+      "maximum": 16,
+      "minimum": 1,
+      "title": "Max Parallel Steps",
+      "type": "integer"
+    },
     "ask_queries_per_user_per_hour": {
       "default": 60,
       "title": "Ask Queries Per User Per Hour",

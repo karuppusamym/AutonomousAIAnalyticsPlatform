@@ -41,6 +41,23 @@ on Postgres 16 under strict tenancy (5 passed: AT-19, dedupe, escalation flow, c
 rollup and export); `web/src/test/desk.test.tsx`; `npm --prefix web run build`. Not done: workspace-home Desk
 widgets, axe/browser pass on the new screens, business-hours SLA, skills-based assignment.
 
+## 2026-10-27 — S07 Analysis, verification and evidence (T1, T3–T7)
+
+Compute isolation (ADR-012): the isolated worker refuses to start on a kernel other than the sandboxed runtime it
+was given (the Helm runtimeClass is S12's), the compose pools run non-root, read-only, capability-free with limits,
+and the in-process sandbox runs only for lite on synthetic data. Every finding carries a claim label decided by code from REV's verdict, and the numbers guard
+refuses causal wording unless the label is a supported association from a causal design (none registered). A finding
+is served as one Evidence v2 object (`GET /v2/evidence/{id}`). `investigate.v1` 1.1.0 judges the v1 §7.2
+investigation checks after their steps (statistics and conclusions block). The methods registry gains a
+time-series pack: seasonality (STL), level shift (CUSUM), a forecast judged by a rolling-origin backtest, and
+distribution shift (KS + PSI). A void (any fingerprint component, event or sweep) puts a banner on the published
+charts and dashboards presenting the finding and escalates one Request Desk task per artifact. Evidence: unit tests
+`test_compute_isolation.py`, `test_claim_labels.py`, `test_evidence_v2.py`, `test_investigation_gates.py`,
+`test_void_banner.py`, `tests/methods/test_timeseries_pack.py`; `tests/integration/test_s07_evidence.py` on Postgres 16
+with strict tenancy (2026-10-27, Windows dev host): a full deterministic investigation passes its six gates, labels
+its findings, serves Evidence v2 objects, publishes to the preview destination; a policy change voids them, the
+dashboards show the banner, an escalated Desk task exists, and another tenant sees none of it. Not verified: a gVisor
+node, the web banner in a browser, the banner inside Superset.
 ## 2026-10-27 — S01-T6 ABAC on every call + OPA adapter, S01-T7 tenant-scoped cache keys
 
 ABAC (`governance/abac.py`): the policy decision input carries `{classification, purpose, region,

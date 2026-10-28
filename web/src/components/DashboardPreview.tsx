@@ -66,6 +66,8 @@ export function DashboardPreview({ wsId, artifact }: { wsId: string; artifact: A
       {content.audience && <span className="tag tag-info">{content.audience}</span>}
       {artifact.external_url && <a className="btn btn-sm" href={artifact.external_url} target="_blank" rel="noreferrer noopener">Open published ↗</a>}
     </>}>
+      {artifact.banner && <p className="alert alert-warning" role="alert">Needs re-verification: {artifact.banner.reason}.
+        {artifact.banner.request_id && <> A Request Desk task is open for it.</>}</p>}
       {content.description && <p className="muted small">{content.description}</p>}
       <ErrorBox error={charts.error} />
       {charts.loading && !charts.data ? <Loading label="Loading charts…" /> : layout.length === 0 ? <EmptyState title="Empty dashboard" /> : (
