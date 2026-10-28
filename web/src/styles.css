@@ -1155,3 +1155,7 @@ button.job-kind-button:focus-visible { outline: 2px solid var(--accent); outline
 .correction-form .form-row label { display: flex; flex-direction: column; gap: 0.2rem; flex: 1 1 14rem; }
 .scope-choices { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.4rem 0.75rem; margin: 0; }
 .scope-choices .radio { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: baseline; }
+
+/* S08-T5: a published Superset dashboard embedded with a per-viewer guest token */
+.embedded-dashboard-frame { min-height: 480px; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); }
+.embedded-dashboard-frame iframe { display: block; width: 100%; height: 480px; border: 0; }

@@ -3813,6 +3813,7 @@ export interface BuilderSummary {
   platform: string | null; external_url: string | null; content_hash: string; updated_at: string | null;
 }
 export interface BuilderDashboard extends BuilderSummary { document: BuilderDocument }
+export interface EmbedToken { token: string; dashboard_uuid: string; superset_url: string | null; rls_clauses: number }
 export interface BuilderRefusal { index: number; op: string; reason: string; suggestion?: BuilderOp }
 export interface BuilderTurn {
   status: "applied" | "refused" | "unchanged" | "proposed" | "no_ops";
@@ -4447,6 +4448,9 @@ export const api = {
     post("/api/v2/dashboards/{dashboard_id}/publish-request", { path: { dashboard_id: id }, body }) as Promise<{ approval_id: string; status: string; risk_tier: string; payload_hash: string }>,
   builderPublish: (id: string, approvalId: string) =>
     post("/api/v2/dashboards/{dashboard_id}/publish", { path: { dashboard_id: id }, body: { approval_id: approvalId } }) as Promise<{ status: string; url: string | null; publication_id: string }>,
+  /** A Superset guest token for this viewer; the server re-checks access and adds the viewer's row filters. */
+  builderEmbedToken: (id: string) =>
+    post("/api/v2/dashboards/{dashboard_id}/embed-token", { path: { dashboard_id: id } }) as Promise<EmbedToken>,
   builderExportRequest: (id: string, format: "csv" | "xlsx" | "pdf") =>
     post("/api/v2/dashboards/{dashboard_id}/exports", { path: { dashboard_id: id }, body: { format } }) as Promise<{ status: "allowed" | "approval_required"; sensitivity: string; approval?: { id: string; status: string } }>,
   builderExport: (id: string, format: "csv" | "xlsx" | "pdf", approvalId?: string) =>

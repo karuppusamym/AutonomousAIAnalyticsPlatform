@@ -10,7 +10,7 @@ import respx
 from tests.unit.test_publishing_superset import BASE, FakeSuperset, bi_login, make_bundle
 
 from analystos.contracts.policy import RowFilter, WorkspacePolicyDoc
-from analystos.core.errors import Forbidden
+from analystos.core.errors import Forbidden, InvalidInput
 from analystos.dashboards.access import static_rls_rules, viewer_rls
 from analystos.dashboards.reconcile import inspect
 from analystos.publishing.base import bundle_hash
@@ -63,6 +63,8 @@ class SecureSuperset(FakeSuperset):
                                       501: {"id": 501, "permission": 2, "view_menu": 51}}
         self.rls: dict[int, dict] = {}
         self.embedded: dict[int, str] = {}
+        self.embed_domains: dict[int, list[str]] = {}
+        self.embed_writes = 0
         self.guest_requests: list[dict] = []
 
     def create(self, res, body):  # a new database gets its database_access resource and pvm, as in Superset
@@ -109,8 +111,11 @@ class SecureSuperset(FakeSuperset):
             if method == "GET":
                 if did not in self.embedded:
                     return httpx.Response(404, json={"message": "Not found"})
-                return httpx.Response(200, json={"result": {"uuid": self.embedded[did]}})
-            self.embedded[did] = f"uuid-{did}"
+                return httpx.Response(200, json={"result": {"uuid": self.embedded[did],
+                                                            "allowed_domains": self.embed_domains.get(did, [])}})
+            self.embedded[did] = f"uuid-{did}"  # an upsert keeps the uuid
+            self.embed_domains[did] = list((body or {}).get("allowed_domains") or [])
+            self.embed_writes += 1
             return httpx.Response(200, json={"result": {"uuid": self.embedded[did]}})
         return super().route(method, path, body, q)
 
@@ -220,15 +225,24 @@ def test_dashboard_rbac_embedding_and_guest_token(router, fake):
     dash = int(result.external_ids["dashboards"]["executive"])
     pub.set_dashboard_roles(dash, [7, 3, 7])
     assert fake.dashboards[dash]["roles"] == [3, 7]
-    uuid = pub.ensure_embedded(dash)
-    assert uuid == pub.ensure_embedded(dash) == f"uuid-{dash}"
+    uuid = pub.ensure_embedded(dash, ["http://ui.test"])
+    assert uuid == pub.ensure_embedded(dash, ["http://ui.test"]) == f"uuid-{dash}" and fake.embed_writes == 1
+    # a changed origin updates the embed config in place, same uuid
+    assert pub.ensure_embedded(dash, ["http://ui2.test"]) == uuid and fake.embed_domains[dash] == ["http://ui2.test"]
+    assert fake.embed_writes == 2
+    for empty in ([], None):  # Superset reads [] as "any site": never written, never replaces a pinned list
+        with pytest.raises(InvalidInput):
+            pub.ensure_embedded(dash, empty)
+    assert fake.embed_domains[dash] == ["http://ui2.test"] and fake.embed_writes == 2
+    assert pub.dashboard_dataset_ids(dash) == sorted(int(i) for i in result.external_ids["datasets"].values())
     token = pub.guest_token(user={"username": "a@x"}, dashboard_uuid=uuid, rls=[{"dataset": 1, "clause": "x = 1"}])
     assert token == "guest-1" and fake.guest_requests[0]["resources"] == [{"type": "dashboard", "id": uuid}]
 
 
 class Scope:
-    def __init__(self, row_filters=None, withheld=None, denied=None):
+    def __init__(self, row_filters=None, withheld=None, denied=None, assets=("src_publishtest.incidents",)):
         self.row_filters, self.withheld_assets, self.denied_columns = row_filters or {}, withheld or {}, denied or []
+        self.assets = list(assets)
 
 
 def test_viewer_rls_renders_their_filters_and_refuses_what_they_cannot_see():
@@ -243,6 +257,38 @@ def test_viewer_rls_renders_their_filters_and_refuses_what_they_cannot_see():
         viewer_rls(Scope(denied=["src_publishtest.incidents.priority"]), bundle, ids)
     with pytest.raises(Forbidden):  # a filter on a column the dataset does not carry cannot be enforced
         viewer_rls(Scope({"src_publishtest.incidents": ["region = 'EMEA'"]}), bundle, ids)
+    # names that differ only in case still match: the filter is carried, the asset counts as in scope
+    rls = viewer_rls(Scope({"SRC_PUBLISHTEST.Incidents": ["assignment_group = 'Network'"]},
+                           assets=["SRC_publishtest.INCIDENTS"]), bundle, ids)
+    assert rls == [{"dataset": 9, "clause": "(assignment_group = 'Network')"}]
+
+
+def test_viewer_rls_refuses_an_asset_that_left_the_viewers_scope():
+    """A guest holds no workspace role, so static rules never reach it: an asset deselected (or of a source no
+    longer ready) after publish has no filter in scope and would show unfiltered. It is refused instead."""
+    bundle = make_bundle("ws_unit")
+    ids = {"incidents": 9}
+    with pytest.raises(Forbidden, match="no longer in your data scope"):
+        viewer_rls(Scope(assets=[]), bundle, ids)
+    with pytest.raises(Forbidden, match="no longer in your data scope"):
+        viewer_rls(Scope(assets=["src_publishtest.other"]), bundle, ids)
+    bundle.datasets[0].source_assets = []
+    with pytest.raises(Forbidden, match="names no source asset"):
+        viewer_rls(Scope(), bundle, ids)
+
+
+def test_datasets_added_in_superset_are_locked_for_guests(router, fake):
+    from analystos.dashboards.access import lock_unpublished_datasets
+
+    pub = publisher()
+    result = pub.publish(make_bundle("ws_unit"), idempotency_key="k")
+    dash = int(result.external_ids["dashboards"]["executive"])
+    published = dict(result.external_ids["datasets"])
+    assert lock_unpublished_datasets(pub, dash, published) == []
+    # an editor adds a chart over another dataset by hand in Superset: the guest gets no rows from it
+    on_dash = pub.dashboard_dataset_ids(dash)
+    held_back = {k: v for k, v in published.items() if int(v) != on_dash[0]}
+    assert lock_unpublished_datasets(pub, dash, held_back) == [{"dataset": on_dash[0], "clause": "1 = 0"}]
 
 
 def test_inspect_reports_missing_changed_and_unpublished(router, fake):
@@ -260,3 +306,19 @@ def test_inspect_reports_missing_changed_and_unpublished(router, fake):
                      ("dashboard", "operational"): "unpublished"}
     repaired = pub.publish(bundle, idempotency_key="k", previous=ids)  # what a verified repair runs
     assert repaired.status == "succeeded" and inspect(pub, repaired.external_ids, expected) == []
+
+
+def test_embed_domains_default_to_the_ui_origin():
+    from types import SimpleNamespace
+
+    from analystos.dashboards.access import embed_domains
+
+    assert embed_domains(SimpleNamespace(superset_embed_domains="", web_url="http://localhost:5173/app")) == ["http://localhost:5173"]
+    assert embed_domains(SimpleNamespace(superset_embed_domains="https://a.test/, https://b.test",
+                                         web_url="http://localhost:5173")) == ["https://a.test", "https://b.test"]
+    assert embed_domains(SimpleNamespace(superset_embed_domains="https://a.test https://b.test:8443",
+                                         web_url="")) == ["https://a.test", "https://b.test:8443"]
+    # never an empty list (Superset reads it as "any site") and never a wildcard or a bare scheme
+    for bad, web in (("", ""), ("", "localhost:5173"), ("*", ""), ("https:", ""), ("https://*.example.com", "")):
+        with pytest.raises(InvalidInput):
+            embed_domains(SimpleNamespace(superset_embed_domains=bad, web_url=web))
