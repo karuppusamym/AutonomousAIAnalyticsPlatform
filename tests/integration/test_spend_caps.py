@@ -143,8 +143,11 @@ def test_admin_model_health(control_db, counters, monkeypatch):
         # With a key in the process, the probe sends one tiny request through the router and ends the cooldown.
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-probe-000000000000000000")
         transport = FakeTransport(chat=lambda p: chat_json({"ok": True}, model=p["model"], cost=0.00001))
+        # the platform cap counts the whole day's spend in this database: earlier tests' fake calls can exceed $2
+        roomy = PlatformSettings()
+        roomy.llm.daily_spend_cap_usd = 1_000.0
         router = ModelRouter(transport=transport, sink=DbUsageSink(counters), max_retries=0,
-                             settings_provider=lambda: PlatformSettings(), cache=ResponseCache(None))
+                             settings_provider=lambda: roomy, cache=ResponseCache(None))
         monkeypatch.setattr("analystos.runtime.context.default_router", lambda: router)
         probe = api.get("/api/admin/models/health", params={"probe": 1}, headers=admin).json()
         result = next(p for p in probe["providers"] if p["provider"] == "openrouter")["probe"]
