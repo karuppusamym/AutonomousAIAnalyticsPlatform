@@ -968,6 +968,8 @@ button.job-kind-button:focus-visible { outline: 2px solid var(--accent); outline
   .brand > span:not(.brand-mark) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .topbar-user { gap: 0.25rem; }
   .topbar-user .tag { display: none; }
+  .topbar > .topbar-lite, .topbar > .palette-trigger { padding-inline: 0.4rem; }
+  .topbar-lite-rest { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 
 /* ---- wave 2: brief, readiness, Data Thread, notebooks, ML, pipelines ---- */

@@ -143,7 +143,7 @@ export function Layout() {
           <span>Context2AI <strong>AnalystOS</strong></span>
         </Link>
         <div className="topbar-spacer" />
-        {wsId && <Link className="btn btn-sm" to={to.lite(wsId)}>Lite workspace</Link>}
+        {wsId && <Link className="btn btn-sm topbar-lite" to={to.lite(wsId)}>Lite<span className="topbar-lite-rest"> workspace</span></Link>}
         <button type="button" className="btn btn-sm palette-trigger" onClick={() => setPaletteOpen(true)} aria-haspopup="dialog"
           aria-keyshortcuts="Control+K Meta+K">
           <span>Go to…</span> <kbd className="kbd">Ctrl K</kbd>
