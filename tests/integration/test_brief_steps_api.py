@@ -14,6 +14,7 @@ staged ServiceNow table (no model):
 from __future__ import annotations
 
 import socket
+import sys
 import threading
 import time
 
@@ -187,6 +188,8 @@ def _notebook(api, world, title):
     return api.post(f"/api/workspaces/{world['ws']}/notebooks", headers=world["analyst"], json={"title": title}).json()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="the Python sandbox needs POSIX resource limits "
+                    "(resource/rlimits, preexec_fn); run on Linux")
 def test_notebook_cells_run_through_the_gateway_and_an_edit_voids_dependents(api, world):
     from analystos.db.base import session_scope
     from analystos.db.models import QueryExecution, VerificationRecord

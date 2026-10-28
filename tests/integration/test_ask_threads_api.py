@@ -185,7 +185,9 @@ def test_ask_thread_streams_stages_records_decisions_and_promotes(api, world, tr
 
     detail = api.get(f"/api/ask/threads/{thread['id']}", headers=admin).json()
     assert detail["title"] == question and [t["id"] for t in detail["turns"]] == [turn["id"]]
-    assert [t["id"] for t in api.get(f"/api/workspaces/{ws}/ask/threads?q=priority", headers=admin).json()] == [thread["id"]]
+    found = api.get(f"/api/workspaces/{ws}/ask/threads?q=priority", headers=admin).json()
+    # the module's workspace is shared: other tests' threads may also be about priority
+    assert thread["id"] in [t["id"] for t in found] and all("priority" in (t.get("title") or "").lower() for t in found)
     assert api.get(f"/api/workspaces/{ws}/ask/threads?q=nothing-like-this", headers=admin).json() == []
     assert api.get(f"/api/ask/threads/{thread['id']}", headers=approver).status_code == 404  # threads are private
 

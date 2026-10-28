@@ -46,7 +46,9 @@ REFUSAL_OUTCOMES = OUTCOMES[1:]
 DECLINE_REASONS = ("out_of_scope", "write", "restricted")
 # Refusal kinds (services/ask.REFUSALS) that decline *because* governance or scope said no. Any other
 # refusal of a decline item (no_model, no_api_key, failed, ...) still declines, but not for the right reason.
-GOVERNED_KINDS = frozenset({"sql_rejected", "policy_denied", "no_scope"})
+# write_refused: the SQL agent refuses a data-changing question by rule before any SQL exists (reason write, by
+# rules), which is stricter than the gateway refusing the write statement.
+GOVERNED_KINDS = frozenset({"sql_rejected", "policy_denied", "no_scope", "write_refused"})
 # Refusal kinds that mean "no model could write SQL" (services/ask.MODEL_REFUSALS, plus the legacy no_model).
 NO_MODEL_KINDS = frozenset({"no_model", "mode_off", "no_api_key", "provider_cooldown", "policy_blocked", "residency_blocked",
                             "approval_required", "model_budget", "cap_reached", "context_over_budget", "invalid_output"})
@@ -515,7 +517,10 @@ def ask_one(q: Question, env: DomainEnv, admin, gold: dict[str, list[list[Any]]]
         return out
     out.turn_id, out.latency_ms = turn["id"], int(turn.get("latency_ms") or 0)
     out.actual = _ACTUAL.get(turn["status"], "error")
-    out.refusal_kind = (turn.get("refusal") or {}).get("kind")
+    refusal = turn.get("refusal") or {}
+    details = refusal.get("details") or {}
+    out.refusal_kind = "write_refused" if (refusal.get("kind") == "not_answerable" and details.get("reason") == "write"
+                                           and details.get("by") == "rules") else refusal.get("kind")
     out.answered_by, out.route, out.sql = turn.get("answered_by"), turn.get("route"), turn.get("sql")
     out.verified_query = (turn.get("verified_query") or {}).get("name")
     usage = _turn_usage(turn["id"], env.workspace_id)

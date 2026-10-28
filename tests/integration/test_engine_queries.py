@@ -20,9 +20,15 @@ SOURCES, ASSETS, COLUMNS = 3, 10, 30
 NOISE_EDGES, OTHER_WS_EDGES = 3000, 1000
 
 
+# The per-transaction tenant binding (ADR-009, strict tenancy): two fixed statements, not data access; they are
+# counted apart so the budgets below keep measuring the engine's own reads and writes.
+TENANCY_PRELUDE = ("SET LOCAL ROLE", "SELECT set_config('app.tenant_id'")
+
+
 class _Counter:
     def __init__(self) -> None:
         self.statements: list[str] = []
+        self.tenancy = 0
         self.rows = 0
         self.marks: dict[str, int] = {}
 
@@ -49,7 +55,10 @@ def count_sql():
 
     def before(conn, cursor, statement, parameters, context, executemany):  # noqa: ANN001
         if ours(conn):
-            counter.statements.append(statement)
+            if statement.lstrip().startswith(TENANCY_PRELUDE):
+                counter.tenancy += 1
+            else:
+                counter.statements.append(statement)
 
     def after(conn, cursor, statement, parameters, context, executemany):  # noqa: ANN001
         if ours(conn) and cursor.description is not None and cursor.rowcount > 0:
@@ -202,7 +211,8 @@ def _measure(bench, fake_dispatch) -> dict[str, dict]:
 
 
 # Upper bounds after P4-S02 (statements per call). The claim is read + compare-and-set + agent.started
-# event; resolve_scope is workspace, membership, policy, sources, assets, columns whatever the size.
+# event; resolve_scope is workspace, membership, policy, sources, assets, columns and the tenant (S01 ABAC
+# attributes, e.g. residency) whatever the size. The tenant-binding prelude is counted apart (TENANCY_PRELUDE).
 BOUNDS = {
     "get_state (steady: 3 ready, 1 running)": 2,
     "get_state (transition READY -> RUNNING)": 6,
@@ -210,7 +220,7 @@ BOUNDS = {
     "execute_task (claim + complete)": 7,
     "execute_task (already completed)": 1,
     "lineage_for (depth 6)": 1,
-    f"resolve_scope ({SOURCES} sources x {ASSETS} assets x {COLUMNS} columns)": 6,
+    f"resolve_scope ({SOURCES} sources x {ASSETS} assets x {COLUMNS} columns)": 7,
 }
 
 

@@ -5,6 +5,7 @@ pool is configured; migration 0038 goes up, down and up."""
 from __future__ import annotations
 
 import socket
+import sys
 import threading
 import time
 
@@ -15,6 +16,8 @@ from sqlalchemy import select
 from analystos.db import vectors
 
 pytestmark = pytest.mark.integration
+posix_only = pytest.mark.skipif(sys.platform == "win32", reason="worker pools need POSIX select() on pipes; "
+                                "run on Linux")
 
 
 def _free_port() -> int:
@@ -69,6 +72,7 @@ def local_pool(served_app):
     t.close()
 
 
+@posix_only
 def test_a_task_is_recorded_with_its_events_result_and_lineage(served_app, local_pool, workspace):
     from analystos.contracts.worker import Budget, ProbeSpec, TaskEnvelope
     from analystos.core.config import get_settings
@@ -101,6 +105,7 @@ def test_a_task_is_recorded_with_its_events_result_and_lineage(served_app, local
                 ("recipe_run", "dispatched", "worker_task")} <= edges
 
 
+@posix_only
 def test_a_failed_task_is_recorded_with_its_structured_error(local_pool, workspace):
     from analystos.contracts.worker import Budget, ProbeSpec, TaskEnvelope
     from analystos.core.ids import new_id
@@ -136,6 +141,7 @@ def test_the_api_serves_worker_routes_to_task_tokens_only(served_app, workspace)
     assert pools["ok"] and pools["pools"] == sorted(get_settings().isolated_pool_set)
 
 
+@posix_only
 def test_a_recipe_snapshot_job_runs_on_compute_py_when_configured(served_app, local_pool, workspace, tmp_path,
                                                                    monkeypatch):
     from analystos.core.config import get_settings
