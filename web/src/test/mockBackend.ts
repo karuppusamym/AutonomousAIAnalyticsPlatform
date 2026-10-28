@@ -284,6 +284,20 @@ function askRoute(m: string, p: string, requestBody?: string | null): MockRespon
     return json({ id: THREAD_NEW, workspace_id: WS, user_id: USER.id, title: "New question", archived: false, created_at: T, updated_at: T, turns: [] });
   }
   if (m === "GET" && p === `/ask/threads/${THREAD_OLD}`) return json({ ...THREAD, turns: [OLD_TURN] });
+  // v2 conversations over the same threads (S04): by default no branch, no state, no memory
+  const conv = /^\/v2\/conversations\/([^/]+)(\/state|\/memory|\/corrections)?$/.exec(p);
+  if (m === "GET" && conv) {
+    const [, id, sub] = conv;
+    if (sub === "/state") {
+      return json({ conversation_id: id, version: 0, at_seq: 0, cause: null, message_id: null,
+        state: { filters: [], sources: [], metric_bindings: {}, time_window: null, clarifications: [], result_handles: [] } });
+    }
+    if (sub === "/memory") return json({ items: [], overrides: [] });
+    if (sub === "/corrections") return json([]);
+    return json({ ...THREAD, id, tenant_id: "tnt_default", channel: "ui", owner_id: USER.id, participants: [USER.id], request_id: null,
+      parent_conversation_id: null, branch_from_message_id: null, legal_hold: false, closed_at: null, summarized_at: null, revision: 1,
+      state_version: 0, message_count: 1, messages: [] });
+  }
   if (m === "POST" && p === `/ask/threads/${THREAD_NEW}/turns`) {
     const q = String((requestBody ? JSON.parse(requestBody) as { question?: string } : {}).question ?? "");
     recordQuestion(q);

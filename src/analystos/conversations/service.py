@@ -72,10 +72,11 @@ def _iso(value: Any) -> str | None:
     return value.isoformat() if value is not None else None
 
 
-def message_view(session: Session, turn: AskTurn, *, inherited: bool = False) -> dict[str, Any]:
+def message_view(session: Session, turn: AskTurn, *, inherited: bool = False,
+                 cost: dict[str, Any] | None = None) -> dict[str, Any]:
     from analystos.services.ask import turn_out
 
-    answer = turn_out(session, turn)
+    answer = turn_out(session, turn, cost)
     for k in ("thread_id", "question", "user_id", "seq", "workspace_id", "id", "created_at"):
         answer.pop(k, None)
     mode = "investigate" if turn.route == "investigate" else "ask"
@@ -121,10 +122,13 @@ def list_mine(session: Session, user: User, *, workspace_id: str | None = None, 
 @scoped_loader
 def detail(session: Session, user: User, conversation_id: str) -> dict[str, Any]:
     from analystos.conversations import state as st
+    from analystos.services.ask import answer_costs
 
     conv = load(session, user, conversation_id)
+    visible = st.history(session, conv)
+    costs = answer_costs(session, [t.id for t, _ in visible])
     return {**view(session, conv),
-            "messages": [message_view(session, t, inherited=inh) for t, inh in st.history(session, conv)]}
+            "messages": [message_view(session, t, inherited=inh, cost=costs[t.id]) for t, inh in visible]}
 
 
 def previous_answer(session: Session, conv: AskThread, seq: int) -> AskTurn | None:

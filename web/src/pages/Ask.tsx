@@ -2,8 +2,9 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type React
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ApiError, api, errorMessage, streamAskTurn, type AskInspector, type AskMode, type AskPromotion, type AskStage, type AskThreadDetail, type AskTurn,
-  type ChartHint, type Dict, type QueryResult, type SqlExplanation,
+  type ChartHint, type ConversationDetail, type Dict, type QueryResult, type SqlExplanation,
 } from "../api";
+import { ConversationBar } from "../components/ConversationBar";
 import { AnalystAnswer } from "../components/AnalystAnswer";
 import { ChartView } from "../components/Chart";
 import { CitationsPanel } from "../components/Citations";
@@ -13,8 +14,8 @@ import {
 import { NumberTrail, VerificationBadge, WhyState } from "../components/WhyNumber";
 import { WhatIfPanel } from "../components/WhatIf";
 import {
-  PROMOTE_LABELS, PROMOTE_MIN_ROLE, canComplete, canPromote, decisionLine, groupThreads, mergePromotion, promotionText, provenancePills, receiptView,
-  refusalView, stalenessPill, topProbabilities, turnSuggestions,
+  PROMOTE_LABELS, PROMOTE_MIN_ROLE, answeredByLabel, branchPointBefore, canComplete, canPromote, costLine, decisionLine, groupThreads,
+  mergePromotion, messageToTurn, promotionText, provenancePills, receiptView, refusalView, stalenessPill, topProbabilities, turnSuggestions,
   type Pill,
 } from "../lib/ask";
 import { guessChart } from "../lib/charts";
@@ -391,26 +392,76 @@ function AskWhy({ turn, onSelect }: { turn: AskTurn; onSelect: () => void }) {
   );
 }
 
+/** Who or what answered, and what it cost (S11 UX invariant: shown on every answer). */
+export function AnsweredBy({ turn }: { turn: AskTurn }) {
+  return (
+    <p className="answered-by small" aria-label="Answered by">
+      <span><strong>Answered by</strong> {answeredByLabel(turn)}</span>
+      <span className="muted" title={turn.cost?.tokens_saved ? `${turn.cost.tokens_saved} tokens saved by rules and cache` : undefined}>
+        {costLine(turn.cost)}
+      </span>
+    </p>
+  );
+}
+
+/** A message a branch shows from the conversation it continues: read here, acted on in the original. */
+function InheritedTurn({ turn }: { turn: AskTurn }) {
+  return (
+    <article className="ask-turn ask-turn-inherited" aria-label={`Question ${turn.seq}, from the original conversation`}>
+      <header className="ask-question"><p><strong>{turn.question}</strong> <span className="tag">from the original</span></p></header>
+      {turn.explanation && <p>{turn.explanation}</p>}
+      {turn.status === "answered" && turn.result ? <ResultView res={turn.result} hint={turn.chart} caption={turn.question} />
+        : <p className="small muted">Not answered ({turn.refusal?.kind ?? turn.status}).</p>}
+      <AnsweredBy turn={turn} />
+    </article>
+  );
+}
+
 function TurnView({ turn, role, selected, onSelect, busy, onParameters, onRephrase, onExplain, onRetry, onRecorded, onAsk, onRerun, onRerunStep,
-  onResynthesize }: {
+  onResynthesize, onBranch, onEdit }: {
   turn: AskTurn; role: string | null | undefined; selected: boolean; onSelect: () => void; busy: boolean; onParameters: (p: Dict) => void; onRephrase: () => void;
   onExplain: (sql: string) => void; onRetry: () => void; onRecorded: (p: AskPromotion) => void; onAsk: (q: string) => void;
   onRerun: (sql?: string) => void; onRerunStep: (n: number, sql?: string) => void; onResynthesize: () => void;
+  onBranch: () => void; onEdit: (question: string) => void;
 }) {
   const { wsId = "" } = useParams();
   const [editing, setEditing] = useState(false);
   const [editedSql, setEditedSql] = useState(turn.sql ?? "");
+  const [rewording, setRewording] = useState(false);
+  const [reworded, setReworded] = useState(turn.question);
+  const editId = useId();
   return (
     <article className={`ask-turn ${selected ? "ask-turn-selected" : ""}`} aria-label={`Question ${turn.seq}`}>
       <header className="ask-question">
         <p><strong>{turn.question}</strong>{turn.analysis && <span className="tag tag-info analyst-tag">step by step</span>}</p>
-        <button type="button" className="btn btn-xs btn-ghost" aria-pressed={selected} onClick={onSelect}>Inspect</button>
+        <span className="btn-row">
+          <button type="button" className="btn btn-xs btn-ghost" disabled={busy} onClick={onBranch}
+            title="Start a new conversation that continues after this answer; this one stays as it is">Branch from here</button>
+          <button type="button" className="btn btn-xs btn-ghost" disabled={busy} aria-expanded={rewording} onClick={() => setRewording(!rewording)}
+            title="Ask this question differently in a new branch; the original answer stays">Edit question</button>
+          <button type="button" className="btn btn-xs btn-ghost" aria-pressed={selected} onClick={onSelect}>Inspect</button>
+        </span>
       </header>
+      {rewording && (
+        <form className="stack" onSubmit={(e) => { e.preventDefault(); if (reworded.trim()) { setRewording(false); onEdit(reworded.trim()); } }}>
+          <label htmlFor={editId}>Edited question</label>
+          <textarea id={editId} rows={2} value={reworded} onChange={(e) => setReworded(e.target.value)} />
+          <p className="small muted">It is asked in a new branch that keeps everything before this question; this conversation is not changed.</p>
+          <div className="btn-row">
+            <button type="submit" className="btn btn-primary btn-sm" disabled={busy || !reworded.trim()}>Ask in a new branch</button>
+            <button type="button" className="btn btn-sm" onClick={() => setRewording(false)}>Cancel</button>
+          </div>
+        </form>
+      )}
       {turn.status === "answered" && turn.analysis ? (
-        <AnalystAnswer turn={turn} busy={busy} onRerunStep={onRerunStep} onResynthesize={onResynthesize} onAsk={onAsk} />
+        <>
+          <AnalystAnswer turn={turn} busy={busy} onRerunStep={onRerunStep} onResynthesize={onResynthesize} onAsk={onAsk} />
+          <AnsweredBy turn={turn} />
+        </>
       ) : turn.status === "answered" && turn.result ? (
         <div className="stack">
           <Pills label="Provenance" pills={[...provenancePills(turn), stalenessPill(turn.staleness)]} />
+          <AnsweredBy turn={turn} />
           {turn.explanation && <p>{turn.explanation}</p>}
           <AskWhy turn={turn} onSelect={onSelect} />
           {turn.evidence_status?.state === "changed" && <Notice tone="warning">The evidence has changed since this answer.
@@ -434,6 +485,7 @@ function TurnView({ turn, role, selected, onSelect, busy, onParameters, onRephra
       ) : (
         <>
           <RefusalState turn={turn} ws={wsId} busy={busy} onParameters={onParameters} onRephrase={onRephrase} onExplain={onExplain} onRetry={onRetry} />
+          <AnsweredBy turn={turn} />
           {typeof turn.refusal?.details?.assumption === "string" && (
             <button type="button" className="btn btn-sm" disabled={busy}
               onClick={() => onAsk(`${turn.question}\n\nProceed with this assumption: ${turn.refusal!.details!.assumption as string}`)}>
@@ -573,6 +625,11 @@ export function AskPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [askErr, setAskErr] = useState<unknown>(null);
   const [asking, setAsking] = useState(false);
+  const [convRefresh, setConvRefresh] = useState(0);
+  const conversation = useAsync<ConversationDetail | undefined>(
+    () => (thread?.id ? api.conversation(thread.id) : Promise.resolve(undefined)), [thread?.id, convRefresh]);
+  const inherited = useMemo(() => (conversation.data?.id === thread?.id ? conversation.data?.messages ?? [] : [])
+    .filter((m) => m.inherited).map(messageToTurn), [conversation.data, thread?.id]);
   const questionRef = useRef<HTMLTextAreaElement>(null);
   const consoleRef = useRef<HTMLTextAreaElement>(null);
 
@@ -625,7 +682,7 @@ export function AskPage() {
     try { replaceTurn(await fn()); } catch (err) { setAskErr(err); } finally { setAsking(false); }
   };
 
-  const ask = async (text: string, parameters?: Dict) => {
+  const ask = async (text: string, parameters?: Dict, target?: AskThreadDetail) => {
     const q = text.trim();
     if (!q) return;
     setAsking(true);
@@ -633,7 +690,7 @@ export function AskPage() {
     setLive([]);
     setPending(q);
     try {
-      let current = thread;
+      let current = target ?? thread;
       if (!current) {
         current = await api.createAskThread(wsId);
         setThread(current);
@@ -643,6 +700,7 @@ export function AskPage() {
       setThread((t) => (t ? { ...t, title: t.turns.length ? t.title : q, turns: [...t.turns, turn] } : t));
       setSelected(turn.id);
       setQuestion("");
+      setConvRefresh((n) => n + 1);  // the message moved the conversation state on
       void threads.reload();
     } catch (err) {
       setAskErr(err);
@@ -651,6 +709,29 @@ export function AskPage() {
       setPending(null);
     }
   };
+
+  /** A branch continues after `fromId` (null: before the first question) and opens; `thenAsk` asks there at once. */
+  const branchFrom = async (fromId: string | null, thenAsk?: string) => {
+    if (!thread) return;
+    setAsking(true);
+    setAskErr(null);
+    let detail: AskThreadDetail;
+    try {
+      const b = await api.branchConversation(thread.id, fromId);
+      detail = await api.askThread(b.id);
+      setThread(detail);
+      setSelected(null);
+      setParams((prev) => { const n = new URLSearchParams(prev); n.set("thread", b.id); return n; });
+      void threads.reload();
+    } catch (err) {
+      setAskErr(err);
+      setAsking(false);
+      return;
+    }
+    setAsking(false);
+    if (thenAsk) await ask(thenAsk, undefined, detail);
+  };
+  const visibleTurns = [...inherited, ...(thread?.turns ?? [])];
 
   const recordPromotion = (turnId: string, p: AskPromotion) =>
     setThread((t) => (t ? { ...t, turns: t.turns.map((x) => (x.id === turnId ? { ...x, promotions: mergePromotion(x.promotions, p) } : x)) } : t));
@@ -725,7 +806,7 @@ export function AskPage() {
                     <li key={t.id}>
                       <button type="button" className={`list-button ${t.id === threadId ? "active" : ""}`} aria-current={t.id === threadId ? "true" : undefined}
                         onClick={() => openThread(t.id)}>
-                        <span className="clamp-2">{t.title}</span>
+                        <span className="clamp-2">{t.title}{t.parent_conversation_id && <span className="tag">branch</span>}</span>
                         <span className="small muted">{t.turn_count ?? 0} question{t.turn_count === 1 ? "" : "s"}</span>
                       </button>
                     </li>
@@ -740,13 +821,19 @@ export function AskPage() {
           <Card title={thread && thread.turns.length ? thread.title : "Ask a question"}
             actions={thread && thread.turns.length ? <Link className="btn btn-xs btn-ghost" to={to.thread(wsId, "ask_thread", thread.id)}>Open as a Data Thread</Link> : undefined}>
             <div className="stack">
+              {thread && <ConversationBar conversation={conversation.data?.id === thread.id ? conversation.data : undefined}
+                threads={threads.data ?? []} refreshKey={convRefresh} busy={asking} onOpen={(id) => openThread(id)}
+                onChanged={() => setConvRefresh((n) => n + 1)} />}
+              {inherited.map((t) => <InheritedTurn key={t.id} turn={t} />)}
               {thread?.turns.map((t) => (
                 <TurnView key={t.id} turn={t} role={role} selected={t.id === selected} onSelect={() => setSelected(t.id)} busy={asking}
                   onParameters={(p) => void ask(t.question, p)} onRephrase={() => { setQuestion(t.question); questionRef.current?.focus(); }}
                   onExplain={explainSql} onRetry={() => void ask(t.question, t.parameters)} onRecorded={(p) => recordPromotion(t.id, p)} onAsk={(q) => void ask(q)}
                   onRerun={(statement) => void rerun(t.id, statement)}
                   onRerunStep={(n, statement) => void stepAction(() => api.rerunAskStep(t.id, n, statement))}
-                  onResynthesize={() => void stepAction(() => api.resynthesizeAsk(t.id))} />
+                  onResynthesize={() => void stepAction(() => api.resynthesizeAsk(t.id))}
+                  onBranch={() => void branchFrom(t.id)}
+                  onEdit={(q) => void branchFrom(branchPointBefore(visibleTurns, t.id), q)} />
               ))}
               {pending && (
                 <article className="ask-turn" aria-label="Question in progress" aria-busy="true">
