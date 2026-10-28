@@ -74,11 +74,12 @@ export function Card({ title, actions, children, className = "", label }: {
   );
 }
 
-export function PageHeader({ title, subtitle, actions }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode }) {
+/** `level={2}`: the header of a page shown inside another screen (the Autonomy Center's sections). */
+export function PageHeader({ title, subtitle, actions, level = 1 }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; level?: 1 | 2 }) {
   return (
     <div className="page-header">
       <div>
-        <h1 data-tour="page-title">{title}</h1>
+        {level === 1 ? <h1 data-tour="page-title">{title}</h1> : <h2>{title}</h2>}
         {subtitle && <p className="muted">{subtitle}</p>}
       </div>
       {actions && <div className="page-actions">{actions}</div>}

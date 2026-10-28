@@ -69,7 +69,7 @@ test.describe("light IA (spec v4 §15)", () => {
 
   test("old URLs redirect into the new areas", async ({ page }) => {
     await signIn(page, `/w/${WS}/monitoring?tab=alerts`);
-    await expect(page).toHaveURL(`/w/${WS}/operate/monitoring?tab=alerts`);
+    await expect(page).toHaveURL(`/w/${WS}/operate/autonomy?view=monitors&tab=alerts`);
     await page.goto("/admin");
     await expect(page).toHaveURL("/settings/registry");
     await page.goto("/operate/settings");

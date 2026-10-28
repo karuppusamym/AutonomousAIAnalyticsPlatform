@@ -220,18 +220,18 @@ describe("NotificationBell", () => {
     );
     fireEvent.click(await screen.findByRole("button", { name: /Notifications, 2 unread/ }));
     fireEvent.click(await screen.findByText("[critical] MTTR drift"));
-    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/w/ws_1/operate/monitoring?tab=alerts&alert=alr_1"));
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/w/ws_1/operate/autonomy?view=monitors&tab=alerts&alert=alr_1"));
     const post = lastCall(fetchMock, (u) => u === "/api/notifications/read")!;
     expect(JSON.parse(String(post[1].body))).toEqual({ ids: [1] });
   });
 
   it("maps notification links to screens", () => {
     const n = (type: string, id: string, kind = "x") => ({ workspace_id: "ws", kind, link: { type, id } });
-    expect(notificationHref(n("alert", "a1"))).toBe("/w/ws/operate/monitoring?tab=alerts&alert=a1");
+    expect(notificationHref(n("alert", "a1"))).toBe("/w/ws/operate/autonomy?view=monitors&tab=alerts&alert=a1");
     expect(notificationHref(n("artifact", "r1", "report"))).toBe("/w/ws/outputs?type=report&artifact=r1");
     expect(notificationHref(n("artifact", "c1", "other"))).toBe("/w/ws/outputs?artifact=c1");
     expect(notificationHref(n("run", "run1"))).toBe("/w/ws/work/investigations/run1");
-    expect(notificationHref(n("schedule", "s1"))).toBe("/w/ws/operate/schedules?schedule=s1");
+    expect(notificationHref(n("schedule", "s1"))).toBe("/w/ws/operate/autonomy?view=schedules&schedule=s1");
   });
 });
 
@@ -277,10 +277,10 @@ describe("ChangesPanel", () => {
   it("origin badge links scheduled runs and alert investigations", () => {
     const { rerender } = render(<MemoryRouter><OriginBadge wsId="ws" origin={{ type: "schedule", schedule_id: "sch_1", previous_run_id: "r0" }} /></MemoryRouter>);
     expect(screen.getByText("scheduled")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "schedule" }).getAttribute("href")).toBe("/w/ws/operate/schedules?schedule=sch_1");
+    expect(screen.getByRole("link", { name: "schedule" }).getAttribute("href")).toBe("/w/ws/operate/autonomy?view=schedules&schedule=sch_1");
     rerender(<MemoryRouter><OriginBadge wsId="ws" origin={{ type: "alert", alert_id: "alr_1" }} /></MemoryRouter>);
     expect(screen.getByText("alert investigation")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "alert" }).getAttribute("href")).toBe("/w/ws/operate/monitoring?tab=alerts&alert=alr_1");
+    expect(screen.getByRole("link", { name: "alert" }).getAttribute("href")).toBe("/w/ws/operate/autonomy?view=monitors&tab=alerts&alert=alr_1");
     rerender(<MemoryRouter><OriginBadge wsId="ws" origin={{ type: "user" }} /></MemoryRouter>);
     expect(screen.queryByText("scheduled")).toBeNull();
   });

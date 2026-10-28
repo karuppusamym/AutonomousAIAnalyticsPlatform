@@ -401,3 +401,67 @@ def test_a_plan_gate_waiting_at_replan_asks_again_and_never_opens(sqlite_db, mon
         assert new.id != "apr_plan" and new.status == "pending" and new.plan_hash == run.plan_hash
     state = engine.get_state("run_1")
     assert state.get("waiting_user") == ["plan_approval"] and _task("context").status == "NEW"
+
+
+# ------------------------------------------------------------------------------ parallel branches
+@pytest.fixture
+def slots(monkeypatch):
+    from analystos.runtime import source_slots as ss
+
+    table = ss.SourceSlots(None)  # the in-process table (no Redis in unit tests)
+    monkeypatch.setattr(ss, "default_slots", lambda: table)
+    return table
+
+
+def _two_runs(limits: dict) -> None:
+    with session_scope() as s:
+        s.add(Workspace(id="ws_1", name="Parallel tests", created_by="usr_1", status="active", settings={}))
+        for rid in ("run_1", "run_2"):
+            s.add(AnalysisRun(id=rid, workspace_id="ws_1", objective="find the drivers of SLA breaches", status="RUNNING",
+                              plan={"steps": []}, plan_version=1, plan_hash="h1",
+                              scope={"hash": "h", "asset_sources": {"sn.incident": "src_a"}}, instructions=[], constraints={},
+                              control="run", requested_by="usr_1", summary={}, origin={"type": "goal"}, capabilities={},
+                              limits=limits, started_at=utcnow()))
+            for i, key in enumerate(("metadata", "context")):  # metadata queries the source; context does not
+                s.add(RunTask(id=f"tsk_{rid}_{i}", run_id=rid, key=key, agent_id="a", title=key, status="NEW", depends_on=[],
+                              input={}, output={}, attempts=0, plan_version=1, seq=i * 10))
+
+
+def test_parallel_respects_source_semaphore(sqlite_db, slots, monkeypatch):
+    """A query step runs only while its source has a free slot, whichever run holds the others."""
+    from analystos.agents import dispatch as dispatch_mod
+
+    monkeypatch.setattr(dispatch_mod, "dispatch", lambda ctx: {"ok": True})
+    monkeypatch.setattr(engine.RunContext, "load", classmethod(lambda cls, run_id, key, services: object()))
+    _two_runs({"max_parallel": 4, "source_slots": {"src_a": 1}})
+    assert set(engine.get_state("run_1")["ready"]) == {"metadata", "context"}
+    assert slots.acquire("src_a", "run_2:metadata", 1, 60)  # the other run's query step holds the only slot
+    assert engine.get_state("run_1")["ready"] == ["context"]  # the query step waits; the model step goes on
+    assert engine.execute_task("run_1", "metadata", services=object()) == {"status": "throttled"}
+    with session_scope() as s:
+        t = s.scalar(select(RunTask).where(RunTask.run_id == "run_1", RunTask.key == "metadata"))
+        assert (t.status, t.attempts) == ("NEW", 0) and "waiting for a slot on source src_a" in t.error
+    with session_scope() as s:
+        s.scalar(select(RunTask).where(RunTask.run_id == "run_1", RunTask.key == "context")).status = "COMPLETED"
+    assert engine.get_state("run_1") == {"throttled": ["metadata"], "budget": engine.get_state("run_1")["budget"]}
+    slots.release("src_a", "run_2:metadata")
+    assert engine.get_state("run_1")["ready"] == ["metadata"]
+    assert engine.execute_task("run_1", "metadata", services=object())["status"] == "COMPLETED"
+    assert slots.holders("src_a") == 0  # released when the step ended
+
+
+def test_max_parallel_caps_the_steps_dispatched_at_once(sqlite_db, slots):
+    _two_runs({"max_parallel": 1, "source_slots": {"src_a": 4}})
+    assert len(engine.get_state("run_1")["ready"]) == 1
+    with session_scope() as s:
+        s.scalar(select(RunTask).where(RunTask.run_id == "run_1", RunTask.key == "metadata")).status = "RUNNING"
+    assert engine.get_state("run_1") == {"running": ["metadata"], "budget": engine.get_state("run_1")["budget"]}
+
+
+def test_source_slot_leases_expire(slots):
+    now = [1000.0]
+    slots.clock = lambda: now[0]
+    assert slots.acquire("src", "a", 1, 30) and not slots.acquire("src", "b", 1, 30)
+    assert slots.acquire("src", "a", 1, 30)  # the holder renews its own lease
+    now[0] += 31  # a crashed worker's lease runs out
+    assert slots.holders("src") == 0 and slots.acquire("src", "b", 1, 30)

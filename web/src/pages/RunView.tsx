@@ -4,6 +4,7 @@ import { to } from "../routes";
 import { api, subscribeRunEvents, type ConsoleCost, type EventStreamHandle, type StreamInfo, type FeedbackResponse, type Publication, type RunDetail, type RunEvent, type RunOrigin, type RunTask,
   type WorkspacePolicy } from "../api";
 import { ApprovalsPanel } from "../components/ApprovalsPanel";
+import { GoalRunPanel, PlanVersions } from "../components/Autonomy";
 import { ChangesPanel } from "../components/ChangesPanel";
 import { InvestigationBoard } from "../components/InvestigationBoard";
 import { InvestigationActions } from "../components/InvestigationActions";
@@ -34,7 +35,7 @@ export function RunViewPage() {
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [stream, setStream] = useState<{ state: StreamState; error?: string; info?: StreamInfo; lastUpdate?: Date }>({ state: "connecting" });
   const handleRef = useRef<EventStreamHandle | null>(null);
-  const [tab, setTab] = useState<"tasks" | "events" | "lineage" | "hypotheses">("hypotheses");
+  const [tab, setTab] = useState<"tasks" | "events" | "lineage" | "hypotheses" | "versions">("hypotheses");
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const control = useAction();
   const investigationRef = useRef<HTMLDivElement | null>(null);
@@ -172,6 +173,7 @@ export function RunViewPage() {
             { id: "events", label: `Live events (${events.length})` },
             { id: "lineage", label: "Lineage" },
             { id: "hypotheses", label: `Hypotheses (${r.hypotheses.length})` },
+            { id: "versions", label: `Plan versions (${r.plan_version})` },
           ]} />
           <div className="tab-panel card card-body" role="tabpanel">
             {tab === "hypotheses" && <InvestigationBoard wsId={wsId} runId={runId} objective={r.objective} hypotheses={r.hypotheses} insights={r.insights} approvals={r.approvals}
@@ -179,9 +181,11 @@ export function RunViewPage() {
             {tab === "tasks" && <TaskBoard tasks={r.tasks} />}
             {tab === "events" && <EventFeed events={events} />}
             {tab === "lineage" && <RunLineage wsId={wsId} runId={runId} />}
+            {tab === "versions" && <PlanVersions runId={runId} current={r.plan_version} />}
           </div>
         </div>
         <aside className="run-side">
+          <GoalRunPanel runId={runId} events={events} refreshKey={`${r.status}:${r.plan_version}`} />
           <NumbersPanel wsId={wsId} runId={runId} findings={r.insights.length} />
           <CostMeter wsId={wsId} run={r} />
           <div ref={approvalsRef} tabIndex={-1} aria-label="Investigation approvals"><Card title={`Approvals${pending.length ? ` (${pending.length} pending)` : ""}`}>

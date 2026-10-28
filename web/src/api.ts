@@ -4934,3 +4934,83 @@ export interface ClassBaseline {
 export function spendCountersDown(h: { counters_available: boolean; spend_counters?: { available: boolean } }): boolean {
   return h.spend_counters ? !h.spend_counters.available : !h.counters_available;
 }
+
+// ----------------------------------------------------------------------------------- Goal API v2 (S06)
+/** Budget counters a goal run may not exceed (contracts/goals.py RunLimits). */
+export interface RunLimits {
+  max_steps?: number; max_duration_s?: number; max_scan_bytes?: number; max_cost_usd?: number;
+  max_replans?: number; max_rows?: number; max_retries?: number; max_parallel?: number;
+}
+/** A `run.budget` payload and the `budget` of GET /v2/runs/{id}: limits, use, what is left, what ran out. */
+export interface BudgetSnapshot {
+  limits: RunLimits & { source_slots?: Record<string, number> };
+  used: Record<string, number>;
+  remaining: Record<string, number>;
+  exhausted: string[];
+}
+export interface RunLimitations {
+  outcome: string; reason: string; limits: RunLimits; used: Record<string, number>;
+  completed_steps: string[]; not_run: string[]; verified_findings: string[]; unverified_findings: number;
+}
+export interface ComplexityDecisionView {
+  tier: "low" | "medium" | "complex"; floor: string; rules_tier: string; requested_tier: string | null;
+  playbook: string; playbook_reason: string; limits: RunLimits; reasons: string[];
+  features: { table_count: number; join_depth: number; estimated_scan_rows: number; ambiguity_flags: string[]; policy_tier: string };
+  clarify: { value?: string; backend?: string; missing_inputs?: string[] };
+}
+export interface GoalRunView {
+  run_id: string; goal_id: string | null; workspace_id: string; state: string; control: string; objective: string;
+  autonomy_level: number; plan_version: number; plan_hash: string | null; playbook: string | null; error: string | null;
+  complexity: ComplexityDecisionView | null; budget: BudgetSnapshot | null; limitations: RunLimitations | null;
+  steps: { key: string; agent: string; title: string; status: string; attempts: number; error: string | null }[];
+  events_url: string; created_at: string | null; finished_at: string | null;
+}
+export interface PlanVersionTask {
+  key: string; agent?: string; status: string; attempts?: number; error?: string | null; depends_on?: string[];
+  plan_version?: number; output_keys?: string[];
+}
+export interface PlanVersionView {
+  run_id: string; version: number; current: boolean; plan: Dict | null; plan_hash: string | null;
+  superseded_by?: { reason_code: string; detail: string | null; actor: string | null; at: string | null };
+  tasks: PlanVersionTask[];
+}
+export interface GoalSummary {
+  goal_id: string; run_id: string; question: string; mode: string; state: string; tier: string | null;
+  playbook: string | null; plan_version: number; limits: RunLimits; used: Record<string, number>;
+  limitation: string | null; error: string | null; created_at: string | null; finished_at: string | null;
+}
+export interface AutonomySummary {
+  workspace_id: string; window_days: number;
+  runs: { by_state: Record<string, number>; total: number };
+  queues: Record<string, number>;
+  exceptions: { count: number; waiting_for_people: number;
+    runs: { run_id: string; objective: string; state: string; origin: string | null; reason: string | null; finished_at: string | null }[] };
+  budgets: { month_spend_usd: number; month_budget_usd: number; goal_spend_usd: number; run_cost_budget_usd: number; max_parallel_steps: number };
+  schedules: { total: number; enabled: number; next_run_at: string | null };
+  monitors: { total: number; enabled: number };
+  alerts: { raised: number; by_status: Record<string, number>; resolved_without_investigation: number; noise_rate: number | null };
+}
+export interface GoalCreated {
+  goal_id: string; run_id: string; state: string; events_url: string; tier: string; playbook: string; limits: RunLimits;
+}
+export type GoalInput = Schemas["GoalIn"];
+export type GoalSignalType = "pause" | "resume" | "cancel" | "redirect" | "approve_step";
+
+/** A fresh Idempotency-Key; a retry of the same submission reuses it (the server replays the first result). */
+export function newIdempotencyKey(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  return c?.randomUUID ? c.randomUUID() : `goal-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+export const goalsApi = {
+  create: (body: GoalInput, idempotencyKey: string) =>
+    request<GoalCreated>("POST", apiPath("post", "/api/v2/goals", { body }), body, { headers: { "Idempotency-Key": idempotencyKey } }),
+  list: (ws: string, state?: string, limit = 50) =>
+    get("/api/v2/goals", { query: { workspace_id: ws, state, limit } }) as Promise<GoalSummary[]>,
+  summary: (ws: string, days = 30) => get("/api/v2/autonomy", { query: { workspace_id: ws, days } }) as Promise<AutonomySummary>,
+  run: (run: string) => get("/api/v2/runs/{run_id}", { path: { run_id: run } }) as Promise<GoalRunView>,
+  plan: (run: string, version?: number) =>
+    get("/api/v2/runs/{run_id}/plan", { path: { run_id: run }, query: { version } }) as Promise<PlanVersionView>,
+  signal: (run: string, type: GoalSignalType, payload: Dict = {}) =>
+    post("/api/v2/runs/{run_id}/signals", { path: { run_id: run }, body: { type, payload } }) as Promise<{ run_id: string; signal: string; state: string; result: Dict }>,
+};

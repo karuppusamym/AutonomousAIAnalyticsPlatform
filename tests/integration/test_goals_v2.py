@@ -147,7 +147,7 @@ def test_goal_creation_is_idempotent_and_keyed(api, world):
         assert len(list(s.scalars(select(Goal).where(Goal.workspace_id == world["ws"])))) == 1
         run = s.get(AnalysisRun, out["run_id"])
         assert run.origin["type"] == "goal" and run.origin["goal_id"] == out["goal_id"] and run.autonomy_level == 2
-        assert run.limits == out["limits"]
+        assert {k: v for k, v in run.limits.items() if k != "source_slots"} == out["limits"]
     waived = _goal(api, world, "goal-key-2", approval_policy={"publish": "not_required"})
     assert waived.status_code == 422  # approvals cannot be waived through the API
 
@@ -269,3 +269,56 @@ def test_goals_are_tenant_isolated(api, world):
         assert len(tenants) == 1 and tenants[0] is not None
         policies = s.execute(text("SELECT tablename FROM pg_policies WHERE tablename IN ('goal', 'run_plan_version')")).scalars().all()
         assert set(policies) == {"goal", "run_plan_version"}
+
+
+def test_autonomy_center_reads_and_concurrency_limits(api, world):
+    """S11-T5 reads over S06: the goal list and the workspace summary (also under /api/v2 for the web client);
+    a goal run records its step concurrency and the source's slots."""
+    from analystos.db.base import session_scope
+    from analystos.db.models import AnalysisRun
+
+    _enable(api, world, "playbook.dq_review")
+    done = _goal(api, world, "center-done").json()
+    assert _drive(done["run_id"]) == "COMPLETED"
+    limited = _goal(api, world, "center-limited", limits={"max_steps": 2, "max_parallel": 2}).json()
+    assert _drive(limited["run_id"]) == "COMPLETED_WITH_LIMITATIONS"
+    with session_scope() as s:
+        run = s.get(AnalysisRun, limited["run_id"])
+        assert run.limits["max_parallel"] == 2 and run.limits["source_slots"] == {world["src"]: 4}
+    goals = api.get(f"/api/v2/goals?workspace_id={world['ws']}", headers=world["analyst"]).json()
+    assert [g["goal_id"] for g in goals[:2]] == [limited["goal_id"], done["goal_id"]]
+    first = goals[0]
+    assert first["state"] == "COMPLETED_WITH_LIMITATIONS" and first["limitation"].startswith("max_steps (2 of 2)")
+    assert first["used"]["steps"] == 2 and first["playbook"] == "playbook.dq_review" and "source_slots" not in first["limits"]
+    assert api.get(f"/v2/goals?workspace_id={world['ws']}&state=COMPLETED", headers=world["analyst"]).json()[0]["goal_id"] \
+        == done["goal_id"]
+    center = api.get(f"/api/v2/autonomy?workspace_id={world['ws']}", headers=world["analyst"]).json()
+    assert center["runs"]["by_state"]["COMPLETED"] >= 1 and center["runs"]["by_state"]["COMPLETED_WITH_LIMITATIONS"] >= 1
+    assert any(e["run_id"] == limited["run_id"] for e in center["exceptions"]["runs"])
+    assert center["budgets"]["max_parallel_steps"] == 4 and center["budgets"]["month_budget_usd"] > 0
+    assert set(center["queues"]) >= {"RUNNING", "WAITING_USER", "PAUSED"}
+    assert {"total", "enabled", "next_run_at"} <= set(center["schedules"]) and "noise_rate" in center["alerts"]
+    view = api.get(f"/api/v2/runs/{limited['run_id']}", headers=world["analyst"]).json()  # the web client's path
+    assert view["budget"]["exhausted"] == ["max_steps (2 of 2)"]
+
+
+def test_source_slots_on_redis():
+    """The Redis semaphore (Lua acquire, lease expiry, release) on the real Redis (db 2+, a test-only prefix)."""
+    import uuid
+
+    from analystos.runtime.source_slots import SourceSlots
+
+    url = "redis://localhost:6379/2"
+    slots = SourceSlots(url, prefix=f"aostest:slots:{uuid.uuid4().hex}:")
+    if slots._redis is None:
+        pytest.skip("Redis unavailable")
+    now = [time.time()]
+    slots.clock = lambda: now[0]
+    assert slots.acquire("src", "run_a:metadata", 1, 30)
+    assert not slots.acquire("src", "run_b:metadata", 1, 30)
+    assert slots.acquire("src", "run_a:metadata", 1, 30) and slots.holders("src") == 1  # renewal, not a second slot
+    slots.release("src", "run_a:metadata")
+    assert slots.acquire("src", "run_b:metadata", 1, 30)
+    now[0] += 31
+    assert slots.holders("src") == 0 and slots.acquire("src", "run_c:metadata", 1, 30)
+    slots._redis.delete(slots._key("src"))

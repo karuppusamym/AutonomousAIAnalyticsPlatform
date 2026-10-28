@@ -124,7 +124,7 @@ describe("Request desk (S11-T1)", () => {
     const pack = await screen.findByRole("region", { name: "Data pack" });
     expect(within(pack).getByText(/Draft schedule/)).toBeTruthy();
     expect(within(pack).getByText(/The desk did not create it/)).toBeTruthy();
-    expect(within(pack).getByRole("link", { name: /Open Schedules/ }).getAttribute("href")).toBe(`/w/${WS}/operate/schedules`);
+    expect(within(pack).getByRole("link", { name: /Open Schedules/ }).getAttribute("href")).toBe(`/w/${WS}/operate/autonomy?view=schedules`);  // S11-T5: schedules live in the Autonomy Center
     expect(within(pack).getByText("itsm.incident")).toBeTruthy();
     expect(within(pack).getByText(/unknown column/)).toBeTruthy();
 

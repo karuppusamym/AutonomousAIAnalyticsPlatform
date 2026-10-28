@@ -104,8 +104,10 @@ describe("route manifest (spec v4 §15)", () => {
     ["/w/ws_1/build/studio?tab=dashboards&dashboard=art_d", "/w/ws_1/outputs?type=dashboard&dashboard=art_d"],
     ["/w/ws_1/reports?artifact=art_2", "/w/ws_1/outputs?type=report&artifact=art_2"],
     ["/w/ws_1/build/reports?artifact=art_2", "/w/ws_1/outputs?type=report&artifact=art_2"],
-    ["/w/ws_1/schedules?schedule=sch_1", "/w/ws_1/operate/schedules?schedule=sch_1"],
-    ["/w/ws_1/monitoring?tab=alerts&alert=alr_1", "/w/ws_1/operate/monitoring?tab=alerts&alert=alr_1"],
+    ["/w/ws_1/schedules?schedule=sch_1", "/w/ws_1/operate/autonomy?view=schedules&schedule=sch_1"],
+    ["/w/ws_1/operate/schedules?schedule=sch_1", "/w/ws_1/operate/autonomy?view=schedules&schedule=sch_1"],
+    ["/w/ws_1/monitoring?tab=alerts&alert=alr_1", "/w/ws_1/operate/autonomy?view=monitors&tab=alerts&alert=alr_1"],
+    ["/w/ws_1/operate/monitoring?tab=alerts&alert=alr_1", "/w/ws_1/operate/autonomy?view=monitors&tab=alerts&alert=alr_1"],
     ["/w/ws_1/governance", "/w/ws_1/settings/policy"],
     ["/w/ws_1/operate/governance", "/w/ws_1/settings/policy"],
   ])("redirects %s to %s, keeping the query", async (from, expected) => {
@@ -117,7 +119,10 @@ describe("route manifest (spec v4 §15)", () => {
   it("builds links with encoded parameters and optional segments", () => {
     expect(to.findings("ws 1")).toBe("/w/ws%201/outputs/findings");
     expect(to.findings("ws", "ins_1")).toBe("/w/ws/outputs/findings/ins_1");
-    expect(to.monitoring("ws", { tab: "alerts" })).toBe("/w/ws/operate/monitoring?tab=alerts");
+    expect(to.monitoring("ws", { tab: "alerts" })).toBe("/w/ws/operate/autonomy?view=monitors&tab=alerts");
+    expect(to.schedules("ws", "s1")).toBe("/w/ws/operate/autonomy?view=schedules&schedule=s1");
+    expect(to.autonomy("ws")).toBe("/w/ws/operate/autonomy");
+    expect(to.autonomy("ws", "goals")).toBe("/w/ws/operate/autonomy?view=goals");
     expect(to.settings()).toBe("/settings/platform");
     expect(to.outputs("ws", { type: "dashboard" })).toBe("/w/ws/outputs?type=dashboard");
     expect(to.work("ws", "prepare")).toBe("/w/ws/work?tab=prepare");

@@ -23,6 +23,8 @@ ReplanReason = Literal["missing_dataset", "empty_result", "rejected_hypothesis",
 
 LIMIT_KEYS: tuple[str, ...] = ("max_steps", "max_duration_s", "max_scan_bytes", "max_cost_usd", "max_replans",
                                "max_rows", "max_retries")
+# Concurrency bounds (S06 §3.6), not budgets: steps at once; per-source slots are set by the platform.
+CONCURRENCY_KEYS: tuple[str, ...] = ("max_parallel",)
 
 
 class RunLimits(BaseModel):
@@ -37,6 +39,7 @@ class RunLimits(BaseModel):
     max_replans: int | None = Field(default=None, ge=0, le=20)
     max_rows: int | None = Field(default=None, ge=1)
     max_retries: int | None = Field(default=None, ge=0, le=100)
+    max_parallel: int | None = Field(default=None, ge=1, le=16)
 
     def tightened(self, other: RunLimits | dict[str, Any] | None) -> RunLimits:
         """The stricter of each limit: a client may lower a default, never raise it."""
@@ -44,7 +47,7 @@ class RunLimits(BaseModel):
             return self
         o = other if isinstance(other, RunLimits) else RunLimits.model_validate(other)
         out: dict[str, Any] = {}
-        for k in LIMIT_KEYS:
+        for k in LIMIT_KEYS + CONCURRENCY_KEYS:
             mine, theirs = getattr(self, k), getattr(o, k)
             out[k] = theirs if mine is None else mine if theirs is None else min(mine, theirs)
         return RunLimits(**out)

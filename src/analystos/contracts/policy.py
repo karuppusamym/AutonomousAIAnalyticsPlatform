@@ -181,6 +181,8 @@ class WorkspacePolicyDoc(BaseModel):
     # S02-T7 (FR-051): may a run join data from several sources (each leg staged as a handle, joined in
     # DuckDB)? `none` keeps every statement on one source.
     data_movement: Literal["none", "staged_ok"] = "staged_ok"
+    # Steps of one goal run that may run at the same time (S06 §3.6); each source also caps its own slots.
+    max_parallel_steps: int = Field(default=4, ge=1, le=16)
     # Ad-hoc Ask (NL -> SQL outside a run): rolling one-hour statement budgets, repairs included.
     ask_queries_per_user_per_hour: int = 60
     ask_queries_per_workspace_per_hour: int = 600

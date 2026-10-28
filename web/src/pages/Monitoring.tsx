@@ -18,7 +18,8 @@ import { severityTone } from "../lib/status";
 type Tab = "monitors" | "alerts" | "health";
 const ALERT_FILTERS = ["open", "acknowledged", "resolved", ""] as const;
 
-export function MonitoringPage() {
+/** `embedded`: shown as a section of the Autonomy Center rather than as its own page. */
+export function MonitoringPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { wsId = "" } = useParams();
   const [params, setParams] = useSearchParams();
   const tab: Tab = params.get("tab") === "alerts" ? "alerts" : params.get("tab") === "health" ? "health" : "monitors";
@@ -34,8 +35,8 @@ export function MonitoringPage() {
     setParams(next);
   };
   return (
-    <div className="page">
-      <PageHeader title="Monitors & alerts"
+    <div className={embedded ? "embedded-page" : "page"}>
+      <PageHeader level={embedded ? 2 : 1} title="Monitors & alerts"
         subtitle="Metric thresholds, drift, change points, forecast deviations and data quality, checked on a schedule and grouped into alerts." />
       <Tabs value={tab} onChange={setTab} tabs={[
         { id: "monitors", label: `Monitors${monitors.data ? ` (${monitors.data.length})` : ""}` },

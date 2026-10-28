@@ -28,6 +28,8 @@ const TONES: Record<string, Tone> = {
   triaged: "info", auto_answering: "running", auto_answered: "success", auto_with_review: "warning",
   in_investigation: "running", escalated: "warning", answered: "success", accepted: "success", reopened: "warning",
   declined: "neutral",
+  // goal runs (S06): stopped by a budget with validated partial results
+  completed_with_limitations: "warning", throttled: "info",
 };
 
 /** Server enums whose plain reading is not just the lower-cased word. */
@@ -36,6 +38,7 @@ const STATUS_WORDS: Record<string, string> = {
   awaiting_approval: "awaiting approval", approved_plan: "plan approved", needs_input: "needs input",
   auto_answered: "answered automatically", auto_with_review: "awaiting analyst review", auto_answering: "answering",
   in_investigation: "investigating",
+  completed_with_limitations: "stopped by a budget",
 };
 
 /**
@@ -73,7 +76,8 @@ export function hypothesisIcon(status: string): string {
   return HYPOTHESIS_ICONS[status.toLowerCase()] ?? "○";
 }
 
-export const TERMINAL_RUN = new Set(["COMPLETED", "FAILED", "REJECTED", "CANCELLED"]);
+/** Run end states (contracts/events.py RUN_TERMINAL): a budget stop and a wall-clock expiry end a run too. */
+export const TERMINAL_RUN = new Set(["COMPLETED", "FAILED", "REJECTED", "CANCELLED", "COMPLETED_WITH_LIMITATIONS", "EXPIRED"]);
 
 /**
  * Autonomy in plain words (spec v4 §15): what agents do alone and what always waits for a person.
