@@ -8,7 +8,7 @@ by `tests/dataplane_fixtures.py` (20,000 incidents).
 ## What changed
 
 * `deploy/superset/superset_config.py`: `EMBEDDED_SUPERSET` on; `GUEST_ROLE_NAME = aos_embed_guest`;
-  `GUEST_TOKEN_JWT_SECRET` from `SUPERSET_GUEST_TOKEN_SECRET`; token TTL 300 s; `X-Frame-Options: SAMEORIGIN` replaced
+  `GUEST_TOKEN_JWT_SECRET` from `SUPERSET_GUEST_TOKEN_SECRET` (no default; see the hardening below); token TTL 300 s; `X-Frame-Options: SAMEORIGIN` replaced
   by `Content-Security-Policy: frame-ancestors 'self' $SUPERSET_EMBED_ORIGINS` (default the two loopback UI origins).
 * `deploy/superset/guest_role.py` (run by `bootstrap.sh` after `superset init`): the guest role is reset on every
   boot to 7 read-only permissions. It has no database or dataset access, no write on charts or dashboards (Gamma
@@ -58,10 +58,25 @@ Probe after the fix:
 * Refused with 403: raw columns, an extra column, an SQL metric, an SQL-wrapped column not on the chart,
   `(SELECT 1)`, an added WHERE, a request that names no chart.
 
+Guest-token secret and port, hardened afterwards (same day): whoever knows the secret can mint a guest token with no
+RLS, so there is no default any more.
+* `superset_config.py` refuses to start when the secret is shorter than 32 characters or is the formerly published
+  placeholder.
+* With no secret configured, `bootstrap.sh` generates a random one for the container's lifetime. Superset signs and
+  verifies guest tokens itself, so the platform never needs the value. Several replicas must share one explicit
+  value.
+* Compose publishes Superset on `127.0.0.1:8088` only. `SUPERSET_BIND=0.0.0.0` exposes it deliberately.
+
+Checked live on Superset 4.1.1 containers from this config:
+* The placeholder and a 12-character secret each exit 1 with the refusal message.
+* With no secret, the container logs that it generated one (never the value) and comes up healthy. The AT-07/AT-08
+  live test passes against it; tokens are minted and verified across both gunicorn workers.
+* `docker port` shows `127.0.0.1` only.
+* `docker compose config` renders `host_ip: 127.0.0.1`, or `0.0.0.0` with `SUPERSET_BIND`.
+
 Not changed (follow-ups):
-* The dev placeholder guest-token secret follows the existing `SECRET_KEY` pattern, but anyone who knows it can
-  mint tokens with no RLS. Production must set `SUPERSET_GUEST_TOKEN_SECRET`. Refusing the placeholder at startup
-  and binding :8088 to loopback are not done here.
+* `SECRET_KEY` (Superset's session signing key) still has a dev placeholder in `superset_config.py`. A known key lets
+  someone forge an admin session, so it deserves the same treatment.
 * The embed config is still written on the token path rather than inside the approved publish. It can no longer
   be widened.
 
@@ -120,9 +135,8 @@ after the fixes. Web: `vitest run` 457 passed (1 skipped), including
   journey (platform API → live Superset → browser).
 * The shared :8088 Superset still runs the main checkout's config. It picks up embedding when this branch is
   merged and that container is recreated (`docker compose up -d --force-recreate superset`).
-* Dev defaults for the guest-token secret are placeholders (see the review section). Production sets
-  `SUPERSET_GUEST_TOKEN_SECRET` and `SUPERSET_EMBED_ORIGINS` / `ANALYSTOS_SUPERSET_EMBED_DOMAINS` to the real UI
-  origin.
+* Production sets `SUPERSET_EMBED_ORIGINS` / `ANALYSTOS_SUPERSET_EMBED_DOMAINS` to the real UI origin, and one
+  shared `SUPERSET_GUEST_TOKEN_SECRET` when it runs more than one Superset.
 * `aos_security.py` works around how Superset 4.1.1 behaves. Recheck it on a Superset upgrade, and on each new
   chart type the publisher emits (its axis or column spelling may need `_canonical`).
 * SDK 0.4.0 was verified against Superset 4.1.1 only.

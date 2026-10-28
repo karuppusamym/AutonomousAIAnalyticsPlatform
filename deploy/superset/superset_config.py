@@ -24,7 +24,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from aos_security import AosSecurityManager  # noqa: E402
 
 CUSTOM_SECURITY_MANAGER = AosSecurityManager
-GUEST_TOKEN_JWT_SECRET = os.environ.get("SUPERSET_GUEST_TOKEN_SECRET", "analystos-dev-guest-token-secret-change-me")
+# Whoever knows this secret can mint a guest token for any embedded dashboard with no row filters, skipping
+# every platform check. Superset signs and verifies these tokens itself (the platform asks its API for them),
+# so no default exists: bootstrap.sh generates a random one per container when none is given, and a short or
+# formerly published value refuses to start. Several Superset replicas must share one explicit value.
+_PUBLISHED_GUEST_SECRETS = {"analystos-dev-guest-token-secret-change-me", "test_secret", "change-me", "changeme"}
+GUEST_TOKEN_JWT_SECRET = os.environ.get("SUPERSET_GUEST_TOKEN_SECRET", "")
+if len(GUEST_TOKEN_JWT_SECRET) < 32 or GUEST_TOKEN_JWT_SECRET.lower() in _PUBLISHED_GUEST_SECRETS:
+    raise RuntimeError("SUPERSET_GUEST_TOKEN_SECRET must be a random value of at least 32 characters (unset: "
+                       "deploy/superset/bootstrap.sh generates one); refusing to start with a known or short secret")
 GUEST_TOKEN_JWT_EXP_SECONDS = int(os.environ.get("SUPERSET_GUEST_TOKEN_TTL", "300"))
 
 # Who may frame Superset: the AnalystOS UI origins (comma or space separated). Only http(s)://host[:port]
