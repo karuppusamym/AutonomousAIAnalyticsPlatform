@@ -551,6 +551,8 @@ def _admin():
 
     with session_scope() as s:
         admin = s.scalar(select(User).where(User.email == get_settings().bootstrap_admin_email))
+        if admin is None:
+            raise RuntimeError("the Ask suite runs as the bootstrap admin: run `analystos seed` on this database first")
         s.expunge(admin)
     return admin
 

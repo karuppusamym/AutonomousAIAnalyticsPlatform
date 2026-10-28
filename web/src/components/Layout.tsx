@@ -143,7 +143,7 @@ export function Layout() {
           <span>Context2AI <strong>AnalystOS</strong></span>
         </Link>
         <div className="topbar-spacer" />
-        {wsId && <Link className="btn btn-sm topbar-lite" to={to.lite(wsId)}>Lite<span className="topbar-lite-rest"> workspace</span></Link>}
+        {wsId && <Link className="btn btn-sm topbar-lite" to={to.lite(wsId)}>Lite workspace</Link>}
         <button type="button" className="btn btn-sm palette-trigger" onClick={() => setPaletteOpen(true)} aria-haspopup="dialog"
           aria-keyshortcuts="Control+K Meta+K">
           <span>Go to…</span> <kbd className="kbd">Ctrl K</kbd>
@@ -163,6 +163,8 @@ export function Layout() {
       <div className="body">
         <nav id="sidenav" className={`sidenav ${navOpen ? "open" : ""}`} aria-label="Main">
           <AreaNav wsId={wsId} wsName={ws?.name} role={ws?.role} />
+          {/* On phones the top bar has no room for it, so Lite is offered here instead. */}
+          {wsId && <Link className="btn btn-sm sidenav-lite" to={to.lite(wsId)}>Lite workspace</Link>}
         </nav>
         <main id="main" className="main" tabIndex={-1}>
           <ErrorBoundary resetKey={location.pathname}>
