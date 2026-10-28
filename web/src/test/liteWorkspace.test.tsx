@@ -17,7 +17,7 @@ it("opens Lite, navigates real workspace tools, and returns to the full interfac
   expect(screen.getByRole("button", { name: "History" }).getAttribute("aria-expanded")).toBe("true");
   expect(screen.getByRole("complementary", { name: "Workflow guide" })).toBeTruthy();
   fireEvent.click(within(nav).getByRole("link", { name: "Data" }));
-  expect(await screen.findByRole("heading", { name: "Sources", level: 1 })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Data sources", level: 1 })).toBeTruthy();
   expect(screen.getByRole("navigation", { name: "Lite workspace" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Full interface" }));
   expect(await screen.findByRole("navigation", { name: "Main" })).toBeTruthy();

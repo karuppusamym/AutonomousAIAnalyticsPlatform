@@ -48,7 +48,7 @@ export function LiteWorkspace({ wsId, name, onExit, children }: {
     { label: "Data", icon: "▤", href: to.sources(wsId), detail: "Connect a database and choose the tables in scope." },
     { label: "Metadata", icon: "⌘", href: to.catalog(wsId), detail: "Review schemas, relationships, and business definitions." },
     { label: "Investigations", icon: "◎", href: to.work(wsId), detail: "Explore drivers and review the evidence behind findings." },
-    { label: "Outputs", icon: "▥", href: to.outputs(wsId), detail: "Build dashboards, reports, and reusable datasets." },
+    { label: "Results", icon: "▥", href: to.outputs(wsId), detail: "Build dashboards, reports, and reusable datasets." },
     { label: "Publish", icon: "↗", href: to.approvals(wsId), detail: "Review publication requests. Publish dashboards to Superset through the existing approval flow." },
   ];
   const isAsk = location.pathname === to.ask(wsId) || location.pathname === to.lite(wsId);

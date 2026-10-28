@@ -189,7 +189,7 @@ describe("branches (P7-05): fork, compare side by side, merge into a report", ()
     // live regression: the server returns a generated artifact name and `included` as a count
     expect(merged.textContent).toMatch(/\(version 1\) with \d+ steps?[;.]/);
     expect(merged.textContent).not.toMatch(/thread-report-/);
-    expect(within(merged.closest(".alert") as HTMLElement).getByRole("link", { name: "Open it in Outputs" }).getAttribute("href"))
+    expect(within(merged.closest(".alert") as HTMLElement).getByRole("link", { name: "Open it in Results" }).getAttribute("href"))
       .toBe(`/w/${WS}/outputs?type=report&artifact=art_thread_report`);
   });
 

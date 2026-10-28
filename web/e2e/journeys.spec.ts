@@ -29,12 +29,12 @@ test.describe("light IA (spec v4 §15)", () => {
     const needs = page.locator("section", { has: page.getByRole("heading", { name: "What needs you" }) });
     await expect(needs.getByText("Pending approvals")).toBeVisible();
     await expect(needs.locator(".stat", { hasText: "Open alerts" }).locator(".stat-value")).toHaveText("1");
-    await expect(needs.locator(".stat", { hasText: "Void findings" }).locator(".stat-value")).toHaveText("1");
+    await expect(needs.locator(".stat", { hasText: "Findings to re-check" }).locator(".stat-value")).toHaveText("1");
     await expect(page.getByRole("button", { name: "Start work" })).toHaveCount(1);
 
-    // Work → Ask: a question through the side nav, answered by the governed SQL path.
+    // Analyze → Ask a question: through the side nav, answered by the governed SQL path.
     const nav = page.getByRole("navigation", { name: "Main" });
-    await nav.getByRole("group", { name: "Work" }).getByRole("link", { name: "Ask" }).click();
+    await nav.getByRole("group", { name: "Analyze" }).getByRole("link", { name: "Ask a question" }).click();
     await expect(page).toHaveURL(`/w/${WS}/work/ask`);
     await page.getByLabel("Question", { exact: true }).fill("How many P1 incidents per assignment group?");
     await page.getByRole("button", { name: "Ask", exact: true }).click();
@@ -42,14 +42,14 @@ test.describe("light IA (spec v4 §15)", () => {
     await expect(page.getByText(/SELECT assignment_group/)).toBeVisible();
 
     // Work: open an investigation from the list.
-    await nav.getByRole("group", { name: "Work" }).getByRole("link", { name: "Work", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Work", level: 1 })).toBeVisible();
+    await nav.getByRole("group", { name: "Analyze" }).getByRole("link", { name: "Investigations", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Investigations", level: 1 })).toBeVisible();
     await page.getByRole("link", { name: "Why are P1 resolution times rising?" }).first().click();
     await expect(page).toHaveURL(`/w/${WS}/work/investigations/${RUN}`);
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Why are P1 resolution times rising?");
 
-    // Data: the catalog is the first tab of Catalog & definitions.
-    await nav.getByRole("group", { name: "Data" }).getByRole("link", { name: "Catalog & definitions" }).click();
+    // Data: the catalog is the first tab of the Data dictionary.
+    await nav.getByRole("group", { name: "Data" }).getByRole("link", { name: "Data dictionary" }).click();
     await expect(page).toHaveURL(`/w/${WS}/data/catalog`);
     await expect(page.getByRole("tab", { name: "Catalog", selected: true })).toBeVisible();
     await expect(page.getByText("Incidents").first()).toBeVisible();
@@ -64,6 +64,21 @@ test.describe("light IA (spec v4 §15)", () => {
     await expect(page.getByRole("heading", { name: "Platform settings", level: 1 })).toBeVisible();
     await expect(palette).toBeHidden();
 
+    expect(api.unmatched).toEqual([]);
+  });
+
+  test("business view: plain menu, no SQL console until expert tools are on", async ({ page, api }) => {
+    await page.addInitScript(() => { try { localStorage.removeItem("analystos.expert"); } catch { /* no storage */ } });
+    await signIn(page, `/w/${WS}`);
+    const nav = page.getByRole("navigation", { name: "Main" });
+    await expect(nav.getByRole("group", { name: "Analyze" }).getByRole("link")).toHaveText(["Ask a question", "Investigations", "Requests"]);
+    await expect(page.getByRole("region", { name: "Pilot scorecard", exact: true })).toHaveCount(0);
+    expect(await axeViolations(page)).toEqual([]);
+    await nav.getByRole("link", { name: "Ask a question" }).click();
+    await expect(page.getByRole("heading", { name: "Ask a question", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "SQL console" })).toHaveCount(0);
+    await nav.getByRole("switch", { name: "Show expert tools" }).check();
+    await expect(page.getByRole("heading", { name: "SQL console" })).toBeVisible();
     expect(api.unmatched).toEqual([]);
   });
 
@@ -100,7 +115,7 @@ test.describe("light IA (spec v4 §15)", () => {
 /** Top-level nav entries: job kinds and panels must never add one. */
 async function navEntries(page: Page): Promise<number> {
   // counted once the workspace nav is rendered (right after sign-in the page may still be on /login)
-  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Outputs" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Dashboards & reports" })).toBeVisible();
   return page.getByRole("navigation", { name: "Main" }).getByRole("link").count();
 }
 
@@ -157,7 +172,7 @@ test.describe("job-kind journeys without new top-level screens", () => {
     await expect(page.getByText(/Preview — nothing was written/)).toBeVisible();
     await expect(page.getByRole("table", { name: "Preview of clean" })).toContainText("INC001");
 
-    await page.getByRole("link", { name: "Outputs → Prepared data" }).click();
+    await page.getByRole("link", { name: "Results → Prepared data" }).click();
     await expect(page).toHaveURL(`/w/${WS}/outputs?type=prepared`);
     await expect(page.getByRole("list", { name: "Outputs" }).getByText("p1_incidents_clean")).toBeVisible();
     expect(await navEntries(page)).toBe(before);
@@ -193,7 +208,7 @@ test.describe("job-kind journeys without new top-level screens", () => {
     const toggle = page.getByRole("button", { name: "Toggle navigation" });
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await toggle.click();
-    await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Outputs" }).click();
+    await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Dashboards & reports" }).click();
     await expect(page).toHaveURL(`/w/${WS}/outputs`);
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     for (const path of [`/w/${WS}/outputs`, `/w/${WS}/data/catalog?tab=definitions`, `/w/${WS}/operate/schedules`]) {
@@ -331,7 +346,7 @@ test.describe("pipelines (P6-03)", () => {
     await detail.getByRole("button", { name: "Continue with the approved request" }).click();
     await expect(detail.getByText(/aos_out\.p1_clean version 3 \(4,190 rows\)/)).toBeVisible();
 
-    await detail.getByRole("link", { name: "Outputs → Managed tables" }).click();
+    await detail.getByRole("link", { name: "Results → Managed tables" }).click();
     await expect(page).toHaveURL(`/w/${WS}/outputs?type=table&table=p1_clean`);
     page.once("dialog", (d) => void d.accept());
     await page.getByRole("button", { name: "Roll back v3" }).click();
@@ -510,7 +525,7 @@ test.describe("build (P4-U05)", () => {
 
     // Status: back in Build, the resumed run has built the tables.
     const nav = page.getByRole("navigation", { name: "Main" });
-    await nav.getByRole("group", { name: "Work" }).getByRole("link", { name: "Work", exact: true }).click();
+    await nav.getByRole("group", { name: "Analyze" }).getByRole("link", { name: "Investigations", exact: true }).click();
     await page.getByRole("tab", { name: "dbt builds" }).click();
     await jobs.getByRole("listitem").first().getByRole("button").click();
     await expect(page).toHaveURL(new RegExp(`job=${BUILD_NEW}`));
@@ -561,7 +576,7 @@ test.describe("knowledge studio (P4-U04)", () => {
 
     // Ask: the approved document is in the context of the answer, as a receipt.
     const nav = page.getByRole("navigation", { name: "Main" });
-    await nav.getByRole("group", { name: "Work" }).getByRole("link", { name: "Ask" }).click();
+    await nav.getByRole("group", { name: "Analyze" }).getByRole("link", { name: "Ask a question" }).click();
     await page.getByLabel("Question", { exact: true }).fill("What is the reopen rate for P1 incidents?");
     await page.getByRole("button", { name: "Ask", exact: true }).click();
     await expect(page.getByRole("article", { name: "Question 1" })).toBeVisible();

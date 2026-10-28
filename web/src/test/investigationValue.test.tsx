@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { setExpertView } from "../lib/expert";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { session } from "../api";
 import { bodyOf, calls, mockFetch, renderAt } from "./harness";
 import { resetMockState, RUN, USER, WS } from "./mockBackend";
 
-beforeEach(() => { resetMockState(); session.set("mock-token", USER); window.localStorage.clear(); });
+beforeEach(() => { resetMockState(); session.set("mock-token", USER); window.localStorage.clear(); setExpertView(true); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); session.clear(); });
 
 it("starts a guided investigation with an explicit period, baseline and decision", async () => {

@@ -234,7 +234,7 @@ function PipelineDetail({ wsId, pipeline, all, role, onChanged }: {
       )}
       {done && (
         <Notice tone="success">Promoted <code>{done.schema_name}.{done.table_name}</code> version {done.version} ({fmtNumber(done.row_count, 0)} rows). The previous
-          version stays for rollback in <Link to={to.outputs(wsId, { type: "table", table: done.table_name })}>Outputs → Managed tables</Link>.</Notice>
+          version stays for rollback in <Link to={to.outputs(wsId, { type: "table", table: done.table_name })}>Results → Managed tables</Link>.</Notice>
       )}
       {!!runs.data?.length && (
         <details className="card">
@@ -368,7 +368,7 @@ export function MaterializationsOutput({ wsId, role, table }: { wsId: string; ro
     <div className="stack">
       {note && <Notice tone="success">{note}</Notice>}
       <ErrorBox error={act.error} />
-      {tables.length === 0 && <EmptyState title="No managed tables yet">Materialize a pipeline's approved candidate from Work → Prepare data.</EmptyState>}
+      {tables.length === 0 && <EmptyState title="No managed tables yet">Materialize a pipeline's approved candidate from Investigations → Prepare data.</EmptyState>}
       {tables.map((t) => {
         const versions = mats.data!.filter((m) => `${m.schema_name}.${m.table_name}` === t).sort((a, b) => b.version - a.version);
         return (
@@ -427,7 +427,7 @@ export function PipelineHealth({ wsId }: { wsId: string }) {
                 <div className="chip-row"><strong>{r.pipeline_name} v{r.pipeline_version}</strong> <StatusBadge status={r.status} /> <span className="small muted">{fmtDate(r.created_at)}</span></div>
                 <span className="small">{r.error ?? "no reason recorded"}</span>
                 <span className="small muted">{r.status === "blocked" ? "Nothing was written; the last good version keeps serving." : "Nothing was promoted."} Safe next step: fix the
-                  cause, then dry-run again from <Link to={to.work(wsId, "prepare", { pipeline: r.pipeline_id })}>Work → Prepare data</Link>; no automatic retry.</span>
+                  cause, then dry-run again from <Link to={to.work(wsId, "prepare", { pipeline: r.pipeline_id })}>Investigations → Prepare data</Link>; no automatic retry.</span>
               </li>
             ))}
           </ul>

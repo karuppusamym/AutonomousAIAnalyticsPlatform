@@ -123,7 +123,7 @@ describe("Knowledge studio: documents", () => {
   it("shows trust fields, edits the workspace pack as one revision, and keeps other packs read-only", async () => {
     const f = mockFetch();
     const { container } = renderAt(`/w/${WS}/knowledge/catalog?tab=documents`);
-    expect(await screen.findByRole("heading", { name: "Catalog & definitions", level: 1 })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Data dictionary", level: 1 })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Documents", selected: true })).toBeTruthy();
     fireEvent.click(await screen.findByRole("button", { name: /^P1/ }));
     const card = (await screen.findByRole("heading", { name: "P1", level: 2 })).closest("section")!;

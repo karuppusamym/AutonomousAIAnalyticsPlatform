@@ -973,6 +973,10 @@ button.job-kind-button:focus-visible { outline: 2px solid var(--accent); outline
 /* The Lite workspace link: in the top bar, except on phones where it moves into the navigation drawer. */
 .sidenav-lite { display: none; }
 @media (max-width: 520px) { .sidenav-lite { display: inline-flex; margin: 0.75rem; } }
+/* Business view / expert tools switch (lib/expert.ts), pinned to the bottom of the side nav. */
+.nav-expert { margin-top: auto; padding: 0.75rem 0.5rem 0.25rem; border-top: 1px solid var(--border); }
+.nav-expert .field-check { display: flex; gap: 0.45rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+.nav-expert p { margin: 0.25rem 0 0; }
 
 /* ---- wave 2: brief, readiness, Data Thread, notebooks, ML, pipelines ---- */
 .job-kind-reasons { margin: 0.35rem 0 0; padding-left: 1.1rem; }

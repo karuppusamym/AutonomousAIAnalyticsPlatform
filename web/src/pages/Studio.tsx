@@ -5,6 +5,7 @@ import { api, type Artifact, type ArtifactDetail, type Insight, type ProcessAnal
 import { useAuth } from "../auth";
 import { ChartView } from "../components/Chart";
 import { PublishCard } from "../components/DashboardPublish";
+import { useExpertView } from "../lib/expert";
 import { PublishedOutputs } from "../components/PublishedOutputs";
 import { DashboardPreview } from "../components/DashboardPreview";
 import { DashboardBuilder, NewBuilderDashboard } from "../components/DashboardBuilder";
@@ -125,7 +126,7 @@ export function OutputsPage() {
 
   return (
     <div className="page outputs-page">
-      <PageHeader title="Outputs" subtitle="Findings and stories belong to the investigation question that produced them. Choose an investigation to review its outputs." />
+      <PageHeader title="Dashboards & reports" subtitle="Everything your investigations produced: dashboards, reports, findings and datasets. Pick one to see it and where its numbers came from." />
       {!insightId && (!type || type === "dashboard" || type === "report") && <PublishedOutputs wsId={wsId} artifacts={artifacts.data ?? []}
         onSelect={(a) => { setSearch(""); set({ type: a.type, artifact: a.id, analysis: a.run_id, dashboard: null, run: null }); }} />}
       <nav className="chip-row type-filter" aria-label="Filter outputs by type">
@@ -295,7 +296,7 @@ function PreparedView({ run, wsId }: { run: RecipeRun; wsId: string }) {
       {outputs.length > 0 && (
         <RecordTable records={outputs.map(([name, o]) => ({ output: name, ...(o && typeof o === "object" ? o as Record<string, unknown> : { value: o }) }))} />
       )}
-      <p className="small"><Link to={to.work(wsId, "prepare", { recipe: run.recipe_id })}>Open the recipe in Work → Prepare data</Link></p>
+      <p className="small"><Link to={to.work(wsId, "prepare", { recipe: run.recipe_id })}>Open the recipe in Investigations → Prepare data</Link></p>
       <TechnicalDetails value={run} />
     </Card>
   );
@@ -303,6 +304,7 @@ function PreparedView({ run, wsId }: { run: RecipeRun; wsId: string }) {
 
 function ArtifactView({ id, wsId, role, onSelect }: { id: string; wsId: string; role: string | null; onSelect: (id: string) => void }) {
   const d = useAsync(() => api.getArtifact(id), [id]);
+  const expert = useExpertView();
   if (d.error) return <ErrorBox error={d.error} onRetry={d.reload} />;
   if (!d.data) return <Loading />;
   const a = d.data;
@@ -331,10 +333,20 @@ function ArtifactView({ id, wsId, role, onSelect }: { id: string; wsId: string; 
           ))}
         </ul>
       </Card>
-      <Card title="Lineage">
-        <LineageGraph lineage={a.lineage} focus={{ type: a.type, id: a.id }}
-          onSelect={(_, nodeId) => { if (nodeId.startsWith("art_")) onSelect(nodeId); }} />
-      </Card>
+      {expert ? (
+        <Card title="Lineage">
+          <LineageGraph lineage={a.lineage} focus={{ type: a.type, id: a.id }}
+            onSelect={(_, nodeId) => { if (nodeId.startsWith("art_")) onSelect(nodeId); }} />
+        </Card>
+      ) : (
+        <details className="card at-a-glance">
+          <summary>Where these numbers came from</summary>
+          <div className="card-body">
+            <LineageGraph lineage={a.lineage} focus={{ type: a.type, id: a.id }}
+              onSelect={(_, nodeId) => { if (nodeId.startsWith("art_")) onSelect(nodeId); }} />
+          </div>
+        </details>
+      )}
     </div>
   );
 }

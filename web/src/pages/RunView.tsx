@@ -156,7 +156,7 @@ export function RunViewPage() {
 
       {r.summary?.changes && <ChangesPanel changes={r.summary.changes} wsId={wsId} reportArtifactId={r.summary.report_artifact_id} />}
       {!r.summary?.changes && r.summary?.report_artifact_id && (
-        <Notice tone="info">A report was generated for this investigation: <Link to={to.reports(wsId, r.summary.report_artifact_id)}>open it in Outputs</Link>.</Notice>
+        <Notice tone="info">A report was generated for this investigation: <Link to={to.reports(wsId, r.summary.report_artifact_id)}>open it in Results</Link>.</Notice>
       )}
 
       {pub && (

@@ -157,7 +157,7 @@ export function promotionText(p: AskPromotion): string {
       }
       return `Added to the dashboard ${dashboard}.`.trim();
     case "investigate": return "Investigation started.";
-    case "report": return "Saved as a report: find it in Outputs, filtered to reports.";
+    case "report": return "Saved as a report: find it in Dashboards & reports, filtered to reports.";
     case "schedule": return p.status === "created" ? "Calculation scheduled."
       : `Schedule approval ${APPROVAL_WORDS[p.approval_status ?? "pending"] ?? p.approval_status}.`;
     default: return `${p.target}: ${p.status}`;

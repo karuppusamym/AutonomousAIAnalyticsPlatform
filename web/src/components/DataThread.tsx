@@ -567,7 +567,7 @@ export function DataThread({ wsId, type, id, branch, role, onBranch }: {
             {merged ? (
               <Notice tone="success">Merged into the report "{merged.report.content?.title || merged.report.name}" (version {merged.report.version}) with {merged.included} step
                 {merged.included === 1 ? "" : "s"}{merged.excluded.length ? `; ${merged.excluded.length} left out (${merged.excluded.map((x) => String(x.reason)).join("; ")})` : ""}.
-                {" "}<Link to={to.reports(wsId, merged.report.id)}>Open it in Outputs</Link>. It keeps this branch&apos;s lineage.</Notice>
+                {" "}<Link to={to.reports(wsId, merged.report.id)}>Open it in Results</Link>. It keeps this branch&apos;s lineage.</Notice>
             ) : (
               <form className="form-inline" onSubmit={merge} aria-label="Merge into a report">
                 <label className="inline-field small">Report title

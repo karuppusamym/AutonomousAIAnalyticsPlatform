@@ -139,7 +139,7 @@ describe("budget meters (S11-T3)", () => {
 describe("Autonomy Center (S11-T5)", () => {
   it("is one screen for queues, exceptions, budgets, schedules and alert noise", async () => {
     renderAt(`/w/${WS}/operate/autonomy`);
-    expect(await screen.findByRole("heading", { name: "Autonomy Center", level: 1 })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Automations", level: 1 })).toBeTruthy();
     const queues = (await screen.findByRole("heading", { name: "Queues" })).closest("section")!;
     expect(within(queues as HTMLElement).getByText("Waiting for a person")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Explain the variance" }).getAttribute("href")).toBe(`/w/${WS}/work/investigations/run_bad`);

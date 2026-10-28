@@ -21,6 +21,11 @@ async function mockApi(page: Page): Promise<string[]> {
 export const test = base.extend<{ api: { unmatched: string[] } }>({
   api: [async ({ page }, use) => {
     const unmatched = await mockApi(page);
+    // The app opens in business view; these journeys exercise the expert panels (SQL console, builds,
+    // notebooks, lineage), so expert tools start on. The business-view journey turns them off.
+    await page.addInitScript(() => {
+      try { localStorage.setItem("analystos.expert", "1"); } catch { /* no storage */ }
+    });
     await use({ unmatched });
   }, { auto: true }],
 });

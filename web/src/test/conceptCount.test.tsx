@@ -10,6 +10,8 @@
  * Members & policy). The ceilings below keep it from creeping back.
  * 2026-10-27: +2 for the two nav entries the v2 IA adds (spec S11 §2: Work → Request desk, Overview → Value);
  * nothing else on first login changed.
+ * 2026-10-28: +1 for the Show expert tools switch. First login is measured in business view (the default),
+ * which hides the engineering panels on later screens; the fresh-workspace Overview shows none of them.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -17,10 +19,11 @@ import { MemoryRouter } from "react-router-dom";
 import { session, type User, type WorkspaceDetail } from "../api";
 import { AppRoutes } from "../App";
 import { AuthProvider } from "../auth";
+import { setExpertView } from "../lib/expert";
 import { mockBackend, USER, WORKSPACE } from "./mockBackend";
 
 const FRESH = "ws_fresh";
-export const CEILING = { analyst: 24, admin: 28 } as const;
+export const CEILING = { analyst: 25, admin: 29 } as const;
 
 const ANALYST: User = { ...USER, id: "usr_analyst", email: "analyst@analystos.local", name: "Ana Analyst", is_admin: false };
 const FRESH_WS: WorkspaceDetail = {
@@ -74,6 +77,7 @@ afterEach(() => {
 
 async function measure(user: User): Promise<string[]> {
   session.set("mock-token", user);
+  setExpertView(false);
   freshFetch(user);
   render(<AuthProvider><MemoryRouter initialEntries={[`/w/${FRESH}`]}><AppRoutes /></MemoryRouter></AuthProvider>);
   await screen.findByRole("heading", { name: "New workspace", level: 1 });

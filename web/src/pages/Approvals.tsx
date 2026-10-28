@@ -30,7 +30,7 @@ export function ApprovalsPage() {
   const open = rows.find((a) => a.id === selected) ?? rows[0];
   return (
     <div className="page">
-      <PageHeader title="Approval inbox"
+      <PageHeader title="Approvals"
         subtitle="Review a proposal, inspect its evidence, then decide. Each approval covers exactly the content and policy version shown." />
       <div className="review-guide">
         <div><strong>1 · Agents check</strong><p>Verification and governance agents assess findings and publication proposals during an investigation.</p></div>
