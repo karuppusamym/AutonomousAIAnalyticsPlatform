@@ -12,7 +12,9 @@
         "ANALYSTOS_SUPERSET_URL": "http://localhost:8088",
         "ANALYSTOS_SERVICENOW_MOCK_URL": "http://localhost:8091",
         "ANALYSTOS_RUN_INPROCESS_SCHEDULER": "false",
-        "ANALYSTOS_SOURCE_SECRET_SERVICENOW": "admin"
+        "ANALYSTOS_SOURCE_SECRET_SERVICENOW": "admin",
+        "SERVICENOW_PASSWORD": "admin",
+        "ANALYSTOS_SECRET_ENV_NAMES": "SERVICENOW_PASSWORD"
       },
       "port": 8000
     },

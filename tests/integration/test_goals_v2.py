@@ -63,7 +63,7 @@ def world(api, servicenow_url, monkeypatch):
     from analystos.services import runs
     from analystos.services.sources import discover_source, register_source, select_assets
 
-    monkeypatch.setenv("SERVICENOW_PASSWORD", "admin")
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_SERVICENOW", "admin")
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setenv("ANALYSTOS_SUPERSET_URL", "http://127.0.0.1:9")  # the preview destination, never a live Superset
     get_settings.cache_clear()
@@ -77,7 +77,7 @@ def world(api, servicenow_url, monkeypatch):
         owner = s.scalar(select(User).where(User.email == "analyst@analystos.local"))
         src = register_source(s, owner, ws, kind="servicenow", name="SN",
                               config={"instance_url": servicenow_url, "username": "admin", "tables": ["incident"]},
-                              secret_ref="env:SERVICENOW_PASSWORD")
+                              secret_ref="env:ANALYSTOS_SOURCE_SECRET_SERVICENOW")
         s.flush()
         src_id = src.id
         s.expunge(owner)
