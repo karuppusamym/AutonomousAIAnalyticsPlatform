@@ -8,7 +8,10 @@ COPY . .
 RUN npm run build
 
 # ---- serve: static files + /api reverse proxy (SSE-friendly) -----------------------------------
-FROM nginx:1.27-alpine
+# nginx stable branch. `apk upgrade` takes Alpine fixes released since the base image was built: the Grype gate in
+# supply-chain.yml fails on any fixable high/critical package.
+FROM nginx:1.30-alpine
+RUN apk upgrade --no-cache
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80

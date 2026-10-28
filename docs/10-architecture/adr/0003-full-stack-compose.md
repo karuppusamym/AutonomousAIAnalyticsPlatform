@@ -10,4 +10,7 @@ Temporal workflow and a local loop call, so integration tests and single-process
 the same code as production.
 
 **Consequences.** Superset 4.1.1 needs a derived image with `psycopg2-binary` (`deploy/superset/Dockerfile`).
+*2026-10-28 (user decision):* Superset 6.1.0, built on `python:3.11-slim` with upstream's dependency set and
+overrides past Superset's own bounds, so the image passes the supply-chain Grype gate
+(`docs/60-delivery/evidence/supply-chain-images-20261028.md`).
 Neo4j is a projection (rebuildable from Postgres) so its outage never loses provenance.
