@@ -58,3 +58,65 @@ AT-07, AT-08; `test_patch_ops_versioning`; `test_edit_published_forks_draft`; `t
 | S08-T4 | Per-tenant Superset connections + roles + RLS filters | 3d |
 | S08-T5 | Guest-token embedding + reconcile job | 2d |
 | S08-T6 | Export approvals + watermark; PDF Unicode font | 1.5d |
+
+## 8. As built (2026-10-27, tasks T1–T6)
+
+* **T1 DSL + validator.** `contracts/dashboard_dsl.py` (`ChartDoc`, `DashboardDoc`, `KpiDoc`, `FilterDoc`, layout, tabs;
+  `dataset_ref` = `result_handle` | `verified_query@v` | `metric@v` + dimensions; `provenance` required; sensitivity
+  derived as the maximum over dataset and fields, never lowered). `analystos export-contracts` now writes the DSL as
+  `contracts/chart.schema.json` / `dashboard.schema.json`; the v1 publish shapes moved to `chart_spec.schema.json` /
+  `dashboard_spec.schema.json` (publish bundles still use them). `dashboards/validate.py`: JSON Schema first, then
+  rules with a JSON path and code each (grid overflow/overlap/unplaced, unknown fields, aggregation vs. field type,
+  chart-type suitability, filter scope, sensitivity below inputs, preview bound).
+* **T2 ops + `dashboard_design`.** `dashboards/ops.py`: the ten ops of §4, each validated against the document;
+  batches are atomic; sensitivity re-derived and the whole result re-validated; refusals carry a suggested op
+  (type, aggregation, filter scope, free grid slot). `text.set` runs a numbers guard against KPI values and chart
+  previews (dates and period labels are not claims). `publish.request` is returned as deferred and becomes a
+  hash-bound approval. `dashboards/design.py`: ladder [cache, rules, llm_small]; rules map common phrasings, the
+  small model runs only when no rule matched (or the ladder is `always`), its ops are parsed one by one and invalid
+  ones dropped, and the engine still decides. `dashboards/env.py` resolves filter values through trusted glossary
+  entries, a geography alias table and the profiled vocabulary (refused when unknown; `unverified` only when the
+  field has no vocabulary at all) and binds metrics with an access check (certified, else labelled `experimental`).
+  `dashboards/service.py`: each applied batch is `ArtifactVersion + 1` with the ops as `diff` (migration
+  `0066_dashboards_publishing`), If-Match on the version, revert = new version, edits of a published dashboard fork
+  a draft (lineage `forked_from`), edits while an approval is pending invalidate it. API `/api/v2/...`
+  (`api/routers/dashboards_v2.py`; under `/api` because the web client reaches only that prefix).
+* **T3 builder panel.** `web/src/components/DashboardBuilder.tsx` in Outputs › Dashboards (no new screen):
+  grid whose cells pick what "it" refers to, `BuilderChatPanel` (exported for S11-T4) showing proposed ops, refusals
+  with an "apply instead" suggestion, fork and approval notices; version history with op diffs, compare and revert;
+  publish request/execute and exports. "Build a dashboard" starts an empty one.
+* **T4 per-tenant Superset.** `publishing/superset_access.py`. *Deviation:* the spec's one connection per tenant
+  is realised as one connection per workspace, each its own BI login (P4-02, strictly narrower: a tenant's
+  workspaces never share a reader identity), stamped `aos_tenant` / `aos_workspace`; a connection stamped for
+  another tenant or workspace is refused, never reused. Roles `ws_{slug}_viewer` (data access) and
+  `ws_{slug}_editor` (+ write on charts and dashboards); `bi-sync` gives authors the editor role. Published
+  dashboards get dashboard RBAC from the approved audience (`role:viewer` → both roles, `role:editor` → editor;
+  `group:<idp group>` is honoured for embedding, editors only in Superset itself). Policy row filters become Superset
+  RLS rules on the datasets that read the filtered asset; a filter that needs viewer attributes or columns the
+  dataset lacks is `1 = 0` (fail closed) and is rendered per viewer only in guest tokens.
+* **T5 embedding + reconcile.** `dashboards/access.py::guest_token` re-checks at request time: tenant/workspace
+  (404 elsewhere), active user and workspace, published from a succeeded publication of the current version, the
+  approved audience, then the viewer's own scope (withheld assets or denied columns refuse; row filters become the
+  token's RLS clauses); grants and denials are audited. `dashboards/reconcile.py`: drift `missing` / `changed`
+  (provenance stamp ≠ approved bundle hash) / `unpublished`, recorded on `publication.drift`; repair re-applies the
+  approved bundle only after `governance/approvals.verify_for_reapply` (executed approval, same payload, plan and
+  policy version, both people still authorized). Scheduler housekeeping flags drift at most hourly (no repair);
+  `POST /api/v2/workspaces/{ws}/publications/reconcile {repair}` for editors. Idempotency key
+  `sha256(artifact_id, version, destination)`; a BI failure keeps the approval usable for a reconciling retry.
+* **T6 exports + fonts.** `dashboards/exports.py`: CSV/XLSX/PDF from the bounded chart previews (no re-query).
+  Policy `export_approval_min_sensitivity` (default `confidential`): at or above it the export is publish-class
+  (an editor requests it; approval bound to artifact, version, content hash, format and requester; single use).
+  Every export is watermarked (requester, time, classification, version) in the file (CSV first line, XLSX cell +
+  header/footer, PDF header, footer and a diagonal mark) and audited with its SHA-256. PDF fonts: Noto Sans Tamil and
+  Noto Sans Arabic (OFL) join DejaVu and Noto CJK as fallbacks (`reports/fonts/README.md`, hashes listed); text
+  shaping (Arabic joining, Tamil reordering) turns on when the optional `uharfbuzz` is installed — without it the
+  glyphs print unshaped.
+* **Tests.** `tests/unit/test_dashboard_{dsl,ops,bundle,exports}.py`, `tests/unit/test_superset_access.py`
+  (incl. `test_pdf_unicode`, the publisher half of `test_cross_tenant_superset_denied`),
+  `tests/integration/test_dashboards_publishing.py` (`test_patch_ops_versioning`, `test_edit_published_forks_draft`,
+  `test_guest_token_rechecks_auth`, `test_cross_tenant_superset_denied`, publish/reconcile/export flows, migration),
+  `web/src/test/dashboardBuilder.test.tsx`. Superset is the in-memory fake; nothing ran against a live Superset.
+* **Not built / open.** Metric-bound charts publish only against an approved semantic model (the fixture flows use
+  verified queries and result handles); previews of new charts are not computed by the builder yet (they come from
+  the run or the result handle); group audiences are not Superset roles; no live Superset certification of guest
+  tokens and RLS rules (AT-07/AT-08 need the live stack).

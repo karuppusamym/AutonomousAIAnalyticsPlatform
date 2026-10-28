@@ -633,6 +633,11 @@ details.json pre { margin-top: 0.4rem; }
 .dash-filters { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 0.4rem; }
 .dash-md { overflow: auto; }
 .dash-summary { margin-top: 1rem; }
+/* S08 builder: cells are buttons that pick the element "it" refers to in the chat */
+.builder-cell { text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.builder-cell:hover { border-color: var(--accent, var(--border)); }
+.builder-cell.selected { outline: 2px solid var(--accent, currentColor); outline-offset: 1px; }
+.builder-chat { list-style: none; margin: 0 0 0.6rem; padding: 0; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.6rem; }
 @media (max-width: 760px) {
   .dash-grid { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto !important; }
   .dash-cell { grid-column: 1 / -1 !important; grid-row: auto !important; }

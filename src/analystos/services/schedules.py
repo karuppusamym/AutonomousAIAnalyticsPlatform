@@ -554,6 +554,12 @@ def housekeeping() -> dict[str, Any]:
         out["deliveries"] = process_due()
     except Exception:
         log.exception("external delivery failed")
+    try:  # S08-T5: at most hourly, flag drift between Superset and the latest publications
+        from analystos.dashboards.reconcile import reconcile_all_quietly
+
+        out["publication_reconcile"] = reconcile_all_quietly()
+    except Exception:
+        log.exception("publication reconcile failed")
     return out
 
 

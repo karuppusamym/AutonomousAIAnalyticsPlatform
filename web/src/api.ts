@@ -3393,6 +3393,42 @@ export async function request<T>(method: string, path: string, body?: unknown, i
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+// ----------------------------------------------------------------------------------- dashboard builder (S08)
+export type BuilderOp = { op: string } & Dict;
+export interface BuilderField { name: string; type: "temporal" | "quantitative" | "nominal" | "ordinal" | "boolean"; label?: string; sensitivity?: string }
+export interface BuilderChart {
+  id: string; title: string; type: string; fields: BuilderField[]; labels?: string[]; sensitivity?: string;
+  dataset_ref: { kind: string; name?: string; version?: number; handle_id?: string };
+  encoding: { x?: string | null; y: string[]; series?: string | null; color?: string | null; aggregation?: string };
+  query?: { version: number; compare: string };
+  preview?: { columns?: string[]; rows?: unknown[][] };
+}
+export interface BuilderDocument {
+  schema_version?: "dashboard.v2"; id: string; title: string; description?: string; audience?: string; sensitivity?: string;
+  layout: { columns?: number; items: { ref: string; x: number; y: number; w: number; h: number; tab?: string | null }[] };
+  charts: BuilderChart[];
+  kpis: { id: string; title: string; metric: { name: string; version: number }; value?: number | null; unit?: string; labels?: string[] }[];
+  text_blocks: { id: string; markdown: string }[];
+  filters: { id: string; field: string; op: string; value: unknown; scope?: string[]; resolved?: Dict }[];
+  tabs?: { id: string; title: string }[];
+}
+export interface BuilderSummary {
+  id: string; workspace_id: string; name: string; title?: string; version: number; status: string;
+  platform: string | null; external_url: string | null; content_hash: string; updated_at: string | null;
+}
+export interface BuilderDashboard extends BuilderSummary { document: BuilderDocument }
+export interface BuilderRefusal { index: number; op: string; reason: string; suggestion?: BuilderOp }
+export interface BuilderTurn {
+  status: "applied" | "refused" | "unchanged" | "proposed" | "no_ops";
+  dashboard: BuilderDashboard;
+  proposal?: { ops: BuilderOp[]; answered_by: string; notes: string[]; model: string | null };
+  refused?: BuilderRefusal[];
+  deferred?: BuilderOp[];
+  forked_from?: string;
+  approval?: { id: string; status: string; risk_tier: string };
+}
+export interface BuilderVersion { version: number; diff: BuilderOp[]; content_hash: string; created_by: string | null; created_at: string | null }
+
 // ----------------------------------------------------------------------------------- generated contract
 /*
  * Paths, path parameters, query parameters and request bodies come from the generated OpenAPI
@@ -3911,6 +3947,34 @@ export const api = {
   // dashboards: publishing is proposal-based (returns the pending, hash-bound proposal; decided in the inbox)
   publishDashboard: (artifactId: string) =>
     post("/api/artifacts/{artifact_id}/publish", { path: { artifact_id: artifactId } }) as Promise<Approval>,
+
+  // Dashboard builder (S08): typed ops, conversation, versions, publish lifecycle, exports
+  builderDashboards: (ws: string) =>
+    get("/api/v2/workspaces/{workspace_id}/dashboards", { path: W(ws) }) as Promise<BuilderSummary[]>,
+  createBuilderDashboard: (ws: string, document: BuilderDocument) =>
+    post("/api/v2/workspaces/{workspace_id}/dashboards", { path: W(ws), body: { document: document as unknown as Dict } }) as Promise<BuilderDashboard>,
+  builderDashboard: (id: string) =>
+    get("/api/v2/dashboards/{dashboard_id}", { path: { dashboard_id: id } }) as Promise<BuilderDashboard>,
+  builderMessage: (id: string, body: { text: string; focus?: string | null; base_version?: number | null; apply?: boolean }) =>
+    post("/api/v2/dashboards/{dashboard_id}/messages", { path: { dashboard_id: id }, body }) as Promise<BuilderTurn>,
+  builderOps: (id: string, ops: BuilderOp[], baseVersion?: number) =>
+    post("/api/v2/dashboards/{dashboard_id}/ops", { path: { dashboard_id: id }, body: { ops, base_version: baseVersion ?? null } }) as Promise<BuilderTurn>,
+  builderRevert: (id: string, toVersion: number, baseVersion?: number) =>
+    post("/api/v2/dashboards/{dashboard_id}/revert", { path: { dashboard_id: id }, body: { to_version: toVersion, base_version: baseVersion ?? null } }) as Promise<BuilderTurn>,
+  builderVersions: (id: string) =>
+    get("/api/v2/dashboards/{dashboard_id}/versions", { path: { dashboard_id: id } }) as Promise<BuilderVersion[]>,
+  builderVersion: (id: string, n: number) =>
+    get("/api/v2/dashboards/{dashboard_id}/versions/{n}", { path: { dashboard_id: id, n } }) as Promise<BuilderVersion & { document: BuilderDocument }>,
+  builderValidate: (id: string) =>
+    post("/api/v2/dashboards/{dashboard_id}/validate", { path: { dashboard_id: id } }) as Promise<{ valid: boolean; errors: string[]; dashboard: BuilderDashboard }>,
+  builderPublishRequest: (id: string, body: { destination: "superset" | "preview"; audience: string[] }) =>
+    post("/api/v2/dashboards/{dashboard_id}/publish-request", { path: { dashboard_id: id }, body }) as Promise<{ approval_id: string; status: string; risk_tier: string; payload_hash: string }>,
+  builderPublish: (id: string, approvalId: string) =>
+    post("/api/v2/dashboards/{dashboard_id}/publish", { path: { dashboard_id: id }, body: { approval_id: approvalId } }) as Promise<{ status: string; url: string | null; publication_id: string }>,
+  builderExportRequest: (id: string, format: "csv" | "xlsx" | "pdf") =>
+    post("/api/v2/dashboards/{dashboard_id}/exports", { path: { dashboard_id: id }, body: { format } }) as Promise<{ status: "allowed" | "approval_required"; sensitivity: string; approval?: { id: string; status: string } }>,
+  builderExport: (id: string, format: "csv" | "xlsx" | "pdf", approvalId?: string) =>
+    downloadFile(apiPath("get", "/api/v2/dashboards/{dashboard_id}/exports/{fmt}", { path: { dashboard_id: id, fmt: format }, query: { approval_id: approvalId } }), `dashboard.${format}`),
 
   // Existing-dashboard mode (N-2, BI-011/012)
   biDashboardCandidates: (ws: string, destination = "superset") =>

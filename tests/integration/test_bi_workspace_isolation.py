@@ -263,7 +263,8 @@ def test_sync_user_strips_all_data_roles(settings, users):
 
 def test_bi_sync_maps_workspace_membership_to_superset_roles(settings, users, control_db):
     world = users
-    """``analystos bi-sync``: a viewer of A gets Gamma + A's role (no SQL Lab); an analyst of both gets both."""
+    """``analystos bi-sync``: a viewer of A gets Gamma + A's viewer role (no SQL Lab); an analyst of both gets both
+    workspaces' viewer and editor roles (S08)."""
     from sqlalchemy import select
 
     from analystos.core.ids import new_id
@@ -297,7 +298,8 @@ def test_bi_sync_maps_workspace_membership_to_superset_roles(settings, users, co
         roles = {who: {r["name"] for r in pub.client.get(f"/api/v1/security/users/{made[email]}")["result"]["roles"]}
                  for who, email in emails.items()}
         assert roles["viewer"] == {"Gamma", pub.workspace_role_name(WS["a"])}
-        assert roles["analyst"] == {"Gamma", "sql_lab", pub.workspace_role_name(WS["a"]), pub.workspace_role_name(WS["b"])}
+        assert roles["analyst"] == {"Gamma", "sql_lab", pub.workspace_role_name(WS["a"]), pub.workspace_role_name(WS["b"]),
+                                    pub.editor_role_name(WS["a"]), pub.editor_role_name(WS["b"])}  # S08: authors edit
     finally:
         for uid in made.values():
             _quiet(pub.client.delete, f"/api/v1/security/users/{uid}")

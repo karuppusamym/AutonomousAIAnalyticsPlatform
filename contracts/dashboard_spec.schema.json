@@ -1,0 +1,60 @@
+{
+  "properties": {
+    "key": {
+      "title": "Key",
+      "type": "string"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "audience": {
+      "enum": [
+        "executive",
+        "operational"
+      ],
+      "title": "Audience",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "charts": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Charts",
+      "type": "array"
+    },
+    "layout": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Layout",
+      "type": "array"
+    },
+    "native_filters": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Native Filters",
+      "type": "array"
+    },
+    "summary_markdown": {
+      "default": "",
+      "title": "Summary Markdown",
+      "type": "string"
+    }
+  },
+  "required": [
+    "key",
+    "title",
+    "audience",
+    "charts"
+  ],
+  "title": "DashboardSpec",
+  "type": "object"
+}

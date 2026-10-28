@@ -39,22 +39,49 @@ FONT, MONO = "DejaVu", "DejaVuMono"
 FONT_FILES = {(FONT, ""): "DejaVuSans.ttf", (FONT, "B"): "DejaVuSans-Bold.ttf", (FONT, "I"): "DejaVuSans-Oblique.ttf",
               (MONO, ""): "DejaVuSansMono.ttf"}
 CJK, CJK_FILE = "NotoSansCJK", "NotoSansCJKsc-VF.ttf"  # fallback for every style (fpdf2 fakes no bold/italic)
+TAMIL, TAMIL_FILE = "NotoSansTamil", "NotoSansTamil-Regular.ttf"  # S08-T6: Tamil
+ARABIC, ARABIC_FILE = "NotoSansArabic", "NotoSansArabic-Regular.ttf"  # S08-T6: DejaVu has Arabic in regular only
+FALLBACKS = ((CJK, CJK_FILE), (TAMIL, TAMIL_FILE), (ARABIC, ARABIC_FILE))
+
+
+def shaping_available() -> bool:
+    """Complex-script shaping (Arabic joining and right-to-left, Tamil vowel signs) needs HarfBuzz
+    (`uharfbuzz`, optional). Without it every glyph still prints, unjoined."""
+    try:
+        import uharfbuzz  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def add_report_fonts(pdf: FPDF) -> None:
+    """Register DejaVu plus the CJK, Tamil and Arabic fallbacks on `pdf`; shape text when HarfBuzz is installed."""
+    for (family, style), file in FONT_FILES.items():
+        pdf.add_font(family, style, FONT_DIR / file)
+    for family, file in FALLBACKS:
+        pdf.add_font(family, "", FONT_DIR / file)
+    pdf.set_fallback_fonts([f for f, _ in FALLBACKS], exact_match=False)
+    if shaping_available():
+        pdf.set_text_shaping(True)
 
 
 @cache
 def font_coverage(family: str = FONT) -> frozenset[int]:
     """Code points every style of `family` has a glyph for (a style missing one would print a blank box)."""
     maps = [set(TTFont(FONT_DIR / f, lazy=True).getBestCmap()) for (fam, _), f in FONT_FILES.items() if fam == family]
-    return frozenset(set.intersection(*maps)) | _cjk_coverage()
+    return frozenset(set.intersection(*maps)) | _fallback_coverage()
 
 
 @cache
-def _cjk_coverage() -> frozenset[int]:
-    font = TTFont(FONT_DIR / CJK_FILE, lazy=True)
-    try:
-        return frozenset(font.getBestCmap())
-    finally:
-        font.close()
+def _fallback_coverage() -> frozenset[int]:
+    covered: set[int] = set()
+    for _, file in FALLBACKS:
+        font = TTFont(FONT_DIR / file, lazy=True)
+        try:
+            covered |= set(font.getBestCmap())
+        finally:
+            font.close()
+    return frozenset(covered)
 
 
 def pdf_text(v: object, family: str = FONT) -> str:
@@ -89,10 +116,7 @@ class _ReportPDF(FPDF):
     def __init__(self, data: ReportData) -> None:
         super().__init__(orientation="portrait", unit="mm", format="A4")
         self.data = data
-        for (family, style), file in FONT_FILES.items():
-            self.add_font(family, style, FONT_DIR / file)
-        self.add_font(CJK, "", FONT_DIR / CJK_FILE)
-        self.set_fallback_fonts([CJK], exact_match=False)
+        add_report_fonts(self)
         self.set_margins(16, 16, 16)
         self.set_auto_page_break(auto=True, margin=20)
         self.alias_nb_pages()

@@ -218,6 +218,9 @@ class WorkspacePolicyDoc(BaseModel):
     require_approved_metrics: bool = False
     # S04: conversation summaries go to the ledger as workspace knowledge (else personal to the participant).
     share_conversation_summaries: bool = False
+    # S08: a dashboard export (CSV/XLSX/PDF) of data at or above this sensitivity needs a hash-bound approval;
+    # below it the export is still watermarked and logged.
+    export_approval_min_sensitivity: Literal["public", "internal", "confidential", "restricted"] = "confidential"
 
 
 class DataScope(BaseModel):

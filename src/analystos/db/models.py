@@ -812,6 +812,8 @@ class ArtifactVersion(Base):
     content_hash: Mapped[str] = mapped_column(String(64))
     created_by: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = _ts()
+    # S08: the typed ops (or a revert) that produced this version from the previous one.
+    diff: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
 
 
 class LineageEdge(Base):
@@ -963,6 +965,11 @@ class Publication(Base):
     status: Mapped[str] = mapped_column(String(20))  # started | succeeded | partial | failed | rolled_back
     external_ids: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # S08: the dashboard artifact version published (builder path) and the reconcile job's last finding.
+    artifact_id: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    artifact_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    drift: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

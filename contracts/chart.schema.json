@@ -1,17 +1,368 @@
 {
+  "$defs": {
+    "Encoding": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "X"
+        },
+        "y": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Y",
+          "type": "array"
+        },
+        "series": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Series"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color"
+        },
+        "aggregation": {
+          "default": "sum",
+          "enum": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count",
+            "count_distinct",
+            "none"
+          ],
+          "title": "Aggregation",
+          "type": "string"
+        }
+      },
+      "title": "Encoding",
+      "type": "object"
+    },
+    "FieldDef": {
+      "additionalProperties": false,
+      "description": "One column of the bound dataset, as resolved when the chart was bound.",
+      "properties": {
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "temporal",
+            "quantitative",
+            "nominal",
+            "ordinal",
+            "boolean"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "title": "Label",
+          "type": "string"
+        },
+        "sensitivity": {
+          "default": "internal",
+          "enum": [
+            "public",
+            "internal",
+            "confidential",
+            "restricted"
+          ],
+          "title": "Sensitivity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "FieldDef",
+      "type": "object"
+    },
+    "MetricRef": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "metric",
+          "default": "metric",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "dimensions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Dimensions",
+          "type": "array"
+        },
+        "sensitivity": {
+          "default": "internal",
+          "enum": [
+            "public",
+            "internal",
+            "confidential",
+            "restricted"
+          ],
+          "title": "Sensitivity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "MetricRef",
+      "type": "object"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "description": "Where the chart's numbers come from. Required: an unsourced chart is never valid.",
+      "properties": {
+        "sources": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "query_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Query Ids",
+          "type": "array"
+        },
+        "created_by": {
+          "minLength": 1,
+          "title": "Created By",
+          "type": "string"
+        },
+        "created_via": {
+          "default": "user",
+          "enum": [
+            "user",
+            "conversation",
+            "agent",
+            "import"
+          ],
+          "title": "Created Via",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run Id"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Id"
+        }
+      },
+      "required": [
+        "sources",
+        "created_by"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "QueryBinding": {
+      "additionalProperties": false,
+      "description": "The chart's query version. `query.extend_period` raises the version and sets the comparison.",
+      "properties": {
+        "version": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "compare": {
+          "default": "none",
+          "enum": [
+            "none",
+            "yoy",
+            "pop"
+          ],
+          "title": "Compare",
+          "type": "string"
+        },
+        "period": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period"
+        }
+      },
+      "title": "QueryBinding",
+      "type": "object"
+    },
+    "ResultHandleRef": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "result_handle",
+          "default": "result_handle",
+          "title": "Kind",
+          "type": "string"
+        },
+        "handle_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Handle Id",
+          "type": "string"
+        },
+        "query_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Id"
+        },
+        "sensitivity": {
+          "default": "internal",
+          "enum": [
+            "public",
+            "internal",
+            "confidential",
+            "restricted"
+          ],
+          "title": "Sensitivity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "handle_id"
+      ],
+      "title": "ResultHandleRef",
+      "type": "object"
+    },
+    "VerifiedQueryRef": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "verified_query",
+          "default": "verified_query",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "sensitivity": {
+          "default": "internal",
+          "enum": [
+            "public",
+            "internal",
+            "confidential",
+            "restricted"
+          ],
+          "title": "Sensitivity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "VerifiedQueryRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
   "properties": {
-    "key": {
-      "title": "Key",
+    "id": {
+      "pattern": "^[a-z][a-z0-9_]{0,63}$",
+      "title": "Id",
       "type": "string"
     },
     "title": {
+      "maxLength": 300,
+      "minLength": 1,
       "title": "Title",
       "type": "string"
     },
-    "chart_type": {
+    "type": {
       "enum": [
         "kpi",
         "line",
+        "area",
         "bar",
         "stacked_bar",
         "histogram",
@@ -21,168 +372,86 @@
         "pie",
         "treemap"
       ],
-      "title": "Chart Type",
+      "title": "Type",
       "type": "string"
     },
-    "intent": {
-      "title": "Intent",
-      "type": "string"
-    },
-    "dataset": {
-      "title": "Dataset",
-      "type": "string"
-    },
-    "metric": {
-      "anyOf": [
+    "dataset_ref": {
+      "discriminator": {
+        "mapping": {
+          "metric": "#/$defs/MetricRef",
+          "result_handle": "#/$defs/ResultHandleRef",
+          "verified_query": "#/$defs/VerifiedQueryRef"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
         {
-          "type": "string"
+          "$ref": "#/$defs/ResultHandleRef"
         },
         {
-          "type": "null"
+          "$ref": "#/$defs/VerifiedQueryRef"
+        },
+        {
+          "$ref": "#/$defs/MetricRef"
         }
       ],
-      "default": null,
-      "title": "Metric"
+      "title": "Dataset Ref"
     },
-    "metrics": {
+    "fields": {
+      "items": {
+        "$ref": "#/$defs/FieldDef"
+      },
+      "maxItems": 200,
+      "minItems": 1,
+      "title": "Fields",
+      "type": "array"
+    },
+    "encoding": {
+      "$ref": "#/$defs/Encoding"
+    },
+    "query": {
+      "$ref": "#/$defs/QueryBinding"
+    },
+    "sensitivity": {
+      "default": "internal",
+      "enum": [
+        "public",
+        "internal",
+        "confidential",
+        "restricted"
+      ],
+      "title": "Sensitivity",
+      "type": "string"
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    },
+    "labels": {
       "items": {
         "type": "string"
       },
-      "title": "Metrics",
+      "title": "Labels",
       "type": "array"
-    },
-    "dimension": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Dimension"
-    },
-    "series": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Series"
-    },
-    "time_grain": {
-      "anyOf": [
-        {
-          "enum": [
-            "day",
-            "week",
-            "month"
-          ],
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Time Grain"
-    },
-    "filters": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Filters",
-      "type": "array"
-    },
-    "limit": {
-      "anyOf": [
-        {
-          "type": "integer"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Limit"
     },
     "description": {
       "default": "",
       "title": "Description",
       "type": "string"
     },
-    "insight_codes": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Insight Codes",
-      "type": "array"
-    },
-    "rationale": {
-      "default": "",
-      "title": "Rationale",
-      "type": "string"
-    },
     "preview": {
       "additionalProperties": true,
       "title": "Preview",
       "type": "object"
-    },
-    "governance": {
-      "default": "ad_hoc",
-      "enum": [
-        "governed",
-        "ad_hoc"
-      ],
-      "title": "Governance",
-      "type": "string"
-    },
-    "semantic_model_version": {
-      "anyOf": [
-        {
-          "type": "integer"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Semantic Model Version"
-    },
-    "compiler_version": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Compiler Version"
-    },
-    "value_basis": {
-      "default": "observed",
-      "enum": [
-        "observed",
-        "simulated"
-      ],
-      "title": "Value Basis",
-      "type": "string"
     }
   },
   "required": [
-    "key",
+    "id",
     "title",
-    "chart_type",
-    "intent",
-    "dataset"
+    "type",
+    "dataset_ref",
+    "fields",
+    "provenance"
   ],
-  "title": "ChartSpec",
+  "title": "ChartDoc",
   "type": "object"
 }

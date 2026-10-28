@@ -18,6 +18,7 @@ from analystos.api.routers import context_export as context_export_router
 from analystos.api.routers import context_grounding as context_grounding_router
 from analystos.api.routers import context_v2 as context_v2_router
 from analystos.api.routers import conversations as conversations_router
+from analystos.api.routers import dashboards_v2 as dashboards_v2_router
 from analystos.api.routers import data_shape as data_shape_router
 from analystos.api.routers import decisions as decisions_router
 from analystos.api.routers import definitions as definitions_router
@@ -130,6 +131,7 @@ app.include_router(process_router.router)  # process and task mining over event 
 app.include_router(desk_router.router)  # Analyst Request Desk (S13)
 app.include_router(conversations_router.router)  # API v2 conversations and memory (S04)
 app.include_router(goals_v2_router.router)  # Goal API v2 (S06): goals, signals, run state, SSE, evidence, plans
+app.include_router(dashboards_v2_router.router)  # S08 dashboard builder: typed ops, versions, publish, embed, exports
 app.include_router(deliveries_router.router)  # approved external email/webhook delivery (N-3)
 app.include_router(data_shape_router.router)  # what the selected tables are good for (patterns, next steps)
 app.include_router(index_advice_router.router)  # index / partitioning / clustering advice, never applied (N-11)

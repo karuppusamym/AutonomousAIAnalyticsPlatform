@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from analystos.db.models import User, Workspace, WorkspaceMember
 
 SQL_LAB_ROLES = frozenset({"owner", "editor", "analyst"})
+EDITOR_ROLES = SQL_LAB_ROLES  # S08: authors get `ws_{slug}_editor`; viewers and approvers `ws_{slug}_viewer` only
 
 
 def membership_plan(session: Session, workspace_ids: list[str] | None = None) -> dict[str, dict[str, Any]]:
@@ -24,16 +25,19 @@ def membership_plan(session: Session, workspace_ids: list[str] | None = None) ->
          .join(WorkspaceMember, WorkspaceMember.user_id == User.id)
          .join(Workspace, Workspace.id == WorkspaceMember.workspace_id)
          .where(Workspace.deleted_at.is_(None)))
-    plan: dict[str, dict[str, Any]] = defaultdict(lambda: {"workspaces": set(), "sql_lab": False})
+    plan: dict[str, dict[str, Any]] = defaultdict(lambda: {"workspaces": set(), "editor_workspaces": set(), "sql_lab": False})
     for user, ws, role in session.execute(q):
         entry = plan[user.email]
         entry.update(active=bool(user.active), name=user.name)
         entry["workspaces"].add(ws)
+        if role in EDITOR_ROLES:
+            entry["editor_workspaces"].add(ws)
         entry["sql_lab"] = entry["sql_lab"] or role in SQL_LAB_ROLES
     if workspace_ids is not None:
         wanted = set(workspace_ids)
         plan = {e: p for e, p in plan.items() if p["workspaces"] & wanted}
-    return {e: {**p, "workspaces": sorted(p["workspaces"])} for e, p in plan.items()}
+    return {e: {**p, "workspaces": sorted(p["workspaces"]), "editor_workspaces": sorted(p["editor_workspaces"])}
+            for e, p in plan.items()}
 
 
 def sync_bi_access(session: Session, publisher: Any, workspace_ids: list[str] | None = None) -> dict[str, Any]:
@@ -43,5 +47,6 @@ def sync_bi_access(session: Session, publisher: Any, workspace_ids: list[str] | 
     for email, p in sorted(plan.items()):
         first, _, last = (p.get("name") or email).partition(" ")
         users[email] = publisher.sync_user(username=email, email=email, workspace_ids=p["workspaces"], first_name=first,
-                                           last_name=last, sql_lab=p["sql_lab"], active=p["active"])
+                                           last_name=last, sql_lab=p["sql_lab"], active=p["active"],
+                                           editor_workspace_ids=p["editor_workspaces"])
     return {"workspace_roles": roles, "users": users}
