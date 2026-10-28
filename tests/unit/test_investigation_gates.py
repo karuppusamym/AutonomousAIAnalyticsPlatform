@@ -197,3 +197,21 @@ def test_instructions_in_data_never_change_a_gate_or_the_plan(db):
     assert attack not in str(attacked)  # nothing of the row text is echoed into a result
     after_plan = plan_hash(pb.build_plan("Find SLA drivers", autonomy_level=3), constraints={}, scope_hash="s", plan_version=1)
     assert after_plan == before_plan
+
+
+def test_statistics_counts_only_the_current_hypotheses_after_a_replan(db):
+    """A replan supersedes hypotheses; their experiments are not in the family the insight step corrected."""
+    from tests.unit.test_verification_p701 import SPEC, STAT
+
+    from analystos.db.models import Experiment, Hypothesis
+
+    with db() as s:
+        _insight(s)
+        exp = s.get(Experiment, "exp_1")
+        exp.result = {**exp.result, "bh_family_size": 1}
+        s.add(Hypothesis(id="hyp_old", workspace_id=WS, run_id=RUN, code="H-0", statement="old plan", spec=SPEC,
+                         status="superseded"))
+        s.add(Experiment(id="exp_old", workspace_id=WS, run_id=RUN, hypothesis_id="hyp_old", method=SPEC["method"],
+                         params={}, result=STAT, query_ids=[], role="primary"))
+        s.flush()
+        assert inv.statistics(s, _run(s)).passed

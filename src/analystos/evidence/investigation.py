@@ -79,8 +79,11 @@ def _hypotheses(s: Session, run: Any) -> list[Any]:
 def _primaries(s: Session, run: Any) -> dict[str, Any]:
     from analystos.db.models import Experiment
 
-    return {e.hypothesis_id: e for e in s.scalars(select(Experiment).where(Experiment.run_id == run.id,
-                                                                            Experiment.role == "primary"))}
+    out: dict[str, Any] = {}
+    for e in s.scalars(select(Experiment).where(Experiment.run_id == run.id, Experiment.role == "primary")
+                       .order_by(Experiment.created_at, Experiment.id)):
+        out.setdefault(e.hypothesis_id, e)  # the one the insight step read (its first primary)
+    return out
 
 
 def _insights(s: Session, run: Any) -> list[Any]:
@@ -192,8 +195,9 @@ def statistics(s: Session, run: Any, now: datetime | None = None) -> CheckResult
 
     out = CheckResult("statistics")
     exps = _primaries(s, run)
-    pvals = [e for e in exps.values() if (e.result or {}).get("p_value") is not None]
-    for h in _hypotheses(s, run):
+    current = _hypotheses(s, run)  # a replan's superseded hypotheses are not in the family the insight step corrected
+    pvals = [exps[h.id] for h in current if h.id in exps and (exps[h.id].result or {}).get("p_value") is not None]
+    for h in current:
         e = exps.get(h.id)
         if e is None:
             continue
