@@ -13,6 +13,8 @@ regexes = [
   '''dev-only-change-me-please-32bytes!!''',
   '''postgresql(\+psycopg)?://analystos(_loader|_reader|_builder|_writer)?:(analystos|loader|reader|builder|writer)@''',
   '''superset:superset@''',
+  '''pg-trigger-secret-0123456''',                                          # S09 test webhook secret
+  '''651a569e357a04bdb3f1b4860f3bd18305a95fab31cec98d6f060878f7370c2d''',   # snapshot hash of bench.api_usage_daily
 ]
 paths = [
   '''tests/fixtures/''',

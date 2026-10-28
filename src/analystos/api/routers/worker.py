@@ -3,8 +3,8 @@
 These routes never see a user session: every call presents a scoped task token (`workers/tokens.py`)
 bound to one task, its readable artifact ids, its writable output names, its verbs and its model
 purposes, inside one workspace. The store checks the token *and* the artifact's own workspace, so a
-token can reach nothing it was not issued for. The routes do not touch the database, so the same
-router serves the conformance suite's stand-alone store.
+token can reach nothing it was not issued for. The only database read is the tenant of the token's
+workspace (`tenant_resolver`, S01-T4); the conformance suite's stand-alone store overrides it.
 """
 from __future__ import annotations
 
@@ -32,16 +32,22 @@ def worker_secret() -> bytes:
     return secret_from_settings(get_settings())
 
 
-async def worker_claims(authorization: str | None = Header(default=None), secret: bytes = Depends(worker_secret)) -> TokenClaims:
+def tenant_resolver():  # noqa: ANN201 - overridable: the stand-alone conformance store has no control database
+    from analystos.tenancy.background import workspace_tenant
+
+    return workspace_tenant
+
+
+async def worker_claims(authorization: str | None = Header(default=None), secret: bytes = Depends(worker_secret),
+                        resolve_tenant=Depends(tenant_resolver)) -> TokenClaims:  # noqa: ANN001
     """The task token from `Authorization: Bearer <token>`. A session JWT is not a task token. The request
     then acts for the tenant of the token's workspace (S01-T4); async so the binding reaches the route."""
     if not authorization or not authorization.lower().startswith("bearer "):
         raise Unauthenticated("a worker task token is required")
     claims = verify(secret, authorization.split(" ", 1)[1].strip())
     from analystos.tenancy import set_current_tenant
-    from analystos.tenancy.background import workspace_tenant
 
-    tenant = await run_in_threadpool(workspace_tenant, claims.workspace_id)
+    tenant = await run_in_threadpool(resolve_tenant, claims.workspace_id)
     if tenant:
         set_current_tenant(tenant)
     return claims

@@ -465,6 +465,8 @@ test.describe("investigation board (P4-U03)", () => {
     await expect(f1.getByText(/Replanned to plan v2/)).toBeVisible();
 
     await page.getByLabel("Message").fill("Focus on the Network group");
+    // The composer defaults to a question about saved evidence; a redirect is chosen explicitly.
+    await page.getByLabel("What would you like to do?").selectOption({ label: "Redirect — change focus / filters" });
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByText(/Focus on the Network group\./)).toBeVisible();
     expect(api.unmatched).toEqual([]);

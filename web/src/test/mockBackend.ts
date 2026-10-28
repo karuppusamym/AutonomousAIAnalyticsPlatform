@@ -708,6 +708,13 @@ export function mockBackend(method: string, path: string, requestBody?: string |
   const wave2 = wave2Route(m, p, url, WS, requestBody, headers);
   if (wave2) return wave2.status === 204 ? { status: 204, body: "", contentType: "application/json" } : json(wave2.body, wave2.status);
 
+  // Goal API v2 run view (S06): the demo run was started without a goal, so no goal and no budget.
+  if (m === "GET" && p === `/v2/runs/${RUN}`) {
+    return json({ run_id: RUN, goal_id: null, workspace_id: WS, state: RUN_ROW.status, control: RUN_ROW.control,
+      objective: RUN_ROW.objective, autonomy_level: RUN_ROW.autonomy_level, plan_version: RUN_ROW.plan_version,
+      plan_hash: RUN_ROW.plan_hash, playbook: null, error: null, complexity: null, budget: null, limitations: null,
+      steps: [], events_url: `/v2/runs/${RUN}/events`, created_at: RUN_ROW.created_at, finished_at: RUN_ROW.finished_at });
+  }
   if (m === "POST" && p === "/auth/login") {
     const body = requestBody ? JSON.parse(requestBody) as { password?: string } : {};
     if (body.password !== "ChangeMe123!") return json({ error: { code: "unauthorized", message: "invalid credentials", details: {} } }, 401);

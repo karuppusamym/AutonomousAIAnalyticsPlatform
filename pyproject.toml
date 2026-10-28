@@ -18,7 +18,7 @@ dependencies = [
   "pgvector>=0.3",
   "httpx>=0.27",
   "sqlglot==30.20.0",  # security-validated qualifier API; 30.24 removed infer_schema (gateway/validator.py)
-  "duckdb>=1.1",
+  "duckdb>=1.1,<2",  # 2.0.0 segfaults under the isolated pools' RLIMIT_AS instead of raising out-of-memory
   "polars>=1.5",
   "pandas>=2.2",
   "pyarrow>=17",

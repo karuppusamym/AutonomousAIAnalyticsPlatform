@@ -172,7 +172,10 @@ def test_tsql_sql_gives_same_answers(duck, results):
         duck_h = results[name][0].stat.highlights
         for key in ("top_segment", "top_rate", "baseline_rate", "top_share", "n_periods", "median_ratio"):
             if key in duck_h:
-                assert prim.stat.highlights[key] == pytest.approx(duck_h[key], rel=1e-3), (name, key)
+                expected = duck_h[key]  # a segment name compares exactly; pytest.approx refuses str with rel=
+                if not isinstance(expected, str):
+                    expected = pytest.approx(expected, rel=1e-3)
+                assert prim.stat.highlights[key] == expected, (name, key)
 
 
 # ----------------------------------------------------------------------------- postgres integration

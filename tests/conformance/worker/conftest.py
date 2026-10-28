@@ -93,6 +93,7 @@ def store_server(tmp_path_factory) -> StoreServer:
 
     app.dependency_overrides[worker_routes.worker_store] = lambda: store
     app.dependency_overrides[worker_routes.worker_secret] = lambda: secret
+    app.dependency_overrides[worker_routes.tenant_resolver] = lambda: (lambda workspace_id: None)  # no control DB
     app.dependency_overrides[worker_routes.model_router] = lambda: fake
     app.dependency_overrides[worker_routes.call_context] = lambda: (
         lambda claims: CallContext(workspace_id=claims.workspace_id, task_id=claims.task_id, agent_id="worker"))
