@@ -351,6 +351,10 @@ input, select, textarea {
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   padding: 0.42rem 0.6rem; width: 100%; min-width: 0;
 }
+/* A closed select clips long text instead of widening its container; the popup follows the select's own colours. */
+select { max-width: 100%; text-overflow: ellipsis; text-align: left; }
+select option, select optgroup { background: var(--surface); color: var(--text); }
+select option { white-space: normal; }
 input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--accent); }
 input[type="file"] { padding: 0.3rem; }
 textarea { resize: vertical; }

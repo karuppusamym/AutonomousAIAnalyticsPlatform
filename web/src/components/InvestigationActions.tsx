@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api, type RunDetail } from "../api";
 import { useAction, useAsync } from "../lib/hooks";
 import { valueApi, type ActionInput, type InvestigationAction } from "../lib/investigationValue";
-import { fmtValue } from "../lib/format";
+import { fmtValue, optionLabel } from "../lib/format";
 import { roleAtLeast, to } from "../routes";
 import { Card, ErrorBox, Field, Notice, StatusBadge } from "./ui";
 import { findingStanding } from "./InvestigationOverview";
@@ -72,7 +72,7 @@ export function InvestigationActions({ wsId, run }: { wsId: string; run: RunDeta
             : "Recheck the supporting finding and resolve its verification issues before acting on it.",
           open_questions: finding.caveats.join("\n") });
       }}>
-        {run.insights.map((i) => <option key={i.id} value={i.id}>{i.code} · {i.title}</option>)}</select></Field>
+        {run.insights.map((i) => <option key={i.id} value={i.id}>{i.code} · {optionLabel(i.title)}</option>)}</select></Field>
       {selected && Object.keys(selected.business_impact ?? {}).length > 0 && <details><summary>Recorded business impact</summary><p className="small">{fmtValue(selected.business_impact)}</p></details>}
       <Field label="Action title" htmlFor={`${id}-title`}><input id={`${id}-title`} required minLength={5} maxLength={300} value={draft.title} onChange={(e) => set({ title: e.target.value })} /></Field>
       <Field label="Recommended next step" htmlFor={`${id}-next`}><textarea id={`${id}-next`} required minLength={5} maxLength={2000} value={draft.next_step} onChange={(e) => set({ next_step: e.target.value })} /></Field>
