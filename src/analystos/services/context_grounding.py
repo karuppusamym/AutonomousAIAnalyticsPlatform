@@ -247,8 +247,12 @@ def resolve_known(question, known, bindings, scope):
         if any(len([r for r in refs if r.rsplit('.', 1)[-1] == name]) > 1 for name in {r.rsplit('.', 1)[-1] for r in refs}):
             state = "ambiguous"
         results.append({**item, "state": state, "by": "reviewed_knowledge"})
+    # Pack vocabulary matched for this question (by its term or a synonym): an owner mapping of the same term
+    # applies even when the question uses only the synonym ("revenue" for the pack's "Net revenue").
+    matched_known = {" ".join(sorted(terms(r["term"]))) for r in results}
     for row in bindings:
-        if (terms(row.term) and terms(row.term) <= focus) or (row.definition.get("kind") == "population_rule" and row.state == "approved"):
+        if ((terms(row.term) and terms(row.term) <= focus) or " ".join(sorted(terms(row.term))) in matched_known
+                or (row.definition.get("kind") == "population_rule" and row.state == "approved")):
             d = row.definition
             state = binding_state(d, scope)
             active_same_term = any(other.id != row.id and terms(other.term) == terms(row.term)

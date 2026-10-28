@@ -74,6 +74,22 @@ def test_conflicting_reviewed_definitions_remain_ambiguous(scope):
     assert len(resolved) == 2 and {r["state"] for r in resolved} == {"ambiguous"}
 
 
+
+def test_owner_mapping_supersedes_pack_vocabulary_matched_by_a_synonym(scope):
+    """The question says only "revenue"; the pack's "Net revenue" matches by synonym and has no columns here. The
+    owner's mapping of "Net revenue" for this data must apply, though "net" is not in the question."""
+    known = [{"id": "kdoc", "term": "Net revenue", "synonyms": ["revenue"], "definition": "Order value after discounts",
+              "columns": []}]
+    owner = SimpleNamespace(id="bind_1", term="Net revenue", state="approved", revision=1, entry_id=None,
+                            definition={"definition": "Revenue here is the cost column", "columns": ["s.incident.cost"],
+                                        "kind": "definition", "state": "approved"})
+    other = SimpleNamespace(id="bind_2", term="Gross margin", state="approved", revision=1, entry_id=None,
+                            definition={"definition": "Margin", "columns": ["s.incident.cost"], "kind": "definition",
+                                        "state": "approved"})
+    resolved = resolve_known("What drives revenue by team?", known, [owner, other], scope)
+    assert [(r["term"], r["state"], r["by"]) for r in resolved] == [("Net revenue", "resolved", "reviewed_mapping")]
+    assert resolve_known("What drives revenue by team?", known, [], scope)[0]["state"] == "missing"
+
 def test_six_generic_tests_do_not_cover_a_different_outcome():
     proposals = [{"spec": {"method": "numeric_by_segment", "outcome": {"column": "cost"}, "segment": {"column": "team"}}}] * 6
     assert question_coverage("Why did revenue decline?", proposals)["missing"] == ["revenue"]

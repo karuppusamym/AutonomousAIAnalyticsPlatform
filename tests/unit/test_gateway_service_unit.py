@@ -101,6 +101,14 @@ def test_result_hash_is_order_sensitive_and_stable() -> None:
     assert result_hash(["a"], [[1], [2]]) != result_hash(["a"], [[2], [1]])
 
 
+def test_result_hash_ignores_float_summation_noise_but_not_real_differences():
+    """DuckDB's parallel stddev gave 0.9499735332319522 and ...507 for one query on two runs (REV re-run check)."""
+    assert result_hash(["s"], [[0.9499735332319522, "x"]]) == result_hash(["s"], [[0.9499735332319507, "x"]])
+    assert result_hash(["s"], [[0.94997353323]]) != result_hash(["s"], [[0.94997353324]])
+    assert result_hash(["s"], [[1.0]]) != result_hash(["s"], [[None]])
+    assert result_hash(["s"], [[float("nan")]]) == result_hash(["s"], [[float("nan")]])
+
+
 def test_cache_key_binds_all_parts() -> None:
     base = cache_key("f", "s", "v", 10)
     assert base != cache_key("f2", "s", "v", 10)

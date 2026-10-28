@@ -362,14 +362,35 @@ def _wait(run_id: str, timeout: float) -> str:
     while time.time() - started < timeout:
         with session_scope() as s:
             status = s.get(AnalysisRun, run_id).status
-        if status in ("COMPLETED", "FAILED", "CANCELLED", "WAITING_FOR_APPROVAL"):
+        # WAITING_USER: the run asks a person (a business definition, a plan approval); nobody answers here
+        if status in ("COMPLETED", "FAILED", "CANCELLED", "WAITING_FOR_APPROVAL", "WAITING_USER"):
             return status
         time.sleep(0.5)
     return "TIMEOUT"
 
 
+def _record_definitions(admin: Any, workspace_id: str, table: str, definitions: list[dict[str, Any]]) -> None:
+    """Approved business definitions, recorded as the workspace owner would before an unattended run: context
+    grounding stops a run whose question uses a term nobody has defined for this data (e.g. "recurring")."""
+    from analystos.contracts.grounding import BindingIn
+    from analystos.db.base import session_scope
+    from analystos.governance.policy import resolve_scope
+    from analystos.services import context_grounding as grounding
+
+    with session_scope() as s:
+        user = s.merge(admin)
+        scope = resolve_scope(s, user, workspace_id, minimum_role="editor")
+        refs = {c["ref"].rsplit(".", 1)[1]: c["ref"] for c in grounding.catalog(s, scope)
+                if c["ref"].rsplit(".", 2)[-2] == table}
+        for d in definitions:
+            grounding.save_binding(s, user, workspace_id, BindingIn(
+                term=d["term"], definition=d["definition"], columns=[refs[c] for c in d["columns"]], state="approved",
+                owner_id=user.id, evidence=d.get("evidence", "Benchmark definition reviewed with the dataset's generator."),
+                examples=d.get("examples", "")))
+
 def run_platform(domain: str, seed: int, *, effects: bool = True, n: int | None = None, timeout: float = 1200,
-                 source: str = "csv", ds: Dataset | None = None, objective: str | None = None) -> ReplicateScore:
+                 source: str = "csv", ds: Dataset | None = None, objective: str | None = None,
+                 definitions: list[dict[str, Any]] | None = None) -> ReplicateScore:
     """One benchmark dataset through the real platform: Parquet upload -> file source -> discovery ->
     staged snapshot (loader) -> run (every query through QueryGateway) -> verified insights. Needs the
     control-plane database and the analytics plane; the orchestrator is whatever ANALYSTOS_ORCHESTRATOR
@@ -419,6 +440,8 @@ def run_platform(domain: str, seed: int, *, effects: bool = True, n: int | None 
         s.expunge(admin)
     discover_source(admin, src_id)
     select_assets(admin, src_id, [ds.table])
+    if definitions:
+        _record_definitions(admin, ws_id, ds.table, definitions)
     run = create_run(admin, ws_id, objective=None, origin={"type": "user", "publish": "skip"})
     status = _wait(run.id, timeout)
     score = ReplicateScore(domain=domain, seed=seed, effects=effects, tier="platform", run_id=run.id)

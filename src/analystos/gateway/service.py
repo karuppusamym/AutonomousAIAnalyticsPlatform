@@ -80,8 +80,21 @@ def _default_session_factory():  # noqa: ANN202
     return SessionLocal()
 
 
+FLOAT_DIGITS = 12  # significant digits a result hash keeps
+
+
+def _canonical_value(value: Any) -> Any:
+    if isinstance(value, float):
+        return float(format(value, f".{FLOAT_DIGITS}g")) if value == value and value not in (float("inf"), float("-inf")) else str(value)
+    if isinstance(value, (list, tuple)):
+        return [_canonical_value(v) for v in value]
+    return value
+
+
 def result_hash(columns: list[str], rows: list[list[Any]]) -> str:
-    return stable_hash({"columns": columns, "rows": rows})
+    """Identity of a result for evidence and REV's re-run check. Floats keep 12 significant digits: parallel engines
+    (DuckDB, warehouses) sum in a varying order, so an identical query can differ in the last bits between runs."""
+    return stable_hash({"columns": columns, "rows": [_canonical_value(r) for r in rows]})
 
 
 class _Runner:

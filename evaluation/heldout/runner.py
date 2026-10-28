@@ -254,10 +254,31 @@ def run_analysis_component(task: Task) -> TaskResult:
     return judge_analysis(task, score)
 
 
+# Business definitions a workspace owner reviews before an unattended run, per generated dataset: a question
+# using an undefined term ("recurring revenue") waits for a person at context grounding. Not part of the frozen
+# corpus (corpus.lock.json); applied only when the task's question uses the term.
+REVIEWED_DEFINITIONS: dict[str, list[dict[str, Any]]] = {
+    "sales_subscription": [
+        {"term": "recurring", "match": "recurring", "columns": ["mrr_usd", "account_ref"],
+         "definition": "Recurring revenue is the monthly recurring revenue of an account (mrr_usd), the subscription "
+                       "amount billed every month.",
+         "examples": "An account on a 400 USD monthly plan has 400 USD recurring revenue."},
+        # the sales pack's "Net revenue" (synonym "revenue") is order value; this data has subscriptions, no orders
+        {"term": "Net revenue", "match": "revenue", "columns": ["mrr_usd"],
+         "definition": "In this subscription data, revenue is monthly recurring revenue per account (mrr_usd); there "
+                       "are no orders or discounts.",
+         "examples": "Revenue per account is that account's mrr_usd."}],
+}
+
+
 def run_analysis_platform(task: Task) -> TaskResult:
     from evaluation.analytical import run_platform
 
-    score = run_platform(task.domain, task.seed, ds=analysis_dataset(task), objective=task.objective)
+    words = task.objective.lower()
+    definitions = [{k: v for k, v in d.items() if k != "match"} for d in REVIEWED_DEFINITIONS.get(task.generator, [])
+                   if d["match"] in words]
+    score = run_platform(task.domain, task.seed, ds=analysis_dataset(task), objective=task.objective,
+                         definitions=definitions or None)
     usage = _run_usage(score.run_id)
     return judge_analysis(task, score, run_ref=score.run_id, **usage)
 
