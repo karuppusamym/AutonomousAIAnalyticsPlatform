@@ -43,6 +43,7 @@ export function PublishedOutputs({ wsId, artifacts, onSelect }: {
               <div className="stack">
                 <strong>{outputDisplayName(a)}</strong>
                 <span className="small muted">{a.type} · {a.platform ?? "BI"} · Published record updated {fmtDate(a.updated_at)}</span>
+                {a.banner && <span className="alert alert-warning" role="alert">Needs re-verification: {a.banner.reason}</span>}
                 <span className="chip-row">
                   {url ? <a className="btn btn-sm" href={url} target="_blank" rel="noreferrer noopener" aria-label={`Open ${outputDisplayName(a)} in ${a.platform ?? "BI"}`}>Open in {a.platform ?? "BI"} ↗</a>
                     : <span className="small muted">Published link unavailable. Open details to inspect the publication.</span>}

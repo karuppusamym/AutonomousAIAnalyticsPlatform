@@ -803,7 +803,7 @@ class Artifact(Base):
     content_hash: Mapped[str] = mapped_column(String(64))
     # S07-T7: set while a finding this published artifact presents is VOID ({reason, findings, request_id,
     # raised_at}); cleared when every such finding is verified again. Never part of the content hash.
-    banner: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    banner: Mapped[dict[str, Any] | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

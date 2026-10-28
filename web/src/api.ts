@@ -1436,8 +1436,18 @@ export interface Artifact {
   creator_user: string | null;
   content: Dict;
   content_hash: string;
+  /** S07-T7: set while a finding this published artifact presents is VOID; cleared once re-verified. */
+  banner?: ArtifactBanner | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ArtifactBanner {
+  state: string;
+  reason: string;
+  request_id: string | null;
+  raised_at: string;
+  findings: { insight_id: string; code: string | null; record_id: string; kind: string | null; reason: string | null }[];
 }
 
 export interface ArtifactVersion {
