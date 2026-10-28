@@ -699,6 +699,9 @@ class Insight(Base):
     # the model and compiler versions); run findings are `ad_hoc`.
     governance: Mapped[str] = mapped_column(String(10), default="ad_hoc", server_default="ad_hoc")
     semantic: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # S07-T3 (v1 §7.2): observed | supported_association | possible_contributor | rejected | unknown, decided by
+    # code from REV's verdict (`evidence.claims`); causal wording is allowed only for a causal design.
+    claim_label: Mapped[str] = mapped_column(String(30), default="unknown", server_default="unknown")
     created_at: Mapped[datetime] = _ts()
 
 
@@ -798,6 +801,9 @@ class Artifact(Base):
     creator_user: Mapped[str | None] = mapped_column(String(40), nullable=True)
     content: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     content_hash: Mapped[str] = mapped_column(String(64))
+    # S07-T7: set while a finding this published artifact presents is VOID ({reason, findings, request_id,
+    # raised_at}); cleared when every such finding is verified again. Never part of the content hash.
+    banner: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

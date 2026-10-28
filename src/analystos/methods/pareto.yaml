@@ -15,3 +15,4 @@ certification:
 tags: [statistical, segment]
 spec:
   order: 40
+  claim: observation   # describes one measure; never an association (S07-T3)
