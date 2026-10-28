@@ -115,8 +115,18 @@ AT-07, AT-08; `test_patch_ops_versioning`; `test_edit_published_forks_draft`; `t
   (incl. `test_pdf_unicode`, the publisher half of `test_cross_tenant_superset_denied`),
   `tests/integration/test_dashboards_publishing.py` (`test_patch_ops_versioning`, `test_edit_published_forks_draft`,
   `test_guest_token_rechecks_auth`, `test_cross_tenant_superset_denied`, publish/reconcile/export flows, migration),
-  `web/src/test/dashboardBuilder.test.tsx`. Superset is the in-memory fake; nothing ran against a live Superset.
+  `web/src/test/dashboardBuilder.test.tsx`, `web/src/test/embeddedDashboard.test.tsx` (in-memory Superset), and live
+  `tests/integration/test_superset_embedding_live.py` (AT-07/AT-08 against Superset 4.1.1, 2026-10-28).
+* **Embedding as built.** `deploy/superset`: `EMBEDDED_SUPERSET`, guest role `aos_embed_guest` (7 read-only
+  permissions, no data access of its own, no `explore_json`; `guest_role.py` resets it on boot), `frame-ancestors`
+  from `SUPERSET_EMBED_ORIGINS`. `aos_security.py` makes a guest's chart-data request the saved chart (its columns,
+  metrics, WHERE/HAVING, row limit), because Superset 4.1.1 skips that check for guests. Each embed config's allowed
+  domains = `ANALYSTOS_SUPERSET_EMBED_DOMAINS` or the `web_url` origin, never empty. A guest holds only the guest
+  role, so workspace-role RLS rules do not apply to it; the token's clauses do. `viewer_rls` refuses unless every
+  published asset is in the viewer's current scope, and a dataset on the live dashboard that the publication does
+  not name gets `1 = 0`. The builder shows a published dashboard through `EmbeddedDashboard.tsx`; each SDK token
+  refresh goes back through the recheck.
 * **Not built / open.** Metric-bound charts publish only against an approved semantic model (the fixture flows use
   verified queries and result handles); previews of new charts are not computed by the builder yet (they come from
-  the run or the result handle); group audiences are not Superset roles; no live Superset certification of guest
-  tokens and RLS rules (AT-07/AT-08 need the live stack).
+  the run or the result handle); group audiences are not Superset roles; the platform endpoint → live Superset →
+  browser chain has not run as one journey (each half is proven live or against the fake).

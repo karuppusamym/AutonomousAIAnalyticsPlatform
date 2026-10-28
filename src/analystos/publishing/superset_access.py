@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from analystos.core.errors import Forbidden, NotFound
+from analystos.core.errors import Forbidden, InvalidInput, NotFound
 from analystos.core.logging import get_logger
 
 log = get_logger(__name__)
@@ -137,15 +137,24 @@ class SupersetAccess:
         return out
 
     # -- embedding ------------------------------------------------------------------------------------------
-    def ensure_embedded(self, dashboard_id: int, allowed_domains: list[str] | None = None) -> str:
-        """The dashboard's embedded uuid (created once)."""
+    def ensure_embedded(self, dashboard_id: int, allowed_domains: list[str]) -> str:
+        """The dashboard's embedded uuid (created once), its allowed domains kept equal to `allowed_domains`
+        (updated in place; Superset keeps the uuid on an upsert). Superset reads an empty list as "any site may
+        embed this", so an empty list is refused rather than written."""
+        wanted = sorted(set(allowed_domains or []))
+        if not wanted:
+            raise InvalidInput("an embedded dashboard needs at least one allowed origin")
         body = self.client.get(f"/api/v1/dashboard/{int(dashboard_id)}/embedded", allow_404=True)
-        uuid = ((body or {}).get("result") or {}).get("uuid")
-        if uuid:
-            return str(uuid)
-        created = self.client.post(f"/api/v1/dashboard/{int(dashboard_id)}/embedded",
-                                   {"allowed_domains": list(allowed_domains or [])})
+        current = (body or {}).get("result") or {}
+        if current.get("uuid") and sorted(current.get("allowed_domains") or []) == wanted:
+            return str(current["uuid"])
+        created = self.client.post(f"/api/v1/dashboard/{int(dashboard_id)}/embedded", {"allowed_domains": wanted})
         return str((created.get("result") or created).get("uuid"))
+
+    def dashboard_dataset_ids(self, dashboard_id: int) -> list[int]:
+        """Every dataset the dashboard's charts read, as Superset holds them now (not as published)."""
+        body = self.client.get(f"/api/v1/dashboard/{int(dashboard_id)}/datasets") or {}
+        return sorted({int(d["id"]) for d in body.get("result") or [] if d.get("id") is not None})
 
     def guest_token(self, *, user: dict[str, str], dashboard_uuid: str, rls: list[dict[str, Any]]) -> str:
         body = {"user": user, "resources": [{"type": "dashboard", "id": dashboard_uuid}], "rls": rls}

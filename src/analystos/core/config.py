@@ -184,6 +184,9 @@ class Settings(BaseSettings):
     superset_public_url: str | None = None
     superset_username: str = "admin"
     superset_password: str = "admin"
+    # Origins an embedded dashboard may be framed from (comma or space separated), checked by Superset against the
+    # referrer. Empty: the origin of ``web_url``. Superset's own frame-ancestors list is SUPERSET_EMBED_ORIGINS.
+    superset_embed_domains: str = ""
     # How Superset reaches the analytics DB (from inside the compose network).
     superset_analytics_sqlalchemy_uri: str = "postgresql+psycopg2://analystos_reader:reader@postgres:5432/analytics"
 

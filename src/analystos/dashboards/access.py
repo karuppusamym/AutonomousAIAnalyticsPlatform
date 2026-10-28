@@ -88,20 +88,35 @@ def _audience_allows(session: Session, user: User, workspace_id: str, role: str,
 
 
 def viewer_rls(scope: Any, bundle: PublishBundle, dataset_ids: dict[str, Any]) -> list[dict[str, Any]]:
-    """The viewer's own row filters as guest-token RLS clauses; refuses what the viewer may not see."""
+    """The viewer's own row filters as guest-token RLS clauses; refuses what the viewer may not see.
+
+    A guest holds no workspace role, so the static RLS rules never reach it: anything this function does not
+    turn into a clause is unfiltered. So it refuses unless every source asset of every published dataset is in
+    the viewer's current scope (an asset deselected, or of a source no longer ready, since publish), and a
+    dataset that names no source asset cannot be checked at all."""
+    in_scope = {a.lower() for a in (scope.assets or [])}
+    withheld_by = {a.lower(): r for a, r in (scope.withheld_assets or {}).items()}
+    filters_by = {}
+    for a, preds in (scope.row_filters or {}).items():
+        filters_by.setdefault(a.lower(), []).extend(preds)
     out = []
     for ds in bundle.datasets:
         if ds.name not in dataset_ids:
             continue
-        withheld = [a for a in ds.source_assets if a in (scope.withheld_assets or {})]
+        if not ds.source_assets:
+            raise Forbidden(f"dataset {ds.name} names no source asset, so your row filters cannot be checked for it")
+        withheld = [a for a in ds.source_assets if a.lower() in withheld_by]
         if withheld:
             raise Forbidden(f"dashboard data from {', '.join(withheld)} is withheld from you by a row filter")
+        outside = [a for a in ds.source_assets if a.lower() not in in_scope]
+        if outside:
+            raise Forbidden(f"dashboard data from {', '.join(outside)} is no longer in your data scope")
         denied = {c.split(".")[-1].lower() for c in scope.denied_columns
                   if any(c.lower().startswith(a.lower() + ".") for a in ds.source_assets)}
         names = {str(c.get("name")).lower() for c in ds.columns}
         if denied & names:
             raise Forbidden(f"dataset {ds.name} shows columns you may not read: {', '.join(sorted(denied & names))}")
-        preds = [p for a in ds.source_assets for p in (scope.row_filters or {}).get(a, [])]
+        preds = [p for a in ds.source_assets for p in filters_by.get(a.lower(), [])]
         if not preds:
             continue
         if any(not _columns(p) <= names for p in preds):
@@ -109,6 +124,30 @@ def viewer_rls(scope: Any, bundle: PublishBundle, dataset_ids: dict[str, Any]) -
                             "it cannot be enforced in Superset, so the dashboard is not shown")
         out.append({"dataset": int(dataset_ids[ds.name]), "clause": " AND ".join(f"({p})" for p in preds)})
     return out
+
+
+def embed_domains(settings: Any) -> list[str]:
+    """Where an embedded dashboard may be framed: the configured origins (comma or space separated), else the
+    UI's own origin. Never empty: Superset reads an empty allowed-domains list as "any site"."""
+    from urllib.parse import urlsplit
+
+    raw = (getattr(settings, "superset_embed_domains", "") or "").replace(",", " ").split()
+    listed = raw or [getattr(settings, "web_url", "") or ""]
+    out = []
+    for entry in listed:
+        url = urlsplit(entry.strip())
+        if url.scheme not in ("http", "https") or not url.hostname or "*" in entry:
+            raise InvalidInput(f"embed origin {entry!r} is not an http(s) origin; set ANALYSTOS_SUPERSET_EMBED_DOMAINS "
+                               "or ANALYSTOS_WEB_URL to the UI's address")
+        out.append(f"{url.scheme}://{url.netloc}")
+    return sorted(set(out))
+
+
+def lock_unpublished_datasets(publisher: Any, dashboard_id: int, published: dict[str, Any]) -> list[dict[str, Any]]:
+    """`1 = 0` for every dataset on the live dashboard that the approved publication does not name. Editors can add
+    charts in Superset itself; a guest may read every chart on its dashboard, so such a dataset gets no rows."""
+    known = {int(i) for i in published.values()}
+    return [{"dataset": ds, "clause": FAIL_CLOSED} for ds in sorted(set(publisher.dashboard_dataset_ids(dashboard_id)) - known)]
 
 
 def guest_token(session: Session, user: User, artifact_id: str, *, publisher: Any = None) -> dict[str, Any]:
@@ -139,10 +178,12 @@ def guest_token(session: Session, user: User, artifact_id: str, *, publisher: An
               reasons=["audience"])  # its own transaction: the refusal below rolls the request back
         raise Forbidden("this dashboard was not published for your audience")
     bundle = PublishBundle.model_validate(approval.payload["bundle"])
-    rls = viewer_rls(resolve_scope(session, current, art.workspace_id, minimum_role="viewer"), bundle,
-                     pub.external_ids.get("datasets") or {})
-    publisher = publisher or get_publisher("superset", get_settings())
-    uuid = publisher.ensure_embedded(int(art.external_id))
+    published = pub.external_ids.get("datasets") or {}
+    rls = viewer_rls(resolve_scope(session, current, art.workspace_id, minimum_role="viewer"), bundle, published)
+    settings = get_settings()
+    publisher = publisher or get_publisher("superset", settings)
+    rls += lock_unpublished_datasets(publisher, int(art.external_id), published)
+    uuid = publisher.ensure_embedded(int(art.external_id), allowed_domains=embed_domains(settings))
     first, _, last = (current.name or current.email).partition(" ")
     token = publisher.guest_token(user={"username": current.email, "first_name": first or current.email,
                                         "last_name": last or "-"}, dashboard_uuid=uuid, rls=rls)

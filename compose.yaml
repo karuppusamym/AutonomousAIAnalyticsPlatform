@@ -271,6 +271,9 @@ services:
       SUPERSET_CONFIG_PATH: /app/analystos/superset_config.py
       SUPERSET_ADMIN_USER: admin
       SUPERSET_ADMIN_PASSWORD: admin
+      # embedding (S08-T5): set a real secret outside dev; origins are the browser-facing UI origins
+      SUPERSET_GUEST_TOKEN_SECRET: ${SUPERSET_GUEST_TOKEN_SECRET:-analystos-dev-guest-token-secret-change-me}
+      SUPERSET_EMBED_ORIGINS: ${SUPERSET_EMBED_ORIGINS:-http://localhost:5173 http://127.0.0.1:5173}
     volumes: [./deploy/superset:/app/analystos:ro]
     # Run through bash: a bind mount from a Windows checkout does not always keep the executable bit.
     entrypoint: ["bash", "/app/analystos/bootstrap.sh"]

@@ -76,8 +76,13 @@ host, Postgres 16 with strict tenancy and RLS): `tests/unit/test_dashboard_{dsl,
 `test_superset_access.py` (56), `tests/integration/test_dashboards_publishing.py` (9: migration up/down/up,
 `test_patch_ops_versioning`, `test_edit_published_forks_draft`, `test_guest_token_rechecks_auth`,
 `test_cross_tenant_superset_denied`, publish, failed-publish retry, reconcile, exports), `web/src/test/dashboardBuilder.test.tsx`
-(5), and a browser check of the builder against a local API. Superset is an in-memory fake throughout: Done (mock)
-for T4/T5 until guest tokens and RLS rules run against a live Superset (AT-07/AT-08).
+(5), and a browser check of the builder against a local API. Superset is an in-memory fake in those tests.
+Live 2026-10-28 (AT-07/AT-08, [evidence](evidence/superset-embedding-at07-at08-20261028.md)):
+`tests/integration/test_superset_embedding_live.py` against Superset 4.1.1 with embedding on. Static RLS rules on the
+workspace viewer role AND together and fail closed; the guest token's per-viewer clause gives the exact analytics-DB
+count; a token reads no other dashboard; the embedded page loads only from the allowed origin. The UI component
+`EmbeddedDashboard.tsx` rendered the filtered dashboard in the built-in browser. Open: the platform endpoint was not in
+that browser journey (stand-in endpoint; its checks are proven by `test_guest_token_rechecks_auth`).
 
 ## 2026-10-27 — S01-T6 ABAC on every call + OPA adapter, S01-T7 tenant-scoped cache keys
 

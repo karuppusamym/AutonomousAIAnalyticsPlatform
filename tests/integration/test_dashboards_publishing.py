@@ -24,6 +24,9 @@ from analystos.db.models import (  # noqa: E402
     AuditEvent,
     Publication,
     QueryExecution,
+    Source,
+    SourceAsset,
+    SourceColumn,
     User,
     VerifiedQuery,
     WorkspaceMember,
@@ -65,6 +68,16 @@ def world(control_db):
         s.flush()
         for role, u in people.items():
             add_member(s, owner, ws.id, u.email, role)
+        # the dashboards read itsm.incidents: a ready source with that asset selected puts it in members' scope
+        src = Source(id=new_id("src"), workspace_id=ws.id, kind="postgres", name="ITSM", config={}, status="ready")
+        s.add(src)
+        s.flush()
+        asset = SourceAsset(id=new_id("ast"), source_id=src.id, workspace_id=ws.id, schema_name="itsm", name="incidents",
+                            source_name="incidents", kind="table", selected=True)
+        s.add(asset)
+        s.flush()
+        for i, col in enumerate(("opened_at", "priority", "region", "incidents")):
+            s.add(SourceColumn(asset_id=asset.id, name=col, ordinal=i, data_type="text"))
         qx = QueryExecution(id=new_id("qx"), workspace_id=ws.id, actor=f"user:{owner.id}", sql=(
             "SELECT priority, COUNT(*) AS incidents, region FROM itsm.incidents GROUP BY priority, region"),
             status="ok", referenced_assets=["itsm.incidents"])
@@ -73,7 +86,7 @@ def world(control_db):
             "SELECT date_trunc('week', opened_at) AS week, COUNT(*) AS incidents, region FROM itsm.incidents "
             "GROUP BY 1, 3"), parameters=[], dialect="postgres", status="active", created_by=owner.id,
             origin={"assets": ["itsm.incidents"]}))
-        ids = {"ws": ws.id, "owner": owner.id, "qx": qx.id, **{r: u.id for r, u in people.items()},
+        ids = {"ws": ws.id, "owner": owner.id, "qx": qx.id, "asset": asset.id, **{r: u.id for r, u in people.items()},
                "headers": {k: _auth(u) for k, u in {"owner": owner, **people}.items()}}
     return ids
 
@@ -324,6 +337,7 @@ def test_guest_token_rechecks_auth(api, world, superset, monkeypatch):
     assert first.status_code == 200, first.text
 
     class Scope:  # the viewer's resolved scope: a row filter rendered with their attributes
+        assets = ["itsm.incidents"]
         row_filters = {"itsm.incidents": ["region = 'EMEA'"]}
         withheld_assets: dict = {}
         denied_columns: list = []
@@ -348,6 +362,15 @@ def test_guest_token_rechecks_auth(api, world, superset, monkeypatch):
     finally:
         with session_scope() as s:
             s.add(WorkspaceMember(workspace_id=world["ws"], user_id=world["viewer"], role=role))
+    with session_scope() as s:  # the asset deselected after publish: out of scope now, so no token (a guest has
+        s.get(SourceAsset, world["asset"]).selected = False  # no role rules; nothing else would filter it)
+    try:
+        refused = api.post(f"/api/v2/dashboards/{art_b}/embed-token", headers=h["viewer"])
+        assert refused.status_code == 403 and "no longer in your data scope" in refused.text
+    finally:
+        with session_scope() as s:
+            s.get(SourceAsset, world["asset"]).selected = True
+    assert api.post(f"/api/v2/dashboards/{art_b}/embed-token", headers=h["viewer"]).status_code == 200
     with session_scope() as s:  # rolled back: no token for an unpublished dashboard
         s.get(Artifact, art_b).status = "rolled_back"
     assert api.post(f"/api/v2/dashboards/{art_b}/embed-token", headers=h["viewer"]).status_code == 422
