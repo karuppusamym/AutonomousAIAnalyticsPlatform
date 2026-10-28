@@ -146,6 +146,7 @@ def test_admin_model_health(control_db, counters, monkeypatch):
         # the platform cap counts the whole day's spend in this database: earlier tests' fake calls can exceed $2
         roomy = PlatformSettings()
         roomy.llm.daily_spend_cap_usd = 1_000.0
+        monkeypatch.setattr("analystos.services.platform_settings.get", lambda: roomy)  # the usage sink's cap
         router = ModelRouter(transport=transport, sink=DbUsageSink(counters), max_retries=0,
                              settings_provider=lambda: roomy, cache=ResponseCache(None))
         monkeypatch.setattr("analystos.runtime.context.default_router", lambda: router)

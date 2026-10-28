@@ -120,7 +120,9 @@ def test_platform_host_allowlist_gates_registration_and_connection(world, double
         with session_scope() as s:
             platform_settings.update(s, s.get(User, admin_id), {"outbound": {"mcp_host_allowlist": ["127.0.0.1"]}})
         sid = _registered(world, double)
-        assert double.calls  # registered, allowed and refreshed against the listed host
+        with session_scope() as s:  # registered, allowed and refreshed (tools/list) against the listed host
+            srv = s.get(McpServer, sid)
+            assert srv.status == "ready" and srv.tools and double.auth_failures == []
         with session_scope() as s:
             platform_settings.update(s, s.get(User, admin_id), {"outbound": {"mcp_host_allowlist": []}})
         calls = len(double.calls)

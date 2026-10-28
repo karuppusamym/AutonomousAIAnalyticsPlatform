@@ -443,11 +443,11 @@ def test_external_admission_quarantine_and_rescreen(api, world, monkeypatch):
     from analystos.mcp import client as mc
 
     token = "double-token-s10"
-    monkeypatch.setenv("MCP_DOUBLE_TOKEN", token)
+    monkeypatch.setenv("ANALYSTOS_SOURCE_SECRET_MCP_DOUBLE_TOKEN", token)  # S02: env refs need the prefix
     h, ws = world["headers"], world["ws"]
     with double_server(token) as double:
         with session_scope() as s:
-            srv = mc.register_server(s, U(world["owner"]), ws, name="bi_s10", url=double.url, secret_ref="env:MCP_DOUBLE_TOKEN")
+            srv = mc.register_server(s, U(world["owner"]), ws, name="bi_s10", url=double.url, secret_ref="env:ANALYSTOS_SOURCE_SECRET_MCP_DOUBLE_TOKEN")
             sid = srv.id
         with session_scope() as s:
             mc.set_allowed(s, U(world["owner"]), ws, sid, True)
