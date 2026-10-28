@@ -160,3 +160,23 @@ def test_strict_is_the_default():
     from analystos.core.config import Settings
 
     assert Settings.model_fields["tenancy_mode"].default == "strict"
+
+
+def test_owned_by_refuses_a_function_without_its_parameter():
+    """A decorator left on the wrong function (a helper inserted above the one it guarded) fails at import."""
+    import pytest
+
+    from analystos.tenancy.background import owned_by
+
+    with pytest.raises(TypeError, match="no parameter 'run_id'"):
+        @owned_by("analysis_run", "run_id")
+        def helper(session, run, outcome):  # noqa: ARG001
+            return None
+
+
+def test_engine_entry_points_run_as_the_run_owner():
+    """The local orchestrator calls these from a driver thread with no tenant bound; each binds its own."""
+    from analystos.runtime import engine
+
+    for fn in (engine.plan_run, engine.get_state, engine.execute_task, engine.finish_run):
+        assert getattr(fn, "__owned_by__", None) == ("analysis_run", "run_id"), fn.__name__

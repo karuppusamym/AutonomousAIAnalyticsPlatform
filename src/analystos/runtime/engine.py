@@ -536,7 +536,6 @@ def release_orphaned_claims(run_ids: list[str] | None = None) -> list[str]:
     return run_ids
 
 
-@owned_by("analysis_run", "run_id")
 def _observe_run(s, run: AnalysisRun, outcome: str) -> None:
     """Run outcome, duration and step count (S12 §2 metrics)."""
     from analystos.observability import metrics
@@ -552,6 +551,7 @@ def _observe_run(s, run: AnalysisRun, outcome: str) -> None:
     metrics.observe("analystos_run_steps", steps, outcome=outcome)
 
 
+@owned_by("analysis_run", "run_id")
 def finish_run(run_id: str, outcome: str, error: str | None = None) -> None:
     with session_scope() as s:
         run = s.get(AnalysisRun, run_id, with_for_update=True)

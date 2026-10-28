@@ -110,6 +110,8 @@ def owned_by(table: str, param: str) -> Callable[[F], F]:
 
     def wrap(fn: F) -> F:
         sig = inspect.signature(fn)
+        if param not in sig.parameters:  # a decorator left on the wrong function would bind nothing, silently
+            raise TypeError(f"@owned_by({table!r}, {param!r}) on {fn.__qualname__}, which has no parameter {param!r}")
 
         @functools.wraps(fn)
         def inner(*args: Any, **kwargs: Any) -> Any:
@@ -117,6 +119,7 @@ def owned_by(table: str, param: str) -> Callable[[F], F]:
             with as_owner_of(table, row_id):
                 return fn(*args, **kwargs)
 
+        inner.__owned_by__ = (table, param)  # type: ignore[attr-defined]
         return inner  # type: ignore[return-value]
 
     return wrap
