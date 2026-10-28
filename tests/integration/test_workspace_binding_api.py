@@ -227,10 +227,12 @@ def test_the_owning_path_still_works_for_the_dual_member(api, world):
 
 # ------------------------------------------------------------------------------------ SSE revocation
 def _later(delay: float, fn) -> threading.Thread:
+    from analystos.tenancy.background import carry_context  # the delayed write acts for the test's tenant
+
     def go():
         time.sleep(delay)
         fn()
-    t = threading.Thread(target=go, daemon=True)
+    t = threading.Thread(target=carry_context(go), daemon=True)
     t.start()
     return t
 

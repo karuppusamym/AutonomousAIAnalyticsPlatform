@@ -14,6 +14,8 @@ pytestmark = pytest.mark.integration
 ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="worker pools need POSIX select() on pipes; the conformance "
+                    "suite skips every test on Windows (tests/conformance/worker/conftest.py)")
 def test_the_conformance_suite_passes_on_temporal_pools():
     env = {**os.environ, "ANALYSTOS_CONFORMANCE_IMPL": "temporal", "PYTHONPATH": str(ROOT / "src")}
     r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-o", "addopts=", "-p", "no:cacheprovider", "-rs",

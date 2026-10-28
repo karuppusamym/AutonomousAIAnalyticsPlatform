@@ -148,7 +148,7 @@ def test_admin_model_health(control_db, counters, monkeypatch):
         monkeypatch.setattr("analystos.runtime.context.default_router", lambda: router)
         probe = api.get("/api/admin/models/health", params={"probe": 1}, headers=admin).json()
         result = next(p for p in probe["providers"] if p["provider"] == "openrouter")["probe"]
-        assert result["ok"] is True and transport.chat_calls[0]["max_tokens"] == 5
+        assert result["ok"] is True and transport.chat_calls[0]["max_tokens"] == 5, result
         assert counters.cooldown("openrouter") is None
         after = api.get("/api/admin/models/health", headers=admin).json()
         assert next(p for p in after["providers"] if p["provider"] == "openrouter")["last_success_at"]

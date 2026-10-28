@@ -86,9 +86,13 @@ def test_migration_0041_up_down_up(control_db):
             return {c["name"] for c in inspect(engine).get_columns(table)}
 
         command.upgrade(cfg, "0041")
+        # columns later migrations add: tenant_id (0057, ADR-009) everywhere; S04 conversations (0062); the S09 noise
+        # gate on monitors (0071)
+        later = {"monitor": {"noise_state", "approval_id", "rule_hash"},
+                 "ask_thread": {"summarized_at", "closed_at", "legal_hold", "branch_from_message_id", "parent_conversation_id",
+                                "request_id", "channel"}}
         for table, model in (("definition", Definition), ("monitor", Monitor), ("ask_thread", AskThread)):
-            # tenant_id arrives with 0057 (ADR-009); the 0041 schema predates it
-            assert cols(table) == {c.name for c in model.__table__.columns} - {"tenant_id"}, table
+            assert cols(table) == {c.name for c in model.__table__.columns} - {"tenant_id"} - later.get(table, set()), table
         idx = {i["name"]: i for i in inspect(engine).get_indexes("definition")}
         assert "tested" in str(idx["uq_definition_one_draft"].get("dialect_options", {}).get("postgresql_where"))
         command.downgrade(cfg, "0037")

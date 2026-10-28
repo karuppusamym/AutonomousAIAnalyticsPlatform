@@ -57,6 +57,8 @@ DEFAULT_ALLOWED_IMPORTS = ("math", "statistics", "json", "numpy", "pandas", "pol
 HARNESS = Path(__file__).with_name("_harness.py")
 MARKER = "\x1e__AOS_SANDBOX_RESULT__\x1e"
 MAX_CODE_CHARS = 100_000
+# A container's exit signals are Linux signals whatever the host OS (Windows' signal module has no SIGKILL/SIGXCPU).
+LINUX_SIGNALS = {6: "SIGABRT", 9: "SIGKILL", 11: "SIGSEGV", 15: "SIGTERM", 24: "SIGXCPU", 25: "SIGXFSZ"}
 
 DENIED_BUILTINS = frozenset({
     "open", "exec", "eval", "compile", "__import__", "globals", "locals", "vars", "getattr", "setattr", "delattr",
@@ -343,7 +345,10 @@ def _execute(code: str, *, backend: str, inputs: dict | None = None, timeout_s: 
             if container:
                 isolation.docker_kill(container)
             with contextlib.suppress(ProcessLookupError):
-                os.killpg(proc.pid, signal.SIGKILL)
+                if hasattr(os, "killpg"):
+                    os.killpg(proc.pid, signal.SIGKILL)
+                else:  # Windows host (container backend only): the docker client; the container went with docker kill
+                    proc.kill()
             out, err = proc.communicate()
         code_rc = proc.returncode
     finally:
@@ -361,7 +366,10 @@ def _execute(code: str, *, backend: str, inputs: dict | None = None, timeout_s: 
         if container and code_rc is not None and code_rc > 128:  # docker reports a signal as 128 + n
             sig = code_rc - 128
         if sig:
-            name = signal.Signals(sig).name if sig in signal.Signals._value2member_map_ else str(sig)
+            if container:
+                name = LINUX_SIGNALS.get(sig, str(sig))
+            else:
+                name = signal.Signals(sig).name if sig in signal.Signals._value2member_map_ else str(sig)
             why += f" (signal {name}" + {"SIGXCPU": ": CPU limit", "SIGKILL": ": CPU hard limit or memory limit"}.get(name, "") + ")"
         tail = err.decode("utf-8", "replace")[-2000:]
         if "MemoryError" in tail:
