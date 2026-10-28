@@ -92,16 +92,19 @@ def ask_runner(mode: str, *, limit: int = 6) -> Callable[[Any], dict[str, Any]]:
     """A runner scoring one candidate on the Ask golden suite with its profile pinned to it."""
     def go(c: Any) -> dict[str, Any]:
         from analystos.llm.config import load_models_config
+        from analystos.tenancy import DEFAULT_TENANT_ID, tenant_scope
         from evaluation import ask
         from evaluation.gates import ask_metrics
 
         profile = load_models_config().profiles[c.profile]
         others = sorted({m for m in [*profile.models, *profile.escalation_models] if m != c.model})
-        if mode == "live":
-            with _live_disabled(others):
-                result = ask.run("live", limit=limit)
-        else:
-            result = ask.run("fake", limit=limit, disabled_models=others)
+        # The suite acts as the seeded admin, in the default tenant (strict tenancy: an unbound session sees nothing).
+        with tenant_scope(DEFAULT_TENANT_ID):
+            if mode == "live":
+                with _live_disabled(others):
+                    result = ask.run("live", limit=limit)
+            else:
+                result = ask.run("fake", limit=limit, disabled_models=others)
         if not result.outcomes:
             raise RuntimeError("; ".join(result.problems) or "the suite produced no outcomes")
         m = ask_metrics(result)

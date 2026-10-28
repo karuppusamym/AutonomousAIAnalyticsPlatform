@@ -839,3 +839,49 @@ Workspace display names now prefix generated dashboards; topic collections reuse
 ## 2026-10-25 — Single-reviewer publishing (PUBLISH-SELF-01)
 
 Per the user's explicit request, KPI review now respects workspace separation-of-duties configuration through both API routes. Existing role/hash/policy/expiry/definition checks remain; structural model, relationship and destination reviews retain independent-review rules. The user's already-approved, unchanged retail bundle was reverified and retried successfully: four published Superset dashboards and 12 working chart data requests. Twenty integration, 44 unit and 36 UI tests pass. See [evidence](evidence/single-reviewer-publishing-20261025.md).
+
+## 2026-10-28 — S12 Platform operations: deployment, observability, evaluation gates, cost ledger, load/SLO, DR (T1–T7)
+
+Helm (`deploy/helm/analystos`): every pod has a role (`api`, `query` = the analysis pool, `compute` incl. the isolated
+pools, `publish`, `crawl`, `elt`, `scheduler`, `web`, `migrate`, `ops`); opt-in per-role NetworkPolicies with an
+egress allowlist per peer group (model hosts only for roles that call models; compute reaches neither models nor
+sources), KEDA ScaledObjects on Temporal task queues (replacing the pool HPA), gVisor `runtimeClassName` for compute
+pools, External Secrets as a pre-install hook, an OpenShift (restricted-v2) mode, the migration Job as `app_migrator`,
+PodMonitors, a PrometheusRule and three Grafana dashboards, nightly CronJobs for `analystos audit verify` (+ WORM export)
+and the new `analystos ops rls-check`. Rendered and linted with helm 3.16.4 for default/ha/airgapped/small and every
+S12 switch on (`tests/unit/test_helm_chart.py`, 28 passed); not installed on a cluster.
+
+Observability (`src/analystos/observability/`): Prometheus metrics for request latency per route class, runs
+(outcome, duration, steps), gateway statements and rejection reasons, model calls/tokens/cost/fallbacks per
+provider and model, cache hit rates, approval latency, VOID sweeps, Desk resolutions, RLS denials and budget use;
+`/metrics` on the API and on workers/scheduler; OTel spans (request, model call, gateway statement) whose attributes
+pass an allowlist and hash any text, so no prompt, SQL or row reaches a trace. Alerts: SLO burn rates (Ask latency,
+run success, availability), queue backlog > 100 for 10 min, provider errors > 5%, spend > 80% of a budget, audit chain
+verify failed (page), RLS coverage failed (page). `tests/unit/test_observability.py` (13).
+
+Evaluation gates (`config/eval_gates.yaml` v6): `release_safety` (pytest negative suites: SQL safety corpus 100%,
+cross-tenant 0 leaks, publish integrity 100%; skipped = fail) and `model_matrix_fake` block CI after migrate; the live
+per-model matrix runs nightly and is served at `GET /v2/admin/models/evaluations`. Candidates are allowlisted models
+outside `blocked_families` (Claude and Gemini never evaluated nor called; `blocked_family_calls` gated at 0).
+Run locally on a migrated plane (`evidence/2026-10-28-s12-release-gates.json`): release_safety passed (SQL safety 350/350, cross-tenant 51 / 0 leaks, publish integrity 54/54, nothing skipped), model_matrix_fake passed (14 rows, pinning proven 5/5 per coding candidate, 0 blocked-family calls); only the `coding` profile is exercised by the Ask golden suite. `tests/unit/test_model_matrix.py` (9).
+
+Cost ledger: `GET /v2/admin/spend?group_by=` over model calls, query scan bytes/credits, compute CPU-seconds and
+artifact storage (rates `config/cost_rates.yaml`), by request, run, conversation, user, workspace, tenant, day,
+category and item; monthly CSV/Parquet export (API and `analystos ops spend-export`); the `cost_ledger` view
+(security_invoker) for SQL readers. Blocked-family spend stays in totals, flagged. `tests/unit/test_cost_ledger.py` (8),
+`tests/integration/test_platform_ops.py` (3, Postgres 16: migration 0066 up/down/up, view and service bound to the
+tenant by RLS, rls-check, matrix grants).
+
+DR drill (`scripts/dr_drill.py`, evidence `evidence/2026-10-28-s12-dr-drill.md`): PITR on Postgres 16 with WAL
+archiving — base backup 5.5 MB in 5.8 s, an operator deleting every workspace, recovery to the target time in 16.9 s;
+phase-A data present, deleted rows back, the incident's row absent, Alembic head unchanged, `ops rls-check` and
+`audit verify` pass; RPO bound 60 s (archive_timeout; spec ≤ 15 min). Temporal 1.25: 5 workflows mid-flight across a
+`pg_dump` of both Temporal databases, server and database destroyed, restored in 62 s; all still RUNNING with
+unchanged histories, all completed exactly once on a new worker (AT-09 at the Temporal layer).
+
+Load and SLOs (`scripts/load/slo_report.py`, `config/slo.yaml`; evidence `evidence/2026-10-28-s12-slo-{lite,temporal}.md`): at 2x pilot (20 people asking for 120 s + 20 concurrent investigations) on a Windows 8-core dev host without a model — availability 100% in both topologies; runs 20/20 to the approval gate, p95 294 s (lite); Ask latency missed: 81% within 3 s, p95 6.3 s (API + 2 Temporal workers) and 45%, p95 10.4 s (lite, runs in the API process). In the Temporal topology no run finished: the compute process pool breaks on Windows (`BrokenProcessPool`). Not a sign-off: rerun on Linux nodes.
+
+Supply chain: `.github/workflows/supply-chain.yml` (gitleaks, Syft SBOM, Grype, cosign keyless signing + SBOM
+attestation on main, npm audit, pip-audit, weekly rescan) — checked by `tests/unit/test_supply_chain.py` (5); not yet
+run on GitHub. Not done: actions pinned by SHA, `uv.lock`, engines filling `scan_bytes`/`credits`, desk/context/compute
+spans, a cluster install, the customer IdP and pen test (T8, hand-off `s12-t8-idp-pentest-handoff.md`).

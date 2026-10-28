@@ -376,7 +376,8 @@ class OracleTransport:
         found = [q for q in self.answers if q in text or json.dumps(q, ensure_ascii=False)[1:-1] in text]
         sql = self.answers[max(found, key=len)] if found else None
         content = json.dumps({"sql": sql, "explanation": "benchmark oracle"} if sql else {})
-        return {"model": "benchmark/oracle", "choices": [{"message": {"content": content}}],
+        # Echo the requested model as a provider does: the call record then shows which model the router chose (S12 matrix).
+        return {"model": payload.get("model") or "benchmark/oracle", "choices": [{"message": {"content": content}}],
                 "usage": {"prompt_tokens": len(text) // 4, "completion_tokens": len(content) // 4, "cost": 0.0}}
 
     def decide(self, *, base_url, api_key, payload, timeout):
