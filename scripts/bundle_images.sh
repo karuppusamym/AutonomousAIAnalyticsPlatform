@@ -33,13 +33,13 @@ OUT="${OUT:-$ROOT/dist/analystos-images-$TAG}"
 command -v docker >/dev/null || { echo "docker is required" >&2; exit 1; }
 mkdir -p "$OUT"
 
-APP_IMAGES=("analystos/app:$TAG" "analystos/web:$TAG" "analystos-superset:4.1.1")
+APP_IMAGES=("analystos/app:$TAG" "analystos/web:$TAG" "analystos-superset:6.1.0")
 DEP_IMAGES=("pgvector/pgvector:pg16" "redis:7-alpine" "temporalio/auto-setup:1.25")
 
 if [[ $BUILD -eq 1 ]]; then
   docker build -t "analystos/app:$TAG" -f "$ROOT/deploy/docker/Dockerfile" "$ROOT"
   docker build -t "analystos/web:$TAG" "$ROOT/web"
-  docker build -t "analystos-superset:4.1.1" "$ROOT/deploy/superset"
+  docker build -t "analystos-superset:6.1.0" "$ROOT/deploy/superset"
 fi
 
 IMAGES=("${APP_IMAGES[@]}")

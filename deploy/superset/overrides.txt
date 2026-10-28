@@ -1,0 +1,8 @@
+# Versions above apache-superset 6.1.0's own upper bounds, forced with `uv pip install --overrides`: every
+# release inside those bounds has a fixed high/critical CVE (Grype gate, supply-chain.yml). Superset 6.1.0 pins
+# cryptography<47, Pillow<13, pyarrow<19, msgpack<1.1; 7.0 raises the first three bounds itself.
+# The live publish, isolation and embedding tests ran against this set (see the Dockerfile header).
+cryptography==50.0.2
+pillow==13.0.0
+pyarrow==23.0.1
+msgpack==1.2.4

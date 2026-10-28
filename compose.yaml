@@ -262,7 +262,7 @@ services:
 
   # ---------------------------------------------------------------- optional features
   superset:
-    image: analystos-superset:4.1.1
+    image: analystos-superset:6.1.0
     build: {context: ./deploy/superset, dockerfile: Dockerfile}
     profiles: ["bi"]
     depends_on:

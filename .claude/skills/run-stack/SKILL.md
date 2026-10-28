@@ -4,8 +4,9 @@ description: Boot the AnalystOS stack locally (infra in docker compose, API/work
 ---
 
 1. `docker compose up -d postgres redis neo4j temporal superset` — first Superset boot builds
-   `deploy/superset/Dockerfile` (adds psycopg2). Behind a TLS-inspecting proxy pass the CA:
-   `docker build --secret id=pipcert,src=<ca-bundle> -t analystos-superset:4.1.1 deploy/superset`.
+   `deploy/superset/Dockerfile` (Superset 6.1.0 on python:3.11-slim). Its first boot migrates an existing 4.1.x
+   metadata DB one-way: `pg_dump` the `superset` database first. Behind a TLS-inspecting proxy pass the CA:
+   `docker build --secret id=pipcert,src=<ca-bundle> -t analystos-superset:6.1.0 deploy/superset`.
 2. Wait for health: `curl -fs localhost:8088/health` (Superset), `docker compose ps`.
 3. `.venv/bin/analystos migrate && .venv/bin/analystos seed`.
 4. Start processes (background, logs in `var/logs/`):
