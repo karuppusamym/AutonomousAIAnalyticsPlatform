@@ -177,3 +177,23 @@ as panels with P5-03 and P6-03.
 - Notifications are polled (30 s), not pushed; there is no "load more" beyond the API's 100 most recent.
 - Publication rollback is available from the run summary, using `summary.publication.publication_id`.
   There is no separate publications list endpoint.
+# Lite workspace
+
+Open a workspace and select **Lite workspace** in the header, or visit
+`/w/<workspace-id>/lite`. This alternate shell starts with the existing Ask
+conversation and keeps Data, Metadata, Investigations, Outputs, and Publish in
+a compact activity rail. History and Evidence & SQL are expandable; Workflow
+opens a guide beside the current tool. **Full interface** restores the standard
+navigation. The choice lasts for the browser tab's session.
+
+The Lite frame opens with three panels. Drag either divider to resize its side
+panel, or focus a divider and use the arrow keys (Home/End select its limits).
+Double-click a divider to restore its default width. Navigation and Workflow
+can be collapsed independently; Focus mode hides both, and Three panels restores
+them without clearing the current draft. Narrow screens stack the side panels
+around the working area instead of squeezing the conversation.
+
+Lite uses the existing authenticated routes, APIs, and publication approvals.
+Tools switch within the shell; this version does not interpret database setup
+or publishing commands from chat. Superset publishing still uses the existing
+dashboard and approval workflow and requires its normal backend configuration.

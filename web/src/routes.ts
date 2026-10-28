@@ -183,6 +183,7 @@ const P = (id: ScreenId, params: Record<string, string | undefined> = {}) => fil
 
 /** Typed links into the IA. Every in-app link goes through here, so a route move is one edit. */
 export const to = {
+  lite: (ws: string) => `/w/${encodeURIComponent(ws)}/lite`,
   workspaces: () => "/",
   workspace: (ws: string) => P("overview", { wsId: ws }),
   ask: (ws: string) => P("ask", { wsId: ws }),
