@@ -3,13 +3,14 @@ import {
   api, errorMessage, saveBlob, type BuilderClarify, type BuilderDashboard, type BuilderDocument, type BuilderOp, type BuilderTurn,
   type BuilderVersion,
 } from "../api";
-import type { Preview } from "../lib/charts";
+import { formatKpi, type Preview } from "../lib/charts";
 import { useExpertView } from "../lib/expert";
 import { fmtDate } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import { ChartView } from "./Chart";
 import { answeredByText } from "./DashboardDraft";
 import { cellStyle, ROW_PX } from "./DashboardPreview";
+import { applyViewFilters, ExploreBar, RowsPanel, TileControls, TileStatus, useDashboardExplore, type Explore } from "./DashboardExplore";
 import { DashboardSummary } from "./DashboardSummary";
 import { EmbeddedDashboard } from "./EmbeddedDashboard";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -66,7 +67,9 @@ export function diffDocuments(before: BuilderDocument, after: BuilderDocument): 
   return out;
 }
 
-function BuilderGrid({ doc, focus, onFocus }: { doc: BuilderDocument; focus: string | null; onFocus: (id: string) => void }) {
+function BuilderGrid({ doc, focus, onFocus, explore }: {
+  doc: BuilderDocument; focus: string | null; onFocus: (id: string) => void; explore: Explore;
+}) {
   const expert = useExpertView();
   if (!doc.layout.items.length) {
     return <EmptyState title="Empty dashboard">Ask for a chart below, e.g. “add incidents by priority”.</EmptyState>;
@@ -75,25 +78,40 @@ function BuilderGrid({ doc, focus, onFocus }: { doc: BuilderDocument; focus: str
   const kpis = new Map(doc.kpis.map((k) => [k.id, k]));
   const texts = new Map(doc.text_blocks.map((t) => [t.id, t]));
   return (
-    <div className="dash-grid builder-grid" style={{ gridAutoRows: `${ROW_PX}px` }} aria-label="Dashboard layout">
+    <div className="dash-grid builder-grid" style={{ gridAutoRows: `minmax(${ROW_PX}px, auto)` }} aria-label="Dashboard layout">
       {doc.layout.items.map((item) => {
         const style = cellStyle({ chart: item.ref, row: item.y, col: item.x, width: item.w, height: item.h });
         const chart = charts.get(item.ref), kpi = kpis.get(item.ref), text = texts.get(item.ref);
         const selected = focus === item.ref;
+        const name = chart?.title ?? kpi?.title ?? item.ref;
+        const tile = explore.tiles.get(item.ref);
+        const preview = chart ? explore.preview(chart) : undefined;
+        const controls = !!chart && explore.plans.has(chart.id) && !!chart.preview?.rows?.length;
         return (
-          <button key={item.ref} type="button" className={`dash-cell builder-cell${selected ? " selected" : ""}`} style={style}
-            aria-pressed={selected} onClick={() => onFocus(item.ref)} title={`Select ${item.ref} for the next request`}>
+          <div key={item.ref} className={`dash-cell builder-cell${selected ? " selected" : ""}`} style={style} role="group" aria-label={name}>
+            <div className="cell-head">
+              <span className="dash-cell-title grow">{chart?.title}
+                {chart?.labels?.includes("experimental") && <Tag tone="warning">experimental</Tag>}
+                {chart?.labels?.includes("ad_hoc") && <Tag tone="warning">new calculation</Tag>}
+                {chart?.query?.compare && chart.query.compare !== "none" && <Tag tone="info">{chart.query.compare.toUpperCase()}</Tag>}
+                {(chart || kpi) && <TileStatus explore={explore} id={item.ref} drilled={chart ? explore.drills[chart.id] : undefined} />}
+              </span>
+              <button type="button" className="btn btn-xs cell-select" aria-pressed={selected} onClick={() => onFocus(item.ref)}
+                aria-label={`Select ${name} for the next request`} title={`Select ${item.ref} for the next request`}>
+                {selected ? "Selected" : "Select"}
+              </button>
+            </div>
             {chart && (
               <>
-                <div className="dash-cell-title">{chart.title} {chart.labels?.includes("experimental") && <Tag tone="warning">experimental</Tag>}
-                  {chart.labels?.includes("ad_hoc") && <Tag tone="warning">new calculation</Tag>}
-                  {chart.query?.compare && chart.query.compare !== "none" && <Tag tone="info">{chart.query.compare.toUpperCase()}</Tag>}</div>
-                {chart.preview?.rows?.length ? (
+                {preview?.rows?.length ? (
                   <ErrorBoundary label={`Chart ${chart.id}`}>
-                    <ChartView type={chart.type === "area" ? "line" : chart.type} preview={chart.preview as Preview}
-                      height={Math.max(100, item.h * ROW_PX - 50)} showTable={false} />
+                    <ChartView type={chart.type === "area" ? "line" : chart.type} preview={preview as Preview}
+                      height={Math.max(100, item.h * ROW_PX - 58)} showTable={false}
+                      onSelect={(sel) => explore.select(chart, sel)} />
                   </ErrorBoundary>
-                ) : <span className="muted small">{chart.type} · {chart.encoding.x ?? "—"} × {chart.encoding.y.join(", ")} (no preview yet)</span>}
+                ) : explore.drills[chart.id]?.loading ? <span className="muted small">Loading…</span>
+                  : <span className="muted small">{chart.type} · {chart.encoding.x ?? "—"} × {chart.encoding.y.join(", ")} (no preview yet)</span>}
+                {controls && <TileControls explore={explore} chart={chart} />}
                 {expert && <span className="muted small">{chart.dataset_ref.kind === "metric" ? `metric ${chart.dataset_ref.name}@${chart.dataset_ref.version}`
                   : chart.dataset_ref.kind === "verified_query" ? `verified query ${chart.dataset_ref.name}` : `query ${chart.dataset_ref.handle_id}`}
                   {chart.provenance?.sources?.length ? ` · ${chart.provenance.sources.join(", ")}` : ""}</span>}
@@ -101,12 +119,13 @@ function BuilderGrid({ doc, focus, onFocus }: { doc: BuilderDocument; focus: str
             )}
             {kpi && (
               <div className="kpi">
-                <div className="kpi-value">{kpi.value ?? "—"}{kpi.unit ? ` ${kpi.unit}` : ""}</div>
+                <div className="kpi-value">{tile?.status === "filtered" && tile.value !== undefined
+                  ? formatKpi(typeof tile.value === "number" ? tile.value : null) : (kpi.value ?? "—")}{kpi.unit ? ` ${kpi.unit}` : ""}</div>
                 <div className="kpi-label">{kpi.title} {expert && <span className="muted small">{kpi.metric.name}@{kpi.metric.version}</span>}</div>
               </div>
             )}
             {text && <Markdown text={text.markdown || "_Empty text block_"} />}
-          </button>
+          </div>
         );
       })}
     </div>
@@ -325,7 +344,6 @@ export function DashboardBuilder({ artifactId, role, onSwitch }: {
   artifactId: string; role: string | null; onSwitch?: (artifactId: string) => void;
 }) {
   const dash = useAsync(() => api.builderDashboard(artifactId), [artifactId]);
-  const [focus, setFocus] = useState<string | null>(null);
   if (dash.loading && !dash.data) return <Loading label="Loading dashboard…" />;
   if (!dash.data) return <ErrorBox error={dash.error} onRetry={() => void dash.reload()} />;
   const d = dash.data;
@@ -333,13 +351,44 @@ export function DashboardBuilder({ artifactId, role, onSwitch }: {
     if (next.id !== d.id && onSwitch) onSwitch(next.id);  // an edit of a published dashboard forked a draft
     dash.setData(next);
   };
+  return <BuilderView dashboard={d} role={role} onUpdated={updated} />;
+}
+
+function BuilderView({ dashboard: d, role, onUpdated: updated }: {
+  dashboard: BuilderDashboard; role: string | null; onUpdated: (d: BuilderDashboard) => void;
+}) {
+  const [focus, setFocus] = useState<string | null>(null);
+  const explore = useDashboardExplore(d);
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const canEdit = role === "owner" || role === "editor" || role === "analyst";
+  const apply = async () => {
+    if (!explore.view) return;
+    setApplying(true);
+    setApplyError(null);
+    try {
+      const turn = await applyViewFilters(d, explore.view);
+      if (turn.status === "refused") setApplyError((turn.refused ?? []).map((r) => r.reason).join("; "));
+      else {
+        explore.clear();
+        updated(turn.dashboard);
+      }
+    } catch (err) {
+      setApplyError(errorMessage(err));
+    } finally {
+      setApplying(false);
+    }
+  };
   return (
     <div className="stack dashboard-builder">
       <Card title={<>{d.document.title} <span className="muted small">· v{d.version}</span></>} actions={<>
         {d.document.sensitivity && <Tag tone={d.document.sensitivity === "internal" || d.document.sensitivity === "public" ? "neutral" : "warning"}>{d.document.sensitivity}</Tag>}
         {d.document.filters.map((f) => <Tag key={f.id} tone="info">{f.value == null ? `${f.field.split(".").pop()}: any` : `${f.field} ${f.op} ${JSON.stringify(f.value)}`}</Tag>)}
       </>}>
-        <BuilderGrid doc={d.document} focus={focus} onFocus={(id) => setFocus(focus === id ? null : id)} />
+        {d.document.charts.length > 0 && <ExploreBar explore={explore} canEdit={canEdit} onApply={() => void apply()} applying={applying} />}
+        <ErrorBox error={applyError ?? explore.error} />
+        <BuilderGrid doc={d.document} focus={focus} onFocus={(id) => setFocus(focus === id ? null : id)} explore={explore} />
+        <RowsPanel explore={explore} charts={d.document.charts} />
       </Card>
       <ErrorBoundary label="Summary" resetKey={`${d.id}@${d.version}`}><DashboardSummary dashboard={d} /></ErrorBoundary>
       {d.status === "published" && d.platform === "superset" && (

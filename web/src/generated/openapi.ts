@@ -2472,6 +2472,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/dashboards/{dashboard_id}/drill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Drill */
+        post: operations["drill_api_v2_dashboards__dashboard_id__drill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/dashboards/{dashboard_id}/embed-token": {
         parameters: {
             query?: never;
@@ -2483,6 +2500,23 @@ export interface paths {
         put?: never;
         /** Embed Token */
         post: operations["embed_token_api_v2_dashboards__dashboard_id__embed_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/dashboards/{dashboard_id}/explore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Explore */
+        get: operations["explore_api_v2_dashboards__dashboard_id__explore_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2704,6 +2738,27 @@ export interface paths {
         get: operations["version_api_v2_dashboards__dashboard_id__versions__n__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/dashboards/{dashboard_id}/view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * View
+         * @description A cross-filtered view for this viewer: not a new version. Each affected tile is re-queried through its governed
+         *     path and the gateway under the viewer's scope; tiles without the field are returned as not filtered.
+         */
+        post: operations["view_api_v2_dashboards__dashboard_id__view_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9403,6 +9458,27 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** DashboardDrillIn */
+        DashboardDrillIn: {
+            /** Base Version */
+            base_version?: number | null;
+            /** Chart Id */
+            chart_id: string;
+            /**
+             * Detail
+             * @default false
+             */
+            detail?: boolean;
+            /** Filters */
+            filters?: components["schemas"]["ViewFilterIn"][];
+            /** Path */
+            path?: components["schemas"]["DrillStepIn"][];
+            /**
+             * Preview
+             * @default true
+             */
+            preview?: boolean;
+        };
         /** DashboardExportIn */
         DashboardExportIn: {
             /**
@@ -9456,6 +9532,18 @@ export interface components {
             base_version?: number | null;
             /** To Version */
             to_version: number;
+        };
+        /** DashboardViewIn */
+        DashboardViewIn: {
+            /** Base Version */
+            base_version?: number | null;
+            /** Filters */
+            filters?: components["schemas"]["ViewFilterIn"][];
+            /**
+             * Refresh Saved
+             * @default false
+             */
+            refresh_saved?: boolean;
         };
         /** DataScope */
         DataScope: {
@@ -9673,6 +9761,13 @@ export interface components {
             path: string;
             /** Reason */
             reason?: string | null;
+        };
+        /** DrillStepIn */
+        DrillStepIn: {
+            /** Field */
+            field: string;
+            /** Value */
+            value?: string | number | boolean | null;
         };
         /** DryRunIn */
         DryRunIn: {
@@ -11997,6 +12092,25 @@ export interface components {
             patterns?: string[] | null;
             /** Status */
             status?: string | null;
+        };
+        /**
+         * ViewFilterIn
+         * @description One click or chip: a field of the dashboard and the member(s) chosen. `source` is the chart it came from
+         *     (that chart is not filtered by its own selection).
+         */
+        ViewFilterIn: {
+            /** Field */
+            field: string;
+            /**
+             * Op
+             * @default eq
+             * @enum {string}
+             */
+            op?: "eq" | "in";
+            /** Source */
+            source?: string | null;
+            /** Value */
+            value?: string | number | boolean | (string | number | boolean)[] | null;
         };
         /**
          * WorkBudget
@@ -17210,7 +17324,79 @@ export interface operations {
             };
         };
     };
+    drill_api_v2_dashboards__dashboard_id__drill_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                dashboard_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardDrillIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     embed_token_api_v2_dashboards__dashboard_id__embed_token_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                dashboard_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    explore_api_v2_dashboards__dashboard_id__explore_get: {
         parameters: {
             query?: never;
             header?: {
@@ -17700,6 +17886,44 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    view_api_v2_dashboards__dashboard_id__view_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                dashboard_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardViewIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

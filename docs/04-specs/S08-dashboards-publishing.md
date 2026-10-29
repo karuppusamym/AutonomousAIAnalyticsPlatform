@@ -164,4 +164,38 @@ AT-07, AT-08; `test_patch_ops_versioning`; `test_edit_published_forks_draft`; `t
   clarifying reply with questions to try. Ask: "Add to dashboard" asks where (new draft, existing draft, or the BI
   tool with approval). Query ids, metric versions and planning detail appear only with expert tools on.
 * **Not built.** The draft has no text summary (CONV-05 adds narrative); a draft of a workspace with no metric layer
-  depends on catalog semantic types and profiles; drill-down and cross-filtering are CONV-06.
+  depends on catalog semantic types and profiles; drill-down and cross-filtering are CONV-06 (§10).
+
+## 10. As built — drill-down and cross-filtering in the preview (2026-10-29, CONV-06)
+
+* **A view, not a version.** Clicks, chips and drill paths are browser-session state. `POST /api/v2/dashboards/{id}/view
+  {filters: [{field, op: eq|in, value, source}], base_version, refresh_saved}` never writes the document. "Apply as
+  dashboard filter" posts the server-built `dashboard.add_filter` op to `/ops` (an edit: version + 1, editors only).
+* **Never trust the client.** The browser sends names and values only. The field must be a field of a chart on this
+  dashboard (exact, or the same last segment: `orders.priority` ≡ `priority`) and categorical (time is drilled, measures
+  are refused); the value resolves through `dashboards/env.py` like a typed filter (vocabulary, glossary, geography), or
+  the request is a 422. At most 5 filters, 50 values each.
+* **Every re-query governed, as the viewer.** `dashboards/interact.py` rebuilds each affected tile from where it was
+  built. A `metric@v` chart or KPI compiles a `SemanticQuery` with the filter as a `SemanticFilter` on the metric's
+  approved dimension, so a metric chart is filtered by a dimension it does not show. A verified query or gateway
+  execution (`bundle.Resolver.sql`) is wrapped `SELECT * FROM (…) f WHERE …` with sqlglot nodes and `skills/sqlbuild`
+  literals, exactly like a published dashboard filter. The scope is `resolve_scope(viewer, minimum_role="viewer")` and
+  every statement goes through `QueryGateway.execute` (purposes `dashboard.cross_filter|drill|detail`), so denied
+  columns, row filters, ABAC and budgets apply. The document's saved value filters apply to every re-query. Tiles
+  without the field come back `not_filtered` with the reason; the clicked chart is `source`.
+* **Drill-down.** A time axis grouped by `DATE_TRUNC` re-grains one level per click (year → quarter → month → day; week →
+  day) inside the clicked member's window. A metric chart walks the metric's approved non-time dimensions in order
+  (the semantic model's drill path). `GET …/explore` lists per chart what a click filters by and drills into (no query).
+* **Rows behind a selection.** `POST …/drill {detail: true}`: the dataset's FROM and WHERE plus the member predicates on
+  the expressions the chart groups by, projecting only columns the viewer may read (denied ones are counted, not
+  named), at most 100 rows. Joins and set operations are refused, because the rows' grain would not be the table's.
+* **Bounds.** At most 24 statements per request; identical statements run once; at most 4 statements per dashboard at a
+  time in a process (a bounded map of semaphores; a tile that waits over 15 s is `busy`); inline previews ≤
+  `MAX_PREVIEW_ROWS`; the gateway's result cache answers repeats. The client debounces 250 ms, aborts the older request
+  and keeps an LRU of 20 answered views.
+* **UI.** Builder grid: chips "Filtered by Priority = 1 - Critical ×", Clear all, Apply as dashboard filter; per tile
+  Filtered / Not filtered / Your selection / Dashboard filter; keyboard lists ("Filter the dashboard by Priority",
+  "Drill into day…"), breadcrumbs back and a "Show rows" panel. Cells are labelled groups with a Select toggle for the
+  chat focus. Query ids and cache hits appear only with expert tools on.
+* **Not built.** Embedded Superset dashboards keep Superset's native filters. SQL Server time axes (DATEADD/DATEDIFF)
+  are not re-grained. Time members are drilled, not cross-filtered.

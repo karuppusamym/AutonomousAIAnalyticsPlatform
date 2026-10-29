@@ -633,10 +633,25 @@ details.json pre { margin-top: 0.4rem; }
 .dash-filters { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 0.4rem; }
 .dash-md { overflow: auto; }
 .dash-summary { margin-top: 1rem; }
-/* S08 builder: cells are buttons that pick the element "it" refers to in the chat */
+/* S08 builder: each cell picks the element "it" refers to in the chat */
 .builder-cell { text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .builder-cell:hover { border-color: var(--accent, var(--border)); }
 .builder-cell.selected { outline: 2px solid var(--accent, currentColor); outline-offset: 1px; }
+/* CONV-06: cells are groups (a Select toggle picks what "it" means); charts inside take clicks for cross-filter and drill */
+.builder-cell { cursor: default; overflow: visible; }  /* rows grow to fit the explore controls rather than clip them */
+.cell-head { display: flex; align-items: flex-start; gap: 0.4rem; }
+.cell-head .grow { flex: 1; min-width: 0; }
+.cell-head .tag { margin-left: 0.3rem; }
+.cell-select { flex: none; }
+.tile-controls { gap: 0.3rem 0.45rem; align-items: center; margin-top: 0.25rem; }
+.tile-controls select, .tile-controls .input-sm { width: auto; max-width: 14rem; padding: 0.12rem 0.35rem; font-size: 0.78rem; }
+.tile-controls .btn-sm { padding: 0.12rem 0.45rem; font-size: 0.78rem; }
+.crumbs ol { display: flex; flex-wrap: wrap; gap: 0.2rem; list-style: none; margin: 0; padding: 0; }
+.crumbs li + li::before { content: "›"; margin-right: 0.2rem; color: var(--text-2); }
+.link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; }
+.explore-bar { margin-bottom: 0.6rem; }
+.explore-rows { margin-top: 0.8rem; padding: 0.6rem 0.7rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.explore-rows .table-wrap { max-height: 360px; overflow: auto; }
 .builder-chat { list-style: none; margin: 0 0 0.6rem; padding: 0; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.6rem; }
 @media (max-width: 760px) {
   .dash-grid { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto !important; }
