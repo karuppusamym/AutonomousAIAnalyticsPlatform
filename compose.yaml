@@ -310,6 +310,24 @@ services:
     profiles: ["demo"]
     ports: ["8090:8090"]
 
+  # SQL Server 2022 Developer edition for the live connector certification and the session-identity test
+  # (docs/evidence/connectors/mssql-*.md). The SA password comes from the environment, never this file:
+  #   docker compose --env-file ~/.analystos/mssql.env --profile mssql up -d mssql
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: analystos-mssql
+    profiles: ["mssql"]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${ANALYSTOS_MSSQL_SA_PASSWORD:-}
+    ports: ["${ANALYSTOS_MSSQL_PORT:-14330}:1433"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 10s
+      retries: 30
+      start_period: 20s
+
   # Transaction-mode pooler (spec v3 §8), off by default: `--profile pooled`. Clients may open up to
   # MAX_CLIENT_CONN; Postgres sees at most DEFAULT_POOL_SIZE per (database, user) and
   # MAX_DB_CONNECTIONS per database. Logins are checked against pg_shadow through auth_query, so the

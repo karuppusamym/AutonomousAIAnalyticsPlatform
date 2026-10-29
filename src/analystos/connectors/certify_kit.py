@@ -17,10 +17,10 @@ runs, through the same engine code the gateway uses:
 
 and writes `docs/evidence/connectors/{kind}-{YYYY-MM-DD}.md` with the outcome of every check. A kind is
 `certified` only with a passing file younger than 180 days (`connectors/certification.py`). Engine-specific
-checks are implemented for PostgreSQL and Trino (TRN-004: the DSN names one catalog, e.g.
-`trino://user@host:8080/catalog`); other kinds report the checks they cannot run as failed, so a kind is never
-certified by the checks it skipped. A kind that declares no session identity passes `identity` as not
-applicable and says so.
+checks are implemented for PostgreSQL, SQL Server (`--kind sqlserver`, seeded by `scripts/mssql_cert_seed.py`) and
+Trino (TRN-004: the DSN names one catalog, e.g. `trino://user@host:8080/catalog`); other kinds report the checks they
+cannot run as failed, so a kind is never certified by the checks it skipped. A kind that declares no session identity
+passes `identity` as not applicable and says so.
 """
 from __future__ import annotations
 
@@ -64,7 +64,14 @@ DIALECT_NEGATIVE: dict[str, list[tuple[str, str]]] = {
                  ("SELECT * FROM pg_catalog.pg_authid", "system catalog"), ("COPY cert.items TO PROGRAM 'id'", "COPY"),
                  ("SELECT dblink('host=evil', 'select 1')", "network"), ("SELECT id INTO cert.copy FROM cert.items", "SELECT INTO")],
     "tsql": [("EXEC xp_cmdshell 'dir'", "shell"), ("SELECT * FROM OPENROWSET('SQLNCLI', 'x', 'select 1')", "remote"),
-             ("WAITFOR DELAY '00:00:10'", "sleep"), ("SELECT id FROM cert.items WITH (NOLOCK)", "table hint")],
+             ("WAITFOR DELAY '00:00:10'", "sleep"), ("SELECT id FROM cert.items WITH (NOLOCK)", "table hint"),
+             ("EXEC sp_set_session_context @key = N'app.user', @value = N'u_other'", "identity spoof"),
+             ("EXECUTE ('SELECT 1')", "dynamic SQL"), ("SET CONTEXT_INFO 0x01", "session state"),
+             ("SELECT * FROM OPENQUERY(evil, 'select 1')", "linked server"),
+             ("SELECT * FROM OPENDATASOURCE('SQLNCLI', 'Data Source=evil').db.dbo.t", "ad hoc remote"),
+             ("SELECT id FROM evil.analystos_cert.cert.items", "four-part name"),
+             ("SELECT id FROM master.cert.items", "another database"),
+             ("SELECT name FROM sys.sql_logins", "system catalog"), ("SELECT id INTO cert.copy FROM cert.items", "SELECT INTO")],
     "snowflake": [("SELECT * FROM @stage/file.csv", "stage read"), ("SELECT SYSTEM$WAIT(10)", "sleep"),
                   ("SELECT id FROM cert.items AT(OFFSET => -60)", "time travel")],
     "bigquery": [("SELECT * FROM cert.items FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP()", "time travel"),
@@ -388,24 +395,158 @@ def _trino_connector(url: str, settings: Any, schemas: list[str] | None = None) 
                            settings, password=u.password or "")
 
 
-def _engine_version(url: str) -> str:
+# ---------------------------------------------------------------------------------------------- sql server
+def _mssql_checks(connector: Any, report: Report, settings: Any) -> None:
+    """SQL Server through the gateway's tsql path: the connector's query URL (driver `timeout`) and session
+    statements, then ``run_session_sql`` exactly as ``QueryGateway._run`` calls it."""
+    from analystos.connectors import kinds
+    from analystos.core.errors import Forbidden, InvalidInput, QueryTimeout, RunCancelled
+    from analystos.engines.sql import cancel_running, run_session_sql
+    from analystos.gateway.cost import EXPLAINERS
+    from analystos.gateway.handles import ResultSink, path_for, uri_for
+
+    def run(sql: str, max_rows: int = 10, timeout: int = 10, **kw: Any) -> Any:
+        return run_session_sql(connector.query_url(timeout), sql, max_rows, connector.session_statements(timeout), **kw)
+
+    def read_only() -> str:
+        # No read-only session exists on SQL Server: the reader login itself must be unable to write.
+        for stmt in ("CREATE TABLE cert.aos_cert_probe (x int)", "INSERT INTO cert.items (id, name) VALUES (-1, N'x')",
+                     "UPDATE cert.items SET name = N'x'", "DELETE FROM cert.items"):
+            try:
+                run(stmt)
+            except (Forbidden, InvalidInput) as exc:
+                assert "permission" in exc.message.lower() or "denied" in exc.message.lower(), \
+                    f"refused for another reason: {exc.message}"
+                continue
+            raise AssertionError(f"the write succeeded: {stmt}")
+        return "CREATE / INSERT / UPDATE / DELETE refused for the least-privilege reader login (no read-only session " \
+               "on SQL Server: the identity is the guard)"
+
+    def timeout() -> str:
+        started = time.monotonic()
+        try:
+            run("WAITFOR DELAY '00:00:10'; SELECT 1 AS x", timeout=1)
+        except QueryTimeout:
+            took = time.monotonic() - started
+            assert took < 5, f"stopped only after {took:.1f}s"
+            _, rows = run("SELECT 1 AS alive")  # the pool hands out a usable connection afterwards
+            assert rows == [[1]], f"the next statement saw {rows}"
+            return f"stopped after {took:.1f}s with a 1s driver timeout; the next statement ran"
+        raise AssertionError("a 10s statement finished under a 1s timeout")
+
+    def cancel() -> str:
+        qid = f"qry_cert_{int(time.time() * 1000)}"
+        out: dict[str, Any] = {}
+
+        def work() -> None:
+            try:
+                run("WAITFOR DELAY '00:00:20'; SELECT 1 AS x", timeout=60, query_id=qid)
+            except Exception as exc:  # noqa: BLE001
+                out["error"] = exc
+
+        thread = threading.Thread(target=work, daemon=True)
+        started = time.monotonic()
+        thread.start()
+        for _ in range(100):
+            time.sleep(0.05)
+            if cancel_running(qid):
+                break
+        thread.join(15)
+        assert isinstance(out.get("error"), RunCancelled), f"not cancelled: {out.get('error')!r}"
+        took = time.monotonic() - started
+        assert took < 10, f"cancelled only after {took:.1f}s"
+        return f"interrupted after {took:.1f}s"
+
+    def row_cap() -> str:
+        _, rows = run("SELECT value AS g FROM GENERATE_SERIES(1, 1000)", 10)
+        assert len(rows) == 11, f"{len(rows)} rows for a cap of 10 (expected 11: cap + truncation marker)"
+        return "1000-row statement returned cap + 1 = 11 rows"
+
+    def metadata() -> str:
+        assets = connector.discover()
+        assert assets, "the crawl found no table: point the DSN at a database with at least one table"
+        typed = [a for a in assets if a.columns and all(c.data_type for c in a.columns)]
+        assert typed, "no table came back with typed columns"
+        keys = sum(c.is_key for a in assets for c in a.columns)
+        refs = sum(bool(c.references) for a in assets for c in a.columns)
+        return (f"{len(assets)} tables, {sum(len(a.columns) for a in assets)} columns (e.g. {typed[0].schema_name}."
+                f"{typed[0].name}), {keys} key and {refs} foreign-key columns")
+
+    def type_mapping() -> str:
+        sql = ("SELECT CAST(1 AS int) AS i, CAST(2 AS bigint) AS b, CAST(1.5 AS decimal(10, 2)) AS n, "
+               "CAST(2.5 AS float) AS d, CAST(1 AS bit) AS t, N'x' AS s, CAST('2026-01-02' AS date) AS dt, "
+               "CAST('2026-01-02T03:04:05' AS datetime2) AS ts, "
+               "CAST('6F9619FF-8B86-D011-B42D-00C04FC964FF' AS uniqueidentifier) AS u, CAST(0x0102 AS varbinary(2)) AS v, "
+               "CAST(NULL AS int) AS z")
+        _, rows = run(sql, 1)
+        want = [1, 2, 1.5, 2.5, True, "x", "2026-01-02", "2026-01-02T03:04:05",
+                "6f9619ff-8b86-d011-b42d-00c04fc964ff", "0102", None]
+        got = [v.lower() if i == 8 and isinstance(v, str) else v for i, v in enumerate(rows[0] if rows else [])]
+        assert got == want, f"got {rows[:1]}, want {want}"
+        sink = ResultSink(settings, uri=uri_for("cert", f"qry_cert_types_{int(time.time())}"), mode="handle", max_rows=5)
+        run(sql, 5, sink=sink)
+        facts = sink.finish()
+        path_for(settings, facts["uri"]).unlink(missing_ok=True)
+        types = [c["type"] for c in facts["schema"]]
+        assert types[:5] == ["int", "int", "float", "float", "bool"], f"handle types {types}"
+        return "int, bigint, decimal, float, bit, nvarchar, date, datetime2, uniqueidentifier, varbinary, NULL map to " \
+               "JSON-safe values and typed Parquet columns"
+
+    def estimate() -> str:
+        # The gateway estimates tsql with the row cap (gateway/cost.py has no SQL Server explainer): say so.
+        assert "tsql" not in EXPLAINERS, "a tsql explainer exists: extend this check to read its plan"
+        return "no plan estimate for tsql: the gateway's estimate is the row cap (basis row_cap), so a scan budget " \
+               "cannot stop a statement before it runs on this kind; row cap and driver timeout bound it"
+
+    def identity() -> str:
+        statements = kinds.get_kind(report.kind).capabilities.session_identity
+        assert statements, "the kind declares no session identity"
+        probe = "SELECT CAST(SESSION_CONTEXT(N'app.user') AS nvarchar(200)), " \
+                "CAST(SESSION_CONTEXT(N'app.user_email') AS nvarchar(200))"
+        seen = []
+        # Two users in a row on the same pooled engine: the read-only keys must not stick to a reused connection.
+        for user in ("u_cert_probe_a", "u_cert_probe_b"):
+            params = {"user": user, "user_email": f"{user}@example.invalid", "workspace": "ws_cert"}
+            _, rows = run(probe, identity_sql=tuple((s, params) for s in statements))
+            assert rows == [[user, f"{user}@example.invalid"]], f"the session of {user} saw {rows}"
+            seen.append(user)
+        _, rows = run(probe)
+        assert rows == [[None, None]], f"a statement without identity saw {rows}"
+        return "SESSION_CONTEXT app.user / app.user_email set read-only per statement for two users in turn; none " \
+               "left on the next connection (a security policy can read them)"
+
+    for name, fn in (("read_only", read_only), ("timeout", timeout), ("cancel", cancel), ("row_cap", row_cap),
+                     ("metadata", metadata), ("type_mapping", type_mapping), ("estimate", estimate),
+                     ("identity", identity)):
+        report.checks.append(_timed(name, fn))
+
+
+LIVE_CHECKS = {"postgres", "sqlserver"}
+
+
+def _engine_version(kind: str, url: str) -> str:
     from sqlalchemy import text
 
     from analystos.gateway.engines import get_engine
 
     with get_engine(url).connect() as conn:
-        version = conn.execute(text("SHOW server_version")).scalar()
         host = conn.engine.url.host
+        if kind == "sqlserver":
+            version = str(conn.execute(text("SELECT @@VERSION")).scalar() or "").splitlines()[0].strip()
+            return f"{version} ({host})"
+        version = conn.execute(text("SHOW server_version")).scalar()
     return f"PostgreSQL {version} ({host})"
 
 
 def _connector_for(kind: str, url: str, settings: Any, schemas: list[str] | None = None) -> Any:
     from sqlalchemy.engine import make_url
 
+    from analystos.connectors import kinds
     from analystos.connectors.registry import build_connector
 
     u = make_url(url)
-    config = {"host": u.host, "port": u.port or 5432, "database": u.database, "username": u.username}
+    config = {"host": u.host, "port": u.port or kinds.get_kind(kind).default_port, "database": u.database,
+              "username": u.username}
     if schemas:
         config["schemas"] = list(schemas)
     return build_connector(SimpleNamespace(kind=kind, config=config, secret_ref=None, execution_mode="pushdown"),
@@ -428,16 +569,20 @@ def certify(kind: str, dsn: str, *, settings: Any, schemas: list[str] | None = N
             return report
         _trino_checks(dsn, _trino_connector(dsn, settings, schemas), report, settings)
         return report
-    if spec.sqlglot_dialect != "postgres" or spec.kind not in ("postgres",):
+    if spec.kind not in LIVE_CHECKS:
         for name in ("read_only", "timeout", "cancel", "row_cap", "metadata", "type_mapping", "estimate", "identity"):
             report.checks.append(Check(name, False, f"no live check for {spec.kind} in this kit yet (needs access)"))
         return report
     try:
-        report.engine = _engine_version(url)
+        report.engine = _engine_version(spec.kind, url)
     except Exception as exc:  # noqa: BLE001
         report.checks.append(Check("connect", False, f"could not connect: {exc.__class__.__name__}"))
         return report
-    _pg_checks(url, _connector_for(spec.kind, url, settings, schemas), report, settings)
+    connector = _connector_for(spec.kind, url, settings, schemas)
+    if spec.kind == "sqlserver":
+        _mssql_checks(connector, report, settings)
+    else:
+        _pg_checks(url, connector, report, settings)
     return report
 
 
