@@ -72,7 +72,7 @@ def test_office_report_reopens_with_the_snapshot_numbers_and_hash(kind, fmt):
         assert C.format_value(m.value, m.format) in text
     for i in C.shown_findings(d):
         assert O.xml_text(i.finding) in text and i.code in text
-    digest = stable_hash(d.model_dump())
+    digest = stable_hash(d.snapshot())
     assert f"Report snapshot: {digest}" in text and obj.core_properties.identifier == f"analystos-report-data:{digest}"
     assert d.run_id in text and C.CAUSATION_NOTE in text
     assert "日本語" in text  # unicode kept as written
@@ -142,7 +142,7 @@ def test_generate_report_records_the_snapshot_hash_for_office_files(world, monke
     with session_scope() as s:
         snapshot = svc.build_report_data(s, "run_n10", "executive")
         art = svc.generate_report(s, "run_n10", kind="executive", formats=("pptx", "docx"), actor="user:usr_owner")
-        digest = stable_hash(snapshot.model_dump())
+        digest = stable_hash(snapshot.snapshot())
         assert art.content["report_data_hash"] == digest and set(art.content["files"]) == {"pptx", "docx"}
         for fmt in ("pptx", "docx"):
             body, mime, ext = svc.report_file(art, fmt)
