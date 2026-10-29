@@ -12,7 +12,7 @@ from docx import Document
 from docx.document import Document as DocxDocument
 from docx.shared import Mm, Pt, RGBColor
 
-from analystos.contracts.reports import ReportData, ReportInsight
+from analystos.contracts.reports import ReportData, ReportInsight, ReportSection
 from analystos.reports import _common as C
 from analystos.reports import _ooxml as O
 from analystos.reports.charts import render_chart_png
@@ -139,6 +139,41 @@ def _section(doc: DocxDocument, key: str, d: ReportData) -> None:
                 _p(doc, f"Showing {C.MAX_TABLE_ROWS} of {len(rows)} rows.", size=8, color=MUTED)
 
 
+def _doc_section(doc: DocxDocument, sec: ReportSection, width_mm: float) -> None:
+    """A report document section (CONV-04): its blocks in order, each chart as an image (else its table)."""
+    doc.add_heading(O.xml_text(sec.title), level=1)
+    for kind, item in C.section_items(sec):
+        if kind == "text":
+            for b in C.parse_markdown(item):
+                if b.kind == "para":
+                    _p(doc, C.inline_plain(b.items[0]))
+                else:
+                    _bullets(doc, [C.inline_plain(it) for it in b.items])
+        elif kind == "note":
+            _p(doc, item, size=9, italic=True, color=MUTED)
+        elif kind == "kpis":
+            _table(doc, C.DOC_KPI_HEADERS, [C.kpi_row(m) for m, _ in item])
+            for src in dict.fromkeys(s for _, s in item if s):
+                _p(doc, f"Source: {src}", size=8, color=MUTED)
+        elif kind == "chart":
+            ch, src = item
+            doc.add_heading(O.xml_text(ch.title), level=3)
+            png = render_chart_png(ch, width_px=CHART_W, height_px=CHART_H)
+            if png:
+                doc.add_picture(io.BytesIO(png), width=Mm(width_mm))
+            elif rows := C.valid_rows(ch):
+                _table(doc, [str(c) for c in ch.columns], [[C.cell_text(v) for v in r] for r in rows[: C.MAX_TABLE_ROWS]])
+            else:
+                _p(doc, "No data.", size=8.5, color=MUTED)
+            if src:
+                _p(doc, f"Source: {src}", size=8, color=MUTED)
+        elif kind == "finding":
+            ins, src = item
+            _insight(doc, ins, False)
+            if src:
+                _p(doc, f"Source: {src}", size=8, color=MUTED)
+
+
 def _charts(doc: DocxDocument, d: ReportData, width_mm: float) -> None:
     images = [(ch, png) for ch in d.charts if (png := render_chart_png(ch, width_px=CHART_W, height_px=CHART_H))]
     if not images:
@@ -150,7 +185,8 @@ def _charts(doc: DocxDocument, d: ReportData, width_mm: float) -> None:
 
 def _provenance(doc: DocxDocument, d: ReportData) -> None:
     doc.add_heading(C.SECTION_TITLES["provenance"], level=1)
-    _p(doc, f"Run: {d.run_id}", size=9)
+    label, origin = C.origin_line(d)
+    _p(doc, f"{label}: {origin}", size=9)
     _p(doc, f"Generated: {C.generated_label(d)}", size=9)
     _p(doc, f"Report snapshot: {O.snapshot_hash(d)}", size=9)
     if d.lineage_note:
@@ -169,15 +205,19 @@ def build_docx(data: ReportData) -> DocxDocument:
     sec.left_margin = sec.right_margin = sec.top_margin = sec.bottom_margin = Mm(16)
     doc.styles["Normal"].font.size = Pt(10)
     O.set_core(doc.core_properties, d)
-    sec.footer.paragraphs[0].text = O.xml_text(f"{d.title} | run {d.run_id} | generated {C.generated_label(d)}")
+    origin = d.origin or f"run {d.run_id}"
+    sec.footer.paragraphs[0].text = O.xml_text(f"{d.title} | {origin} | generated {C.generated_label(d)}")
 
     _p(doc, C.KIND_LABELS.get(d.kind, d.kind).upper(), size=8.5, bold=True, color=ACCENT)
     doc.add_heading(O.xml_text(d.title), level=0)
     _p(doc, f"{d.workspace_name}  |  generated {C.generated_label(d)}" + (f"  |  period {d.period}" if d.period else ""),
        size=9, color=MUTED)
-    _p(doc, f"Objective: {d.objective}")
+    if d.objective or d.kind != "document":
+        _p(doc, f"Objective: {d.objective}")
     for key in C.sections_for(d.kind):
         _section(doc, key, d)
+    for s in d.sections:
+        _doc_section(doc, s, 178)
     _charts(doc, d, 178)
     _provenance(doc, d)
     return doc

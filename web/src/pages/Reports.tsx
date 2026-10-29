@@ -20,7 +20,9 @@ export function unavailableFormats(a: Artifact): [string, string][] {
   return Object.entries((a.content as ReportContent).unavailable_formats ?? {});
 }
 
-const KIND_LABEL: Record<string, string> = { ask_answer: "Ask answer" };
+export { NewReportDoc, ReportBuilder } from "../components/ReportBuilder";
+
+const KIND_LABEL: Record<string, string> = { ask_answer: "Ask answer", document: "Report", digest: "Dashboard digest" };
 
 export function ReportRow({ wsId, report: a, highlighted = false }: { wsId: string; report: Artifact; highlighted?: boolean }) {
   const c = a.content as ReportContent;

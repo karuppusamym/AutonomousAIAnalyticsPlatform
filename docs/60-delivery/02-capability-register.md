@@ -1,5 +1,37 @@
 # Capability register (evidence)
 
+## 2026-10-29 — Conversational dashboards: a chart from a question, a draft from a prompt, an Ask answer into a draft (CONV-01…03)
+
+From the [conversational analyst gap review](../70-reviews/2026-10-29-conversational-analyst-gap-review.md), wave 1a.
+Spec: [S08 §9](../04-specs/S08-dashboards-publishing.md).
+
+* **CONV-01.** Builder chat "add resolution time by priority" → op `chart.from_question` (rules rung, no model) →
+  `dashboards/questions.py` runs the question through `agents/sql_agent.ask` unchanged (semantic compiler, verified
+  query, Ask rules, else model SQL; gateway validator + `QueryGateway.execute`) → a `ChartDoc` with the chart type
+  from `skills/viz.recommend_chart`, `dataset_ref` `metric@v` + dimensions (else the gateway execution), a bounded
+  preview and provenance. Each applied batch is a new `ArtifactVersion`; the diff carries how the chart was answered.
+  An ungrounded question is a refused op with a clarifying reply and answerable examples; nothing changes.
+* **CONV-02.** `POST /api/v2/workspaces/{ws}/dashboards/draft {prompt}` → `dashboards/drafts.py`: rules plan from the
+  caller-visible approved metrics, trusted glossary synonyms and the effective brief (catalog Ask-rules questions
+  without a metric layer): 2–4 KPIs, 3–6 charts, 1–2 filter controls; purpose `dashboard_plan` ([cache, rules,
+  llm_small]) may only reorder known tile ids. Every tile goes through CONV-01 on its own; failures are listed. No
+  match → clarifying reply, no dashboard.
+* **CONV-03.** Ask promote target `draft` → `dashboards/service.add_answer`: the stored answer (no re-query) as the
+  recommended chart in a new draft or an existing builder dashboard (a published one forks). The approval-bound
+  direct publish is unchanged and offered beside it ("Add to dashboard" asks where).
+* **UI.** Outputs › Dashboards › Build a dashboard ("What should the dashboard show?"), builder chat answers ("Added
+  a bar … from an approved metric", clarifying reply with questions to try), Ask "Add to dashboard" chooser. Query
+  ids, metric versions and planning detail only with expert tools on.
+
+Tests: `tests/unit/test_dashboard_conversation.py` (rules phrasings, answer → chart for semantic / rules / model
+answers, KPI, time grain, stacked and top-N, named type only when it fits, bounded preview, refusals, the op, id
+clash, filter controls in ops and bundle, plan / glossary / catalog fallback / clarify, ranking rung off-auto-always
+with unknown ids dropped, build with partial failures); `web/src/test/dashboardDraft.test.tsx` (7);
+`web/e2e/dashboard-draft.spec.ts` (prompt → draft → clarifying reply → refine → request publication, axe clean);
+`tests/integration/test_dashboard_conversation.py` (compose Postgres, seeded users, approved semantic model; the
+numbers equal pandas over the same file; publish request is a hash-bound approval).
+Live 2026-10-29 against the compose Postgres, no model called: a 2-KPI, 6-chart, 2-filter draft from "Build an incident operations dashboard" (numbers equal pandas over the same file), a metric-bound chart from "add resolution time by priority", a clarifying reply for "add weather by city", an Ask answer into a new and an existing draft, and a hash-bound publish request — [evidence](evidence/conv-01-03-conversational-dashboards-20261029.md).
+
 ## 2026-10-29 — SQL Server live: connector certification (S02-T6), session identity (S02-T5), META-002
 
 SQL Server 2022 Developer runs locally as compose profile `mssql` (container `analystos-mssql`, host port 14330; SA
@@ -1144,3 +1176,29 @@ source entry (named in the ledger provenance).
 | Structured fallback reason | `llm/fallback.py` (`ModelFallback`, `fallback_for`, `summarize`); `llm/router.py` `_no_route` names `models_disabled` + the disabled models, `_within_cost` flags `missing_price`; `agents/common.py` `note_fallback` in `llm_json` (run message, `model.fallback` event once per purpose and cause per step, avoided call recorded as a rules skip); `contracts/events.py` | `tests/unit/test_model_fallback_n14.py` (22, no services): disabled models, allowlist, missing price, cap reached, mode off not a fallback, one report per step, classification table |
 | Run detail and run view | `api/routers/analysis.py` `model_fallbacks` (folded `model.fallback` events); `web/src/components/ModelFallbacks.tsx` on `RunView.tsx` — one plain sentence in business view, cause/steps/router detail with expert tools on | `web/src/test/modelFallbacks.test.tsx` (4): business vs expert view, run view from the run detail |
 | Live evaluation labels | `evaluation/live.py` (`fallbacks`, `fallback_label`, `fallback_lines`; `model_usage` returns `fallbacks`), `scripts/benchmark_analytical.py`, `scripts/benchmark_heldout.py` + `evaluation/heldout/report.py`: a tier heading carries "fell back to rules (n purposes)" and a per-purpose cause table | Unit-tested on SQLite events; no live benchmark re-run yet. The dev-stack model policy (which models are enabled, the $2/day cap) is the owner's decision and was not changed |
+
+
+## 2026-10-29 — CONV-04 conversational report authoring, CONV-05 data stories and digests
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| Report document shaped by conversation | `contracts/report_doc.py` (`ReportDoc`: title, sections, text/chart/KPI/finding blocks, a derived sources section; artifact type `report_document`, so no migration); `reports/document.py` typed ops (title; section add/remove/rename/move; text set/shorten; block add/remove/move; schedule pin; deferred export request), atomic batches; `reports/design.py` `report_design` ladder [cache, rules, llm_small] (`config/models.yaml`) | `tests/unit/test_report_documents.py`: 14 phrasings ("add a section on EMEA backlog", "include the resolution trend chart", "make the summary shorter", "move the risks section up", …); ambiguity asks instead of guessing; model ops parsed one by one and re-validated |
+| Only verified content | `services/report_docs.py` `catalog` / `resolver`: builder-dashboard chart previews and KPI values, verified (not void) findings, run charts and validated metrics, the user's own answered Ask questions, each read with the actor's rights. A block keeps a bounded copy plus its ref and source hash | Unit (SQLite) and integration tests; another workspace's member gets 404 |
+| Numbers guard | `dashboards/ops.numbers_guard` over every text, caption, section title and the report title, against the blocks' values and the code-derived story values; a number it cannot back is refused, not written | `test_numbers_guard_refuses_unbacked_numbers_and_accepts_backed_ones`; the Playwright journey shows the refusal |
+| Versions, revert, fork-on-edit | ArtifactVersion+1 with the op diff, If-Match, revert as a new version. Editing an exported (`final`) report forks a draft; editing one with a pending export invalidates that approval | `test_report_docs_service.py`, `tests/integration/test_report_documents.py` |
+| Rendering from the verified snapshot | `to_report_data` → `ReportData` kind `document` (`sections`, `origin`). MD/HTML/PDF/DOCX/PPTX render its sections in order, with chart images. The snapshot hash is in the HTML head, the PDF keywords, the Office core properties and the provenance block. Run-report hashes are unchanged (`ReportData.snapshot()` omits the new fields when unset) | `test_every_format_renders_deterministically_from_the_snapshot`, `test_snapshot_hash_is_in_each_formats_metadata`, `test_run_report_hash_is_unchanged_by_the_document_fields` |
+| Approval-bound export | `request_export` → approval `report_document.export` bound to {artifact, version, content hash, snapshot hash, format, requester}. `export` re-derives the payload, calls `verify_for_execution`, then `consume` (single use); requester only; audited with the file SHA-256 | Unit and integration tests |
+| Scheduled refresh and delivery | `report.pin_schedule` op. `schedules._finish` → `after_schedule_fire`: refresh with the owner's current rights (text whose numbers went away is held), a final `report` snapshot, `deliver` to the schedule's approved destinations | `test_story_becomes_a_report_and_a_pinned_report_refreshes_on_a_schedule_fire` |
+| Data stories | `reports/story.py`: deterministic facts from previews and the version diff, plus threshold monitors on the same metric. `data_story` purpose: the template sentences are the rules rung; model wording only in `always` mode, every sentence guarded against its fact's numbers | `tests/unit/test_data_story.py` (5) |
+| Story → report, digests | `services/stories.py`: `to_report` (a CONV-04 document with story text and derived values, rewritten on refresh); `digest_report` / `attach_digests` for schedules (`config.digest_dashboards`) and monitors (`config.attach_digest`, a how-key) through the existing delivery path (destinations must accept reports) | Unit (SQLite) and integration tests |
+| UI | Reports page: "Write a report by asking" → `components/ReportBuilder.tsx` (outline, chat panel, sandboxed preview, export request and download, versions). Engineering detail (ops, ids, snapshot hash) is behind Show expert tools. Dashboard Summary panel `components/DashboardSummary.tsx` with "Turn this into a report" | `web/src/test/reportBuilder.test.tsx` (8), `web/e2e/report-builder.spec.ts` (build by chat → refusal → preview → export request, axe clean) |
+
+Postgres evidence (2026-10-29, Windows dev host, Postgres 16, strict tenancy): `tests/integration/test_report_documents.py`
+passed all 3 tests over REST:
+* a report built by conversation from a builder dashboard, with the numbers guard, If-Match, versions and the preview;
+* the export approval bound to version and snapshot hash (requester only, single use, audited), then fork-on-edit;
+  another workspace's member gets 404;
+* an edit after the request invalidates the export; revert is a new version;
+* the dashboard story → a report document; a pinned report refreshed on a schedule fire into a final `report` snapshot.
+
+Not verified: a live delivery to email or a webhook, and model wording (`always` mode) against a real model.

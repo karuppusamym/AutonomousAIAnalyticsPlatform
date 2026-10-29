@@ -4,6 +4,7 @@ Every path is under /api/v2 (the web client's API base):
     GET  schemas/{chart|dashboard}                      the DSL JSON Schemas
     GET  workspaces/{ws}/dashboards                     builder dashboards
     POST workspaces/{ws}/dashboards                     {document} -> version 1 (editor)
+    POST workspaces/{ws}/dashboards/draft               {prompt}: a draft dashboard from a request (CONV-02)
     GET  dashboards/{id}                                current document and status
     POST dashboards/{id}/ops                            {ops, base_version} (If-Match: version)
     POST dashboards/{id}/messages                       {text, focus, base_version, apply}: dashboard_design ladder
@@ -28,6 +29,8 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Header, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -43,6 +46,11 @@ router = APIRouter(prefix="/api/v2", tags=["dashboards-v2"])
 
 class DashboardCreateIn(BaseModel):
     document: dict[str, Any]
+
+
+class DashboardDraftIn(BaseModel):
+    prompt: str = Field(min_length=3, max_length=2000)
+    title: str | None = Field(default=None, max_length=300)
 
 
 class DashboardOpsIn(BaseModel):
@@ -125,6 +133,15 @@ def list_dashboards(workspace_id: str, user: User = Depends(current_user), sessi
 def create_dashboard(workspace_id: str, body: DashboardCreateIn, user: User = Depends(current_user),
                      session: Session = Depends(db, scope="function")):
     return dashboard_svc.view(dashboard_svc.create(session, user, workspace_id, body.document))
+
+
+@router.post("/workspaces/{workspace_id}/dashboards/draft")
+def draft_dashboard(workspace_id: str, body: DashboardDraftIn, user: User = Depends(current_user),
+                    session: Session = Depends(db, scope="function")):
+    """KPIs, charts and filter controls planned from the workspace's reviewed semantics, each built through the
+    governed question path; 201 with the draft, or 200 with a clarifying reply when nothing could be grounded."""
+    out = dashboard_svc.create_draft(session, user, workspace_id, body.prompt, title=body.title)
+    return JSONResponse(status_code=201, content=jsonable_encoder(out)) if out["status"] == "created" else out
 
 
 @router.get("/dashboards/{dashboard_id}")

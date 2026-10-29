@@ -165,6 +165,9 @@ def latest_metrics(session: Session, workspace_id: str) -> dict[str, int]:
     return {n: v for n, (_, v) in out.items()}
 
 
-def op_env(session: Session, user: Any, workspace_id: str, doc: DashboardDoc) -> OpEnv:
+def op_env(session: Session, user: Any, workspace_id: str, doc: DashboardDoc, *, ask_fn: Any = None) -> OpEnv:
+    from analystos.dashboards.questions import question_answerer
+
     return OpEnv(actor=f"user:{user.id}", resolve_value=resolver(session, workspace_id, doc),
-                 metric_lookup=metric_lookup(session, user, workspace_id))
+                 metric_lookup=metric_lookup(session, user, workspace_id),
+                 answer_question=question_answerer(session, user, workspace_id, ask_fn=ask_fn))

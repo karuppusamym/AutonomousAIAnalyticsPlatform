@@ -16,6 +16,8 @@ import { mlMonitors } from "./mockMl";
 import { resetWave2, wave2Route } from "./mockWave2";
 import { investigationValueRoute, resetInvestigationValue } from "./mockInvestigationValue";
 import { groundingRoute, resetGrounding } from "./mockGrounding";
+import { draftArtifacts, draftsRoute, resetDrafts } from "./mockDashboardDrafts";
+import { reportArtifacts, reportRoute, resetReports } from "./mockReports";
 
 export const WS = "ws_demo";
 export const RUN = "run_demo";
@@ -316,6 +318,12 @@ function askRoute(m: string, p: string, requestBody?: string | null): MockRespon
       case "metric": return json({ target: "metric", id: "smet_1", name: "p1_count", status: "proposed", approval_id: "apr_m1", value: 292, at });
       case "monitor": return json({ target: "monitor", id: "mon_2", name: "P1 incidents per assignment group", status: "created", kind: "metric_drift", at });
       case "dashboard": return json({ target: "dashboard", id: "apr_d1", status: "approval_required", approval_id: "apr_d1", dashboard: "Ask answers", at }, 202);
+      case "draft": {
+        const b = body as { title?: string; dashboard_id?: string };
+        return json(b.dashboard_id
+          ? { target: "draft", id: b.dashboard_id, status: "added", dashboard: "Incident operations dashboard", version: 2, chart_id: "c_p1_by_group", chart_type: "bar", at }
+          : { target: "draft", id: "art_draft_ask", status: "created", dashboard: b.title ?? "Ask answers", version: 1, chart_id: "c_p1_by_group", chart_type: "bar", at });
+      }
       case "investigate": return json({ target: "investigate", id: RUN, status: "started", objective: "Investigate why: P1 incidents", at });
       default: return json({ error: { code: "invalid_input", message: "unknown target", details: {} } }, 422);
     }
@@ -337,8 +345,10 @@ const state = { planned: false, buildApproval: "pending", proposed: [] as Semant
   workModes: ["analysis", "engineering", "ml"] as string[], conversation: [] as Record<string, unknown>[] };
 
 export function resetMockState(): void {
+  resetDrafts();
   resetInvestigationValue();
   resetGrounding();
+  resetReports();
   state.conversation = [];
   state.workModes = ["analysis", "engineering", "ml"];
   state.planned = false;
@@ -787,8 +797,12 @@ export function mockBackend(method: string, path: string, requestBody?: string |
   const W = `/workspaces/${WS}`;
   const value = investigationValueRoute(m, p, requestBody, WS, RUN_ROW, headers);
   if (value) return json(value.body, value.status);
+  const drafted = draftsRoute(m, p, requestBody, WS);
+  if (drafted) return json(drafted.body, drafted.status);
   const grounding = groundingRoute(m, p, requestBody, WS, headers);
   if (grounding) return json(grounding.body, grounding.status);
+  const reported = reportRoute(m, p, requestBody, WS);  // CONV-04 report documents
+  if (reported) return { status: reported.status, body: JSON.stringify(reported.body), contentType: reported.contentType ?? "application/json" };
   const wave2 = wave2Route(m, p, url, WS, requestBody, headers);
   if (wave2) return wave2.status === 204 ? { status: 204, body: "", contentType: "application/json" } : json(wave2.body, wave2.status);
 
@@ -875,7 +889,7 @@ export function mockBackend(method: string, path: string, requestBody?: string |
   if (m === "GET" && p === `${W}/artifacts`) {
     const type = url.searchParams.get("type");
     const run = url.searchParams.get("run_id");
-    return json(ARTIFACTS.filter((a) => (!type || a.type === type) && (!run || a.run_id === run)));
+    return json([...draftArtifacts(WS), ...ARTIFACTS, ...reportArtifacts(WS)].filter((a) => (!type || a.type === type) && (!run || a.run_id === run)));
   }
   if (p.endsWith("/events")) {
     return { status: 200, body: `event: end\ndata: {"status":"COMPLETED"}\n\n`, contentType: "text/event-stream" };

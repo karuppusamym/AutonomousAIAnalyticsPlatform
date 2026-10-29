@@ -47,7 +47,7 @@ class AskScheduleIn(BaseModel):
 
 
 class AskPromoteIn(BaseModel):
-    target: Literal["verified_query", "metric", "monitor", "dashboard", "investigate", "report"]
+    target: Literal["verified_query", "metric", "monitor", "dashboard", "draft", "investigate", "report"]
     name: str | None = None
     question: str | None = None  # verified query: the phrasing it answers (default: the question asked)
     sql_expression: str | None = None  # metric / monitor: default = the answer's first aggregate
@@ -63,6 +63,8 @@ class AskPromoteIn(BaseModel):
     chart: dict | None = None
     objective: str | None = None  # investigate: default "Investigate why: <question>"
     approval_id: str | None = None  # dashboard: an approved request, to add the chart
+    dashboard_id: str | None = None  # draft: an existing builder dashboard (else a new draft)
+    title: str | None = None  # draft: the new draft's title (default: the question)
     extra: dict = Field(default_factory=dict)
 
 
@@ -229,8 +231,9 @@ def schedule(turn_id: str, body: AskScheduleIn, user: User = Depends(current_use
 @router.post("/ask/turns/{turn_id}/promote")
 def promote_turn(turn_id: str, body: AskPromoteIn, user: User = Depends(current_user)):
     """Promote an answer: verified query, metric, monitor, "Investigate why" (starts a run), a report (an
-    HTML document of the stored answer, listed in Outputs), or a dashboard chart (202 with an approval
-    request first; again with the approved `approval_id` publishes it to the approved destination)."""
+    HTML document of the stored answer, listed in Outputs), a dashboard chart (202 with an approval
+    request first; again with the approved `approval_id` publishes it to the approved destination), or a
+    recommended chart in a draft builder dashboard (`draft`: new, or `dashboard_id`; no publication)."""
     fields = body.model_dump(exclude={"target", "extra"}, exclude_none=True)
     out = ask_svc.promote(user, turn_id, body.target, {**body.extra, **fields})
     return JSONResponse(status_code=202, content=out) if out.get("status") == "approval_required" else out

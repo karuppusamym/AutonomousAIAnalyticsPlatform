@@ -91,6 +91,19 @@ class ChartAdd(_Op):
     tab: str | None = None
 
 
+class ChartFromQuestion(_Op):
+    """A new chart or KPI from a business question (CONV-01). The engine never answers it: `OpEnv.answer_question`
+    runs the governed Ask path (semantic compiler, verified query, rules, else generated SQL, then the gateway)
+    and returns the built element; a question it cannot ground is refused with a clarifying reply."""
+
+    op: Literal["chart.from_question"] = "chart.from_question"
+    question: str = Field(min_length=3, max_length=500)
+    type: ChartKind | None = None  # the person's chart type; else skills/viz decides from the data's shape
+    title: str | None = Field(default=None, max_length=300)
+    position: dict[str, int] | None = None
+    tab: str | None = None
+
+
 class ChartRemove(_Op):
     op: Literal["chart.remove"] = "chart.remove"
     chart_id: str
@@ -119,9 +132,9 @@ class PublishRequest(_Op):
 
 
 Op = Annotated[ChartSetType | ChartSetEncoding | DashboardAddFilter | QueryExtendPeriod | MetricBind | ChartAdd |
-               ChartRemove | LayoutMove | TextSet | PublishRequest, Field(discriminator="op")]
+               ChartFromQuestion | ChartRemove | LayoutMove | TextSet | PublishRequest, Field(discriminator="op")]
 OP_KINDS = ("chart.set_type", "chart.set_encoding", "dashboard.add_filter", "query.extend_period", "metric.bind",
-            "chart.add", "chart.remove", "layout.move", "text.set", "publish.request")
+            "chart.add", "chart.from_question", "chart.remove", "layout.move", "text.set", "publish.request")
 _OPS = TypeAdapter(list[Op])
 
 
@@ -130,8 +143,8 @@ def op_guide() -> str:
     """One line per op kind with its fields (* = required), from the op models: the model rung is told the exact
     shape, so its proposals are not dropped for a guessed field name."""
     lines = []
-    for model in (ChartSetType, ChartSetEncoding, DashboardAddFilter, QueryExtendPeriod, MetricBind, ChartAdd, ChartRemove,
-                  LayoutMove, TextSet, PublishRequest):
+    for model in (ChartSetType, ChartSetEncoding, DashboardAddFilter, QueryExtendPeriod, MetricBind, ChartAdd,
+                  ChartFromQuestion, ChartRemove, LayoutMove, TextSet, PublishRequest):
         fields = [f"{name}{'*' if info.is_required() else ''}" for name, info in model.model_fields.items() if name != "op"]
         lines.append(f"- {model.model_fields['op'].default}: {', '.join(fields)}")
     return "\n".join(lines)
@@ -170,12 +183,35 @@ class Resolution:
     note: str = ""
 
 
+class NotGrounded(Exception):
+    """A question the platform could not turn into a governed query. Carries the clarifying reply and
+    questions it can answer instead; never a guessed chart."""
+
+    def __init__(self, reason: str, *, clarify: str = "", examples: list[str] | None = None, kind: str = "not_grounded") -> None:
+        super().__init__(reason)
+        self.reason, self.clarify, self.examples, self.kind = reason, clarify, list(examples or []), kind
+
+    def suggestion(self) -> dict[str, Any]:
+        return {"clarify": self.clarify or self.reason, "kind": self.kind,
+                **({"examples": self.examples[:5]} if self.examples else {})}
+
+
+@dataclass
+class BuiltElement:
+    """What answering a question produced: a chart (or a metric KPI) with its preview and provenance."""
+
+    element: ChartDoc | KpiDoc
+    summary: dict[str, Any] = field(default_factory=dict)  # answered_by, governance, query_id, rationale (for the diff)
+
+
 @dataclass
 class OpEnv:
     actor: str
     resolve_value: Callable[[str, Any], Resolution | None] = lambda field_name, value: None
     metric_lookup: Callable[[str, int], MetricInfo | None] = lambda name, version: None
     known_numbers: Callable[[DashboardDoc], Iterable[float]] | None = None
+    # CONV-01: question -> built element through the governed Ask path; raises NotGrounded. None = not available here.
+    answer_question: Callable[[ChartFromQuestion, DashboardDoc], BuiltElement] | None = None
 
 
 @dataclass
@@ -337,7 +373,8 @@ def _add_filter(doc: DashboardDoc, op: DashboardAddFilter, env: OpEnv) -> Dashbo
         raise _Refused(f"{op.field!r} is not a field of {', '.join(lacking)}",
                        {"op": "dashboard.add_filter", "field": op.field, "operator": op.operator, "value": op.value,
                         "scope": having})
-    resolved = env.resolve_value(op.field, op.value)
+    # No value = a filter control the viewer sets (a draft's filters): nothing to resolve, nothing restricted yet.
+    resolved = Resolution(None, "control") if op.value is None else env.resolve_value(op.field, op.value)
     if resolved is None:
         raise _Refused(f"the value {op.value!r} for {op.field} is not a known value (glossary, geography or the "
                        "field's profiled vocabulary); name it exactly")
@@ -346,6 +383,8 @@ def _add_filter(doc: DashboardDoc, op: DashboardAddFilter, env: OpEnv) -> Dashbo
     base, n = fid, 2
     while fid in existing:
         fid, n = f"{base}_{n}", n + 1
+    if op.value is None and op.operator not in ("eq", "in"):
+        raise _Refused("a filter control without a value uses 'eq' or 'in'")
     flt = FilterDoc(id=fid, field=op.field, op=op.operator, value=resolved.value, scope=list(op.scope),
                     resolved={"input": op.value, "via": resolved.via, **({"note": resolved.note} if resolved.note else {})})
     return doc.model_copy(update={"filters": [*doc.filters, flt]})
@@ -437,6 +476,9 @@ def _unique_id(doc: DashboardDoc, base: str) -> str:
     return out
 
 
+unique_id = _unique_id  # a free element id for callers that build an element before the op (CONV-03)
+
+
 def _add_chart(doc: DashboardDoc, op: ChartAdd, env: OpEnv) -> DashboardDoc:
     if op.chart.id in set(doc.element_ids()):
         raise _Refused(f"an element {op.chart.id!r} already exists")
@@ -444,6 +486,30 @@ def _add_chart(doc: DashboardDoc, op: ChartAdd, env: OpEnv) -> DashboardDoc:
         raise _Refused(f"no tab {op.tab!r}")
     doc = _rescope_filters(doc.model_copy(update={"charts": [*doc.charts, op.chart]}), op.chart)
     return _place(doc, op.chart.id, op.position, op.tab, (6, 4))
+
+
+def _from_question(doc: DashboardDoc, op: ChartFromQuestion, env: OpEnv) -> tuple[DashboardDoc, dict[str, Any]]:
+    if env.answer_question is None:
+        raise _Refused("charts from questions are not available here; add a metric or a saved chart instead")
+    if op.tab is not None and op.tab not in {t.id for t in doc.tabs}:
+        raise _Refused(f"no tab {op.tab!r}")
+    try:
+        built = env.answer_question(op, doc)
+    except NotGrounded as exc:
+        raise _Refused(exc.reason, exc.suggestion()) from None
+    element = built.element
+    taken = set(doc.element_ids()) | {t.id for t in doc.tabs} | {f.id for f in doc.filters}
+    if element.id in taken:
+        element = element.model_copy(update={"id": _unique_id(doc, element.id)})
+    if isinstance(element, KpiDoc):
+        doc = doc.model_copy(update={"kpis": [*doc.kpis, element]})
+        return _place(doc, element.id, op.position, op.tab, (3, 2)), {"element": element.id, **built.summary}
+    if element.type != "table" and suitability(element.type, element):
+        raise _Refused(f"{suitability(element.type, element)}",
+                       {"op": "chart.from_question", "question": op.question, "type": suggest_type(element)})
+    doc = _rescope_filters(doc.model_copy(update={"charts": [*doc.charts, element]}), element)
+    w, h = (3, 2) if element.type == "kpi" else (6, 4)
+    return _place(doc, element.id, op.position, op.tab, (w, h)), {"element": element.id, **built.summary}
 
 
 def _remove_chart(doc: DashboardDoc, op: ChartRemove, env: OpEnv) -> DashboardDoc:
@@ -516,15 +582,19 @@ def apply_ops(doc: DashboardDoc, ops: list[Any], env: OpEnv) -> OpResult:
         if isinstance(op, PublishRequest):
             deferred.append(op)
             continue
+        extra: dict[str, Any] = {}
         try:
-            current = _APPLY[op.op](current, op, env)
+            if isinstance(op, ChartFromQuestion):
+                current, extra = _from_question(current, op, env)
+            else:
+                current = _APPLY[op.op](current, op, env)
         except _Refused as exc:
             refused.append(Refusal(i, op.op, exc.reason, exc.suggestion))
             continue
         except ValidationError as exc:
             refused.append(Refusal(i, op.op, exc.errors()[0]["msg"]))
             continue
-        applied.append(op.model_dump(mode="json", exclude_none=True))
+        applied.append({**op.model_dump(mode="json", exclude_none=True), **({"result": extra} if extra else {})})
     if refused:
         return OpResult(doc, [], refused, deferred)
     current = derive_sensitivity(current)

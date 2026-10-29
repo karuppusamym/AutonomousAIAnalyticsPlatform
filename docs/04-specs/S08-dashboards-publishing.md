@@ -127,6 +127,41 @@ AT-07, AT-08; `test_patch_ops_versioning`; `test_edit_published_forks_draft`; `t
   not name gets `1 = 0`. The builder shows a published dashboard through `EmbeddedDashboard.tsx`; each SDK token
   refresh goes back through the recheck.
 * **Not built / open.** Metric-bound charts publish only against an approved semantic model (the fixture flows use
-  verified queries and result handles); previews of new charts are not computed by the builder yet (they come from
-  the run or the result handle); group audiences are not Superset roles; the platform endpoint → live Superset →
+  verified queries and result handles); previews of new charts come from a question since CONV-01 (§9); group audiences are not Superset roles; the platform endpoint → live Superset →
   browser chain has not run as one journey (each half is proven live or against the fake).
+
+## 9. As built — conversational dashboards (2026-10-29, CONV-01…03)
+
+* **A chart from a question (CONV-01).** New op `chart.from_question {question, type?, title?}`. The engine stays pure:
+  `OpEnv.answer_question` (`dashboards/questions.py`) runs the question through `agents/sql_agent.ask` unchanged, so
+  the semantic compiler, a verified query, the Ask rules or model-written SQL decide, and every statement passes the
+  gateway validator and `QueryGateway.execute`. The answer becomes a `ChartDoc`: fields typed from the result, the type
+  from `skills/viz.recommend_chart` (a type the person named wins only when it suits the fields), `dataset_ref` =
+  `metric@v` + dimensions for a plain governed metric, else the gateway execution (`result_handle` = query id), a
+  preview of at most `MAX_PREVIEW_ROWS` rows and provenance (assets, query id, `created_via: conversation`). A
+  model-written answer is labelled `ad_hoc` ("new calculation" in the UI). A single governed value is a `KpiDoc`. A
+  refusal, a clarify or an empty result is a refused op whose suggestion carries the clarifying reply and examples
+  the workspace can answer; the dashboard is unchanged. The rules rung reads "add / plot / chart / show me …" (and a
+  "show/how many/what is" sentence no edit rule matched) as this op, so no model is needed to ask for a chart.
+* **A draft from a prompt (CONV-02).** `dashboards/drafts.py` + `service.create_draft`, `POST
+  /api/v2/workspaces/{ws}/dashboards/draft {prompt}`. Topic words (expanded through trusted glossary synonyms) are
+  matched against the approved metrics the caller may see (`planner_catalog`, so masked metrics are absent) and the
+  brief's entities; tiles are questions the semantic rules rung answers exactly (`<metric>`, `monthly <metric>`,
+  `<metric> by <dimension>`), or without a metric layer the Ask rules (`how many <entity>`, `<entity> per month`,
+  `count of <entity> by <column>`). Two charts per metric at most while others have tiles. Filters are controls
+  without a preset value (`FilterDoc.value = null`, `resolved.via = control`) on the categorical fields the built
+  charts share; the bundle publishes them as native filters and never as a WHERE. Purpose `dashboard_plan`
+  ([cache, rules, llm_small], escalation never) may only reorder known tile ids; `auto` skips it when the topic
+  matched (recorded as a saving). Each tile is applied on its own, so failures are listed with their reason; a prompt
+  that matches nothing gets a clarifying reply and no dashboard. Version 1's diff holds the origin (prompt, grounding,
+  built and failed tiles).
+* **An Ask answer into a draft (CONV-03).** Ask promote target `draft {title? | dashboard_id?}` builds the recommended
+  chart from the stored answer (no re-query; the evidence check of `promote` applies) and creates a draft or applies
+  `chart.add` to an existing builder dashboard (a published one forks a draft). The approval-bound direct publish
+  (`dashboard`) is unchanged.
+* **UI.** Outputs › Dashboards › Build a dashboard: "What should the dashboard show?" (`DraftFromPrompt`), the result
+  lists tiles not built; starting empty is still there. Builder chat shows how each new chart was answered, and a
+  clarifying reply with questions to try. Ask: "Add to dashboard" asks where (new draft, existing draft, or the BI
+  tool with approval). Query ids, metric versions and planning detail appear only with expert tools on.
+* **Not built.** The draft has no text summary (CONV-05 adds narrative); a draft of a workspace with no metric layer
+  depends on catalog semantic types and profiles; drill-down and cross-filtering are CONV-06.

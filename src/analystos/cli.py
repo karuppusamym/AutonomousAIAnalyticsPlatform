@@ -127,6 +127,7 @@ def export_contracts(out_dir: str | None = None) -> None:
         policy,
         recipe,
         registry,
+        report_doc,
         scenario,
         semantic,
         step,
@@ -156,7 +157,8 @@ def export_contracts(out_dir: str | None = None) -> None:
               "pipeline": work.PipelineSpec, "task_envelope": worker.TaskEnvelope,
               "task_dispatch": worker.TaskDispatch, "task_result": worker.TaskResult, "artifact_ref": worker.ArtifactRef,
               "goal": goals.GoalIn, "run_limits": goals.RunLimits, "goal_signal": goals.SignalIn,
-              "tool_manifest": tool_manifest.ToolManifestV2}
+              "tool_manifest": tool_manifest.ToolManifestV2,
+              "report_document": report_doc.ReportDoc, "data_story": report_doc.DataStory}  # CONV-04/05
     for name, model in models.items():
         (out / f"{name}.schema.json").write_text(json.dumps(model.model_json_schema(), indent=2) + "\n", encoding="utf-8")
     from analystos.contracts.events import EVENT_TYPES

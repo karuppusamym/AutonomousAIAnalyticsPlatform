@@ -69,8 +69,25 @@ class ReportAlert(BaseModel):
     metric: str | None = None
 
 
+class ReportBlock(BaseModel):
+    """One block of a report document section (CONV-04): exactly one of its payloads is set, per `kind`."""
+
+    kind: Literal["text", "chart", "kpi", "finding", "note"]
+    markdown: str = ""  # text: the safe-markdown subset; note: plain text shown muted
+    chart: ReportChart | None = None
+    metric: ReportMetric | None = None
+    insight: ReportInsight | None = None
+    source: str = ""  # where the chart, KPI or finding was read from
+
+
+class ReportSection(BaseModel):
+    key: str
+    title: str
+    blocks: list[ReportBlock] = Field(default_factory=list)
+
+
 class ReportData(BaseModel):
-    kind: Literal["executive", "operational", "statistical", "exception", "weekly_summary"] = "executive"
+    kind: Literal["executive", "operational", "statistical", "exception", "weekly_summary", "document"] = "executive"
     title: str
     workspace_name: str
     objective: str
@@ -87,3 +104,17 @@ class ReportData(BaseModel):
     alerts: list[ReportAlert] = Field(default_factory=list)
     lineage_note: str = ""
     caveats: list[str] = Field(default_factory=list)
+    # CONV-04: a report document's own sections, in its order (kind "document"); empty for run reports, whose
+    # sections follow their kind. `origin` names the document and version a document snapshot was read from.
+    sections: list[ReportSection] = Field(default_factory=list)
+    origin: str | None = None
+
+    def snapshot(self) -> dict[str, Any]:
+        """What the snapshot hash covers. The CONV-04 fields are left out while unset, so a run report's hash is
+        the one it had before they existed (approvals and stored `report_data_hash` values stay valid)."""
+        out = self.model_dump()
+        if not self.sections:
+            out.pop("sections")
+        if self.origin is None:
+            out.pop("origin")
+        return out

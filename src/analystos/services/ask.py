@@ -75,7 +75,7 @@ from analystos.services.citations import record_turn_quietly
 log = get_logger(__name__)
 AGING_AFTER = timedelta(hours=24)
 STALE_AFTER = timedelta(days=7)
-PROMOTE_TARGETS = ("verified_query", "metric", "monitor", "dashboard", "investigate", "report")
+PROMOTE_TARGETS = ("verified_query", "metric", "monitor", "dashboard", "draft", "investigate", "report")
 # What a caller sees when the Ask path failed in a way no refusal kind describes (the cause is only logged).
 UNEXPECTED_FAILURE = "The question stopped because of an unexpected error. Nothing was answered from a guess."
 MODES = ("quick", "analyst")
@@ -1076,12 +1076,16 @@ def promote(user: User, turn_id: str, target: str, body: dict[str, Any] | None =
             record = {"target": target, "id": m.id, "name": m.name, "status": "created", "kind": kind, "value": check["value"]}
         elif target == "dashboard":
             record = _dashboard(s, me, turn, body, request_approval, verify_for_execution)
+        elif target == "draft":  # CONV-03: a recommended chart in a builder draft; publishing stays an approval later
+            from analystos.dashboards.service import add_answer
+
+            record = add_answer(s, me, turn, dashboard_id=body.get("dashboard_id"), title=body.get("title"))
         elif target == "report":
             from analystos.services.ask_outputs import answer_report
 
             require_role(s, me, ws_id, "analyst")
             record = answer_report(s, me, turn)
-        node = {"investigate": "run", "metric": "semantic_metric", "report": "artifact",
+        node = {"investigate": "run", "metric": "semantic_metric", "report": "artifact", "draft": "dashboard",
                 "dashboard": "approval" if record["status"] == "approval_required" else "chart"}.get(target, target)
         link(s, ws_id, ("ask_turn", turn_id), "promoted_to", (node, record["id"]))
         record["at"] = utcnow().isoformat()
