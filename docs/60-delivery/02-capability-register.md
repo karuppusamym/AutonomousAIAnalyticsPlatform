@@ -1,5 +1,45 @@
 # Capability register (evidence)
 
+## 2026-10-29 — S06-T6 Playbook editor, simulator and signing (FR-058, P2)
+
+Editor (`autonomy/playbook_editor.py`, `api/routers/playbook_editor.py`, prefix `/api/workspaces/{id}/playbook-editor`):
+workspace playbooks are written as YAML and stored as the existing versioned `playbook` definitions (ADR-0021: one draft
+per key, If-Match revisions, immutable published versions). YAML is read with `yaml.safe_load` only (one mapping,
+256 KiB); `validate` runs the same contract and registry checks a pack load runs and lists every problem; drafts show
+the diff against the newest published version (or the installed manifest of that id). Web: `web/src/components/
+PlaybookEditor.tsx` in Work → Workflows, shown only with Show expert tools on; the form-based workflow builder now
+publishes through the same signing steps.
+
+Simulator (`autonomy/simulator.py`, fixtures `autonomy/simulation_fixtures.yaml`: supervised, autonomous, scheduled,
+rejected, tight_budget, redirect, or a custom fixture): builds the engine's plan, applies `when`/`skip_when`, asks the
+workspace's enablement and certification the way `bind_run` does, walks the DAG in dependency waves with deterministic
+mock agents, counts steps/retries/replans/cost as `autonomy/budget.py` does, stops at each approval gate with the
+fixture's decision, and applies replans with the engine's reset and approval-invalidation rules. It runs no SQL, builds
+no model router, dispatches nothing and writes nothing (`test_simulation_never_executes`). It is the playbook tester:
+`POST .../drafts/{id}/simulate` makes a draft `tested` with the simulation digests bound to its content hash.
+
+Signing (`autonomy/playbook_signing.py`): `request-signature` asks for a `playbook.sign` approval whose payload is the
+definition, content hash and simulation digests (separation of duties always); publish runs `verify_for_execution`
+immediately before signing `(purpose, tenant, key, version, content hash, approval)` with the S10 tenant ed25519 key
+(`toolreg/signing.sign_payload`, domain-separated by `purpose`) and consumes the approval. An edit invalidates the
+sign-off. `definitions.require_runnable` (every run start), schedule pin checks and promotion refuse an unsigned,
+changed, forged, other-tenant or revoked-key playbook. Migration `0073_playbook_signature` adds `definition.signature`.
+
+Tests: `tests/unit/test_playbook_authoring.py` (14: YAML safety and problem lists, versions and diff, options and
+template, golden simulation of `investigate.v1` against every fixture (`tests/fixtures/playbooks/simulation_golden.yaml`),
+never-executes, enablement/certification, budget/gates/replans, ungated side effect, the full sign-off, re-approval
+after a change, runtime refusals, failing simulation, promotion, API round trip); existing playbook-publishing tests
+go through `tests/unit/playbook_signoff.py`; `web/src/test/playbookEditor.test.tsx`. Integration tests
+(`test_agent_forms_api.py`, `test_workbench_contracts_api.py`) were updated for the sign-off and not run.
+Runs (2026-10-29, Windows host): fast suite 4765 passed, 117 skipped, 1 failed (`test_health_states.py` deadline under
+load, passes on rerun); `ruff check src tests` clean; web typecheck, `npm run build` and vitest (469 tests; the workflow
+journey in `lightIa.test.tsx` now walks simulate → sign-off → publish) pass.
+
+Not built or not evidenced: no live-stack run or browser walkthrough; migration not run against Postgres; the editor is a
+text area (no schema-aware completion); simulation cost is the agents' declared budget, not a model price; workspace
+playbooks published before this change are unsigned and refused until a new version is signed; drafts still run unsigned
+in an `environment: dev` workspace (ADR-0021).
+
 ## 2026-10-27 — S05 Model gateway: providers, layered configuration, switch gate, air-gap, Admin › Models
 
 Providers (`llm/providers.py`, `llm/config.py`): `openai_compatible` with declared capabilities (json_mode, tools,

@@ -36,6 +36,9 @@ EVENT_TYPES = {
     # Definition lifecycle and pinned schedules (P7-03, ADR-0021)
     "definition.draft_saved", "definition.published", "definition.deprecated", "definition.retired",
     "definition.tested", "definition.promoted",
+    # Playbook signing (S06-T6): a hash-bound sign-off approval, then the tenant signature at publish
+    "definition.signature_requested", "definition.signature_approved", "definition.signature_rejected",
+    "definition.signature_invalidated", "definition.signed",
     "schedule.upgrade_available", "schedule.upgraded", "schedule.pin_warning", "schedule.blocked", "narrative.stale",
     # Typed work orders and the dispatch outbox (P4-06)
     "work_order.created", "work_order.updated", "run.dispatched", "run.dispatch_failed",

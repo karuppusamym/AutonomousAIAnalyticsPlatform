@@ -720,6 +720,11 @@ export function mockBackend(method: string, path: string, requestBody?: string |
     if (body.password !== "ChangeMe123!") return json({ error: { code: "unauthorized", message: "invalid credentials", details: {} } }, 401);
     return json({ access_token: "mock-token", token_type: "bearer", user: USER });
   }
+  // playbook editor (S06-T6, expert tools in Work → Workflows): options and a template; nothing is drafted here
+  if (m === "GET" && p === `${W}/playbook-editor`) {
+    return json({ agents: [], checks: [], replan_reasons: [], fixtures: [{ name: "supervised", description: "A person approves the plan" }],
+      schema: {}, template: "apiVersion: analystos/v1\nkind: Playbook\nid: playbook.my_review\nversion: 1.0.0\nspec:\n  steps: []\n" });
+  }
   // capability registry: list (with enablement per workspace), manifest, enable toggle, reload, run
   if (m === "GET" && p === "/capabilities") return json(capabilityList(url.searchParams.get("workspace_id")));
   if (p === `${W}/work-modes` || p === `${W}/work-modes/preview`) {

@@ -2054,6 +2054,81 @@ export interface DefinitionPage {
   builtin?: DefinitionRef[];
 }
 
+/** A playbook's signing state (autonomy/playbook_signing.state): signed versions run; drafts wait for a sign-off. */
+export interface PlaybookSignature {
+  state: "unsigned" | "requested" | "approved" | "rejected" | "invalidated" | "stale" | "signed" | string;
+  approval_id?: string | null;
+  content_hash?: string | null;
+  requested_by?: string | null;
+  requested_at?: string | null;
+  reason?: string | null;
+  key_id?: string | null;
+  signed_at?: string | null;
+}
+
+/** A playbook definition as the editor sees it: the version, its YAML, signing state and diff to the published one. */
+export interface PlaybookDraft extends DefinitionVersion {
+  yaml: string;
+  signature?: PlaybookSignature;
+  test_evidence?: { kind?: string; content_hash?: string; simulations?: { fixture: string; outcome: string; digest: string }[] } | null;
+  diff?: { against: string | null; changes: { path: string; from: unknown; to: unknown }[] };
+}
+
+/** POST .../playbook-editor/validate: every problem at once, or the normalized manifest. */
+export interface PlaybookCheck {
+  ok: boolean;
+  key?: string | null;
+  problems: string[];
+  warnings?: string[];
+  content_hash?: string;
+  manifest?: Dict;
+  steps?: { key: string; use: string; behaviour: string | null; type: string; after: string[]; optional: boolean; when: string | null }[];
+  approval_gates?: string[];
+  diff?: { against: string | null; changes: { path: string; from: unknown; to: unknown }[] };
+}
+
+export interface SimulationEvent {
+  seq: number;
+  key: string;
+  agent: string | null;
+  behaviour: string | null;
+  type: string;
+  status: string;
+  detail: string;
+  plan_version: number;
+  wave?: number;
+  approval?: string;
+  budget: Record<string, number>;
+}
+
+/** autonomy/simulator.simulate: a dry run against a fixture workspace (no SQL, no model call, no side effect). */
+export interface SimulationReport {
+  outcome: "completed" | "completed_with_limitations" | "rejected" | "failed" | "refused" | string;
+  reason: string | null;
+  playbook: { id: string; version: string; ref: string; content_hash: string };
+  fixture: Dict & { name: string };
+  timeline: SimulationEvent[];
+  waves: string[][];
+  approvals: { id: string; gate: string; payload: string; for: string | null; decision: string; status: string; binds: string; plan_version: number }[];
+  approval_gates: { key: string; payload: string | null; approval_for: string | null; type: string }[];
+  replans: Dict[];
+  budget: { limits: Record<string, number>; used: Record<string, number>; remaining: Record<string, number>; stopped_by: string | null };
+  warnings: string[];
+  mocks: Record<string, string>;
+  plan_version: number;
+  plan_hash: string;
+  digest: string;
+}
+
+export interface PlaybookEditorOptions {
+  agents: { id: string; version: string; summary: string; default_entry: boolean; behaviours: string[]; certification: string; enabled: boolean }[];
+  checks: string[];
+  replan_reasons: string[];
+  fixtures: { name: string; description: string }[];
+  schema: Dict;
+  template: string;
+}
+
 /** Governed training result; a refusal remains visible in Work with its reason. */
 export interface DefinitionDiff {
   from: DefinitionVersion;
@@ -4238,6 +4313,29 @@ export const api = {
   definitionDiff: (ws: string, id: string, against?: string) =>
     get("/api/workspaces/{workspace_id}/definitions/{definition_id}/diff",
       { path: { workspace_id: ws, definition_id: id }, query: { against } }) as Promise<DefinitionDiff>,
+
+  // playbook editor (S06-T6): YAML drafts, dry-run simulation, signing; publishing is publishDefinition
+  playbookEditorOptions: (ws: string) =>
+    get("/api/workspaces/{workspace_id}/playbook-editor", { path: W(ws) }) as Promise<PlaybookEditorOptions>,
+  validatePlaybook: (ws: string, yaml: string) =>
+    post("/api/workspaces/{workspace_id}/playbook-editor/validate", { path: W(ws), body: { yaml } }) as Promise<PlaybookCheck>,
+  simulatePlaybook: (ws: string, body: { yaml?: string; definition_id?: string; fixture?: string | Dict }) =>
+    post("/api/workspaces/{workspace_id}/playbook-editor/simulate", { path: W(ws), body }) as Promise<SimulationReport>,
+  createPlaybookDraft: (ws: string, yaml: string, title?: string) =>
+    post("/api/workspaces/{workspace_id}/playbook-editor/drafts", { path: W(ws), body: { yaml, title: title || null } }) as Promise<PlaybookDraft>,
+  getPlaybookDraft: (ws: string, id: string) =>
+    get("/api/workspaces/{workspace_id}/playbook-editor/drafts/{definition_id}",
+      { path: { workspace_id: ws, definition_id: id } }) as Promise<PlaybookDraft>,
+  updatePlaybookDraft: (ws: string, id: string, revision: number, yaml: string, title?: string) =>
+    request<PlaybookDraft>("PUT", apiPath("put", "/api/workspaces/{workspace_id}/playbook-editor/drafts/{definition_id}",
+      { path: { workspace_id: ws, definition_id: id } }), { yaml, title: title || null }, ifMatch(revision)),
+  simulatePlaybookDraft: (ws: string, id: string, revision: number, fixtures?: string[]) =>
+    request<PlaybookDraft>("POST", apiPath("post", "/api/workspaces/{workspace_id}/playbook-editor/drafts/{definition_id}/simulate",
+      { path: { workspace_id: ws, definition_id: id } }), { fixtures: fixtures?.length ? fixtures : null }, ifMatch(revision)),
+  requestPlaybookSignature: (ws: string, id: string, revision: number) =>
+    request<{ definition: PlaybookDraft; approval: Approval }>("POST", apiPath("post",
+      "/api/workspaces/{workspace_id}/playbook-editor/drafts/{definition_id}/request-signature",
+      { path: { workspace_id: ws, definition_id: id } }), {}, ifMatch(revision)),
 
   // recipes and file ingestion: Work → Prepare data (P6-04..07)
   listRecipes: (ws: string) => get("/api/workspaces/{workspace_id}/recipes", { path: W(ws) }) as Promise<Recipe[]>,

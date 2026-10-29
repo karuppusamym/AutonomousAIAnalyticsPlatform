@@ -160,6 +160,11 @@ def _decide(approval_id: str, user: User, session: Session, approve: bool, reaso
                 rules.apply_decision(session, approval)
             elif approval.action == packs.REVIEW_ACTION:  # S09-T4: a recurring pack's brief, reviewed
                 packs.apply_review(session, approval)
+            else:
+                from analystos.autonomy import playbook_signing
+
+                if approval.action == playbook_signing.ACTION:  # S06-T6: a playbook draft's signature sign-off
+                    playbook_signing.apply_decision(session, approval)
     session.flush()
     result = row(approval, exclude={"payload"})
     run_id = approval.run_id

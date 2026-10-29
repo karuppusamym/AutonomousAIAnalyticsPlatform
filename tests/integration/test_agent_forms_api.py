@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import select
+from tests.integration.playbook_signoff import publish_playbook
 from tests.integration.test_playbook_runs import _services, api, servicenow_url, world  # noqa: F401  (fixtures)
 
 pytestmark = pytest.mark.integration
@@ -66,8 +67,8 @@ def test_an_owner_creates_publishes_and_runs_a_form_agent_in_a_workspace_playboo
                  json={"kind": "playbook", "key": "playbook.form_notes", "title": "Form notes", "spec": _playbook(FORM["key"])})
     assert r.status_code == 201, r.text
     pb = r.json()
-    r = api.post(f"{base}/definitions/{pb['id']}/publish", headers={**owner, "If-Match": f'"{pb["revision"]}"'})
-    assert r.status_code == 200, r.text
+    r = publish_playbook(api, ws, pb, owner, world["admin"])  # S06-T6: simulated and signed off by someone else
+    assert r.status_code == 200 and r.json()["signature"]["state"] == "signed", r.text
 
     services, transport = _services(key=False)
     monkeypatch.setattr(engine, "default_services", lambda: services)
