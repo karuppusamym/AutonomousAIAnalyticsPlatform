@@ -11,6 +11,11 @@ A kind may register a *tester* (P7-11 query tools): `test` runs the draft once a
 `tested` with the evidence bound to its content hash; for such kinds publish requires a tested draft whose
 content has not changed since. An edit of a tested draft makes it a draft again. A tested draft is still a
 draft for triggers (it runs only in a dev workspace).
+
+Playbooks (S06-T6) are tested by the simulator (`autonomy/simulator.py`: a dry run against fixture workspaces,
+no SQL or side effects) and published only signed: an approved, hash-bound `playbook.sign` approval, verified
+immediately before the tenant key signs the version (`autonomy/playbook_signing.py`). Triggers refuse a
+published playbook whose signature does not verify.
 """
 from __future__ import annotations
 
@@ -172,6 +177,24 @@ def _analysis_context(session: Session, workspace_id: str, key: str, spec: dict[
     return data.model_dump(mode="json")
 
 
+def _simulate_playbook(session: Session, user: User, row: Definition, arguments: dict[str, Any] | None) -> dict[str, Any]:
+    """The playbook tester: simulate the draft against fixture workspaces (default: `supervised`). It passes when
+    no fixture is refused or fails; the summaries (digests) become the evidence the signature approval binds."""
+    from analystos.autonomy import simulator
+
+    names = (arguments or {}).get("fixtures") or ["supervised"]
+    if not isinstance(names, list) or len(names) > 10:
+        raise InvalidInput("fixtures is a list of up to 10 fixture names or objects")
+    reports = [simulator.simulate(dict(row.spec), n, session=session, workspace_id=row.workspace_id, workspace_source=True)
+               for n in names]
+    failing = [r for r in reports if r["outcome"] not in simulator.PASSING]
+    if failing:
+        raise InvalidInput("simulation did not pass: " + "; ".join(f"{r['fixture']['name']}: {r['outcome']} ({r.get('reason')})"
+                                                               for r in failing),
+                           details={"reports": [simulator.summary(r) for r in reports]})
+    return {"kind": "simulation", "simulations": [simulator.summary(r) for r in reports]}
+
+
 def _register_builtin_kinds() -> None:
     from analystos.contracts.work import MLScoringSpec, MLSpec, PipelineSpec
 
@@ -189,6 +212,7 @@ def _register_builtin_kinds() -> None:
     from analystos.capabilities import agent_forms
 
     register_kind("agent", agent_forms.validate_definition)  # P7-19: a declarative agent authored in the workspace
+    register_tester("playbook", _simulate_playbook)  # S06-T6: a playbook publishes only after its simulation passes
 
 
 _register_builtin_kinds()
@@ -260,6 +284,10 @@ def update_draft(session: Session, user: User, row: Definition, patch: Definitio
         row.content_hash = content_hash(row.kind, row.spec)
         if row.status == "tested" and (row.test_evidence or {}).get("content_hash") != row.content_hash:
             row.status = "draft"  # the test covered other content
+        if row.kind == "playbook" and (row.signature or {}).get("content_hash") not in (None, row.content_hash):
+            from analystos.autonomy.playbook_signing import invalidate
+
+            invalidate(session, row, "the playbook changed after its signature was requested")
     if patch.title is not None:
         row.title = patch.title
     row.revision += 1
@@ -280,6 +308,10 @@ def publish(session: Session, user: User, row: Definition, expected_revision: in
     if row.kind in _TESTERS and (row.status != "tested" or (row.test_evidence or {}).get("content_hash") != row.content_hash):
         raise Conflict(f"{row.kind} {row.key} v{row.version} must pass its test before it is published "
                        "(POST .../definitions/{id}/test)", details={"status": row.status})
+    if row.kind == "playbook":  # S06-T6: verify the hash-bound approval immediately before signing, then sign
+        from analystos.autonomy.playbook_signing import sign_for_publish
+
+        sign_for_publish(session, user, row)
     row.status, row.published_by, row.published_at = "published", actor or user.id, utcnow()
     row.revision += 1
     session.flush()
@@ -313,6 +345,8 @@ def publish_frozen(session: Session, workspace_id: str, kind: str, key: str, spe
                    published_by: str, title: str | None = None) -> Definition:
     """Publish in one step what an approval already froze (e.g. a saved analysis). Same content as the
     newest published version returns that version instead of a duplicate."""
+    if kind == "playbook":
+        raise InvalidInput("a playbook is published through its simulation and signature")
     spec = _validate(session, workspace_id, kind, key, spec)
     digest = content_hash(kind, spec)
     current = latest_published(session, workspace_id, kind, key)
@@ -449,6 +483,10 @@ def promote(session: Session, user: User, row: Definition, target_workspace_id: 
             ENVIRONMENTS.index(target_env) != ENVIRONMENTS.index(source_env) + 1:
         raise Conflict(f"promotion goes one step dev -> test -> prod; this is {source_env} -> {target_env}",
                        details={"source_environment": source_env, "target_environment": target_env})
+    if row.kind == "playbook":
+        from analystos.autonomy.playbook_signing import verify_definition
+
+        verify_definition(session, row)  # only a signed version travels, with its signature
     spec = _validate(session, target_workspace_id, row.kind, row.key, dict(row.spec))
     if content_hash(row.kind, spec) != row.content_hash:
         raise Conflict(f"{row.kind} {row.key} does not validate to the same content in the target workspace "
@@ -468,11 +506,15 @@ def promote(session: Session, user: User, row: Definition, target_workspace_id: 
                      version=_latest_version(session, target_workspace_id, row.kind, row.key) + 1, status="published",
                      title=row.title, spec=spec, content_hash=row.content_hash, revision=1, created_by=user.id,
                      published_by=user.id, published_at=utcnow(), test_evidence=row.test_evidence,
-                     bindings={"environment": target_env, "sources": sources},
+                     bindings={"environment": target_env, "sources": sources}, signature=row.signature,
                      promoted_from={"workspace_id": row.workspace_id, "definition_id": row.id, "version": row.version,
                                     "content_hash": row.content_hash, "environment": source_env})
     session.add(new)
     session.flush()
+    if new.kind == "playbook":
+        from analystos.autonomy.playbook_signing import verify_definition
+
+        verify_definition(session, new)  # the target's tenant key must verify it (no cross-tenant promotion)
     _event(session, new, "definition.promoted", f"user:{user.id}", from_workspace=row.workspace_id,
            from_definition=row.id, from_environment=source_env, environment=target_env, sources=sources)
     _event(session, row, "definition.promoted", f"user:{user.id}", to_workspace=target_workspace_id, to_definition=new.id,
@@ -541,6 +583,13 @@ def require_runnable(session: Session, workspace_id: str, ref: DefinitionRef, *,
     if ref.status in EDITABLE and not is_dev(session, workspace_id):
         raise PolicyDenied(f"{ref.label} is a draft: {trigger} runs published versions only (publish it, or mark the "
                            "workspace environment: dev to run drafts)", details={"definition": ref.model_dump()})
+    if ref.kind == "playbook" and ref.source == "workspace" and ref.status in RUNNABLE_STATUSES:
+        from analystos.autonomy.playbook_signing import verify_definition
+
+        row = session.get(Definition, ref.id) if ref.id else None
+        if row is None or row.workspace_id != workspace_id:
+            raise NotFound(f"{ref.label} not found")
+        verify_definition(session, row)  # S06-T6: an unsigned or changed playbook never runs
 
 
 def resolve_runnable(session: Session, workspace_id: str, ref: DefinitionRef | dict[str, Any] | str, *,
@@ -575,6 +624,10 @@ def out(row: Definition, *, spec: bool = True) -> dict[str, Any]:
         d[c] = v.isoformat() if v else None
     for c in ("test_evidence", "bindings", "promoted_from"):
         d[c] = getattr(row, c, None)
+    if row.kind == "playbook":
+        from analystos.autonomy.playbook_signing import state
+
+        d["signature"] = state(row)
     if spec:
         d["spec"] = row.spec
         if row.kind == "agent":

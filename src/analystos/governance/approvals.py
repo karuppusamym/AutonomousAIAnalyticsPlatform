@@ -23,7 +23,18 @@ from analystos.security.auth import APPROVER_ROLES, role_at_least
 # Actions whose approver must differ from the requester whatever the workspace policy says (P4-K03).
 ALWAYS_SEPARATE_DUTIES = {"semantic_model.approve", "semantic_relationship.accept",
                           "delivery_destination.authorize",  # N-3: external egress is never self-authorized
-                          "monitor_rule.approve"}  # S09: a rule's recipients and the work it starts, likewise
+                          "monitor_rule.approve",  # S09: a rule's recipients and the work it starts, likewise
+                          "playbook.sign"}  # S06-T6: a playbook's author never signs it off
+
+
+def _expired(approval: Approval) -> bool:
+    """Past its decision expiry. A value read back from SQLite has lost its zone (Postgres keeps it); both are UTC."""
+    from datetime import UTC
+
+    expires, now = approval.expires_at, utcnow()
+    if (expires.tzinfo is None) != (now.tzinfo is None):
+        expires = expires.replace(tzinfo=None) if now.tzinfo is None else expires.replace(tzinfo=UTC)
+    return expires < now
 
 
 def request_approval(session: Session, *, workspace_id: str, run_id: str | None, action: str, payload: dict[str, Any],
@@ -95,7 +106,7 @@ def decide(session: Session, approval_id: str, user: User, *, approve: bool, rea
         raise Forbidden(f"role '{role}' cannot approve")
     if approval.status != "pending":
         raise Conflict(f"approval is {approval.status}")
-    if approval.expires_at < utcnow():
+    if _expired(approval):
         approval.status = "expired"
         raise Conflict("approval expired")
     ws = get_workspace(session, approval.workspace_id)
@@ -125,7 +136,7 @@ def verify_for_execution(session: Session, approval_id: str, *, payload: dict[st
         raise ApprovalRequired("no approval on record")
     if approval.status != "approved":
         raise ApprovalRequired(f"approval is {approval.status}")
-    if approval.expires_at < utcnow():
+    if _expired(approval):
         approval.status = "expired"
         raise ApprovalRequired("approval expired")
     return _verify_binding(session, approval, payload=payload, plan_hash=plan_hash)

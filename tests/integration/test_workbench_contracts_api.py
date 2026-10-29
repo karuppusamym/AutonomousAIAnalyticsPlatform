@@ -23,6 +23,7 @@ import pytest
 import uvicorn
 import yaml
 from sqlalchemy import func, select
+from tests.integration.playbook_signoff import publish_playbook
 
 pytestmark = pytest.mark.integration
 PASSWORD = "ChangeMe123!"
@@ -364,7 +365,9 @@ def test_draft_definitions_are_refused_as_triggers_outside_dev(api, world, start
     assert dev.status_code == 200 and dev.json()["capabilities"]["definition"]["status"] == "draft"
     assert api.patch(f"/api/workspaces/{ws}", headers=analyst, json={"settings": {"environment": "prod"}}).status_code == 200
     assert api.post(f"/api/workspaces/{ws}/definitions/{did}/publish", headers=analyst).status_code == 428
-    pub = api.post(f"/api/workspaces/{ws}/definitions/{did}/publish", headers={**analyst, "If-Match": '"1"'})
+    unsigned = api.post(f"/api/workspaces/{ws}/definitions/{did}/publish", headers={**analyst, "If-Match": '"1"'})
+    assert unsigned.status_code == 409 and "must pass its test" in unsigned.json()["error"]["message"]  # S06-T6
+    pub = publish_playbook(api, ws, {"id": did, "revision": 1}, analyst, world["admin"])
     assert pub.status_code == 200 and pub.json()["status"] == "published" and pub.json()["published_by"]
     ok = api.post(f"/api/workspaces/{ws}/analysis", headers=analyst,
                   json={"objective": "Investigate SLA breaches, published", "playbook": "playbook.ws_investigate"})

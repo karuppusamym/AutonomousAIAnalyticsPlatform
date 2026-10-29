@@ -36,6 +36,7 @@ from analystos.api.routers import models_admin as models_admin_router
 from analystos.api.routers import ops_v2 as ops_v2_router
 from analystos.api.routers import pilot as pilot_router
 from analystos.api.routers import pipelines as pipelines_router
+from analystos.api.routers import playbook_editor as playbook_editor_router
 from analystos.api.routers import process as process_router
 from analystos.api.routers import recipes as recipes_router
 from analystos.api.routers import registries as registries_router
@@ -127,6 +128,7 @@ app.include_router(context_export_router.router)  # download and inspect the wor
 app.include_router(context_v2_router.router)  # Context Service over the ledger (S03): search/get/compile/changes, OKF
 app.include_router(evidence_router.router)
 app.include_router(definitions_router.router)
+app.include_router(playbook_editor_router.router)  # S06-T6: YAML playbook drafts, simulation, signing
 app.include_router(work_orders_router.router)
 app.include_router(recipes_router.router)
 app.include_router(brief_router.router)

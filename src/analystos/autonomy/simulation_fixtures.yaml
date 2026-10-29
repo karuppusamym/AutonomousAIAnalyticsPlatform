@@ -1,0 +1,31 @@
+# Fixture workspaces for the playbook simulator (S06-T6, spec §3.7; autonomy/simulator.py).
+# A fixture is the run a playbook would get: autonomy level, origin, limits, what the approvers decide,
+# which mocked steps fail and which replans happen. Agents are deterministic mocks: no SQL, no model call,
+# no side effect. `limits` are tightened with the playbook's `default_limits` (a fixture can only lower them).
+- name: supervised
+  description: An analyst starts the playbook by hand (autonomy 2); a person approves the plan and every gate.
+  autonomy_level: 2
+  origin: {type: api}
+- name: autonomous
+  description: A goal run at autonomy 3; no plan approval, certified capabilities only, side effects still gated.
+  autonomy_level: 3
+  origin: {type: goal, mode: goal_autonomous}
+- name: scheduled
+  description: A schedule fire that does not publish (origin publish skip); certified capabilities only.
+  autonomy_level: 3
+  origin: {type: schedule, publish: skip}
+- name: rejected
+  description: The approver rejects every approval request.
+  autonomy_level: 2
+  origin: {type: api}
+  approvals: reject
+- name: tight_budget
+  description: A run allowed five steps; shows where the budget stops it (COMPLETED_WITH_LIMITATIONS).
+  autonomy_level: 2
+  origin: {type: api}
+  limits: {max_steps: 5}
+- name: redirect
+  description: A person redirects the run once after the first step that declares a replan boundary.
+  autonomy_level: 2
+  origin: {type: api}
+  replans: [{reason_code: user_redirect}]

@@ -8,6 +8,7 @@ import copy
 
 import pytest
 from sqlalchemy import select
+from tests.unit.playbook_signoff import publish_signed
 
 from analystos.capabilities import binding
 from analystos.capabilities import registry as reg
@@ -82,7 +83,7 @@ def test_linear_workflow_builder_shape_publishes_as_a_versioned_playbook(world):
         row = defs.create_draft(s, owner, WS, DefinitionDraftIn(kind="playbook", key=spec["id"],
                                                                 title="Metadata review", spec=spec))
         assert row.status == "draft" and row.spec["certification"]["status"] == "draft"
-        defs.publish(s, owner, row, row.revision)
+        publish_signed(s, owner, row)
         ref, published = defs.resolve(s, WS, {"id": row.id})
         assert ref.version == 1 and ref.status == "published"
         assert published["spec"]["steps"][0]["use"] == "agent.metadata"
@@ -161,7 +162,7 @@ def test_triggers_refuse_drafts_outside_dev_and_retired_versions(world):
         caps = runs_svc._capabilities(s, WS, playbook=None, definition=draft, pins=None, trigger="api")
         assert caps["definition"]["status"] == "draft" and caps["definition"]["dev"] is True
         s.get(Workspace, WS).settings = {}
-        defs.publish(s, s.merge(owner), row, row.revision)
+        publish_signed(s, s.merge(owner), row)
         caps = runs_svc._capabilities(s, WS, playbook="playbook.weekly_sla", definition=None, pins=None, trigger="api")
         assert caps["playbook"] == "playbook.weekly_sla" and caps["definition"]["version"] == 1
         defs.retire(s, s.merge(owner), row, reason="wrong SLA clock")
@@ -318,7 +319,7 @@ def test_a_retired_workspace_definition_blocks_and_a_deprecated_one_warns(world)
     with session_scope() as s:
         row = defs.create_draft(s, s.merge(owner), WS, DefinitionDraftIn(kind="playbook", key="playbook.weekly_sla",
                                                                          spec=_playbook_spec()))
-        defs.publish(s, s.merge(owner), row, row.revision)
+        publish_signed(s, s.merge(owner), row)
         ref = defs.ref_of(row).model_dump()
         sch = Schedule(id="sch_def", workspace_id=WS, name="def pinned", kind="reanalysis", cron="0 7 * * 1", timezone="UTC",
                        config={}, enabled=True, owner_id="usr_owner", revision=1,
