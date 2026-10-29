@@ -1096,6 +1096,47 @@ attestation on main, npm audit, pip-audit, weekly rescan) — checked by `tests/
 run on GitHub. Not done: actions pinned by SHA, `uv.lock`, engines filling `scan_bytes`/`credits`, desk/context/compute
 spans, a cluster install, the customer IdP and pen test (T8, hand-off `s12-t8-idp-pentest-handoff.md`).
 
+## 2026-10-29 — S03-T7 Context federation subscription
+
+A workspace follows another workspace's Context Ledger through its change feed (`context/federation.py`, migration
+`0074_context_federation`: `context_subscription` and `context_federated_entry`, both owned by the subscriber workspace
+with RLS, policy and fill trigger). The source may be in another tenant the subscribing owner belongs to. Each source
+read re-binds from `system_scope()` to the source workspace's tenant, so it runs under that tenant's RLS. What is
+shared:
+* certified, approved and workspace entries, classified `internal`;
+* allowed by the subject's access in the source (scope, denied columns);
+* never a federated copy, so federation is one hop.
+
+Copies are a ledger owner table and land in the subscriber's ledger as `approved`, `source=federation` and read-only.
+A new source version opens a new ledger version.
+
+Delivery and safety:
+* The cursor is the source `seq`. A batch is read as the source tenant and applied as the subscriber tenant in a
+  separate transaction, so delivery is at least once.
+* The apply is idempotent: version compare plus tombstones.
+* Every sync re-checks the live copies, which catches access lost without a ledger change and erased entries.
+* Losing source access suspends the subscription and retires its copies (audited); `resync` replays from 0.
+* `sync_subscription` is `@owned_by`; `sync_due` is a `@platform_loop` in scheduler housekeeping.
+* REST: `/api/v2/context/subscriptions` (create with a first sync, list, sync, resync, revoke) and `/feed` for an
+  external subscriber, with the caller's access and tenant applied.
+
+Tests (Windows dev host, Python 3.12, Postgres 16 with pgvector image and array vectors, strict tenancy, 2026-10-29):
+* `tests/unit/test_context_federation.py` (13): approved read-only copies; refresh and retire on source change;
+  redelivery and replay change nothing; out-of-order versions and tombstones; feed withholding (scope, denied column,
+  personal, suggested, confidential, federated copies); a version that loses access sent as a remove; suspend and
+  resync; re-check after narrowed access; revoke; subscribe rules; kinds; the copy cap; injection text stays data and
+  is screened from a compile; malformed items skipped; `@owned_by` and `@platform_loop` markers.
+* `tests/unit/test_tenancy_rls_coverage.py`: both tables are tenant-owned through the subscriber workspace.
+* `tests/integration/test_context_federation.py` (2): tenant A follows tenant B over REST under RLS. The trigger fills
+  tenant A, tenant B sees no subscription rows, and a user outside tenant B gets 404. Also covered: refresh on version
+  change, idempotent resync, the external feed only in tenant B's context, the scheduler pass across tenants, and
+  suspension when the owner leaves tenant B.
+* Migration upgrade from empty, downgrade -1 and re-upgrade checked.
+
+Not built: subscriptions to a published pack URL, an MCP tool for the feed, a UI, and lineage edges from a copy to its
+source entry (named in the ledger provenance).
+
+
 ## 2026-10-29 — N-14 visible rules fallback (dev model policy still open)
 
 | Capability | Implementation | Evidence / limits |

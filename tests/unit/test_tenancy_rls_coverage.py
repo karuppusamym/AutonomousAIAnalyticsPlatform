@@ -58,6 +58,16 @@ def test_only_optional_workspace_catalogues_share_tenantless_rows():
     assert not sources["analysis_run"].nullable  # FK to workspace: always a tenant
 
 
+def test_context_federation_tables_are_owned_by_the_subscriber_workspace():
+    """S03-T7: a subscription and its copies belong to the subscriber workspace's tenant, never shared or nullable;
+    the source workspace (maybe another tenant) is a plain id, so it cannot decide the row's tenant."""
+    sources = tenant_sources(Base.metadata)
+    for name in ("context_subscription", "context_federated_entry"):
+        src = sources[name]
+        assert (src.parent, src.fk, src.nullable, src.shared) == ("workspace", "workspace_id", False, False), name
+    assert not Base.metadata.tables["context_subscription"].c.source_workspace_id.foreign_keys
+
+
 def test_policy_reads_platform_rows_only_where_shared():
     shared = _policy_sql("knowledge_pack", TenantSource("workspace", "workspace_id", True, shared=True), "analystos_app")
     private = _policy_sql("audit_event", TenantSource("workspace", "workspace_id", True), "analystos_app")

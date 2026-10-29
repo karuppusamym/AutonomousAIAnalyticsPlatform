@@ -237,6 +237,10 @@ def body_of(entry: Any, owner: Any, access: Access) -> dict[str, Any]:
                 **{k: summary.get(k) for k in ("questions", "answers", "corrections", "open_questions")}}
     if t == "conversation_correction":
         return {"term": owner.term, "meaning": owner.meaning, "scope": owner.scope, "status": owner.status}
+    if t == "context_federated_entry":  # S03-T7: a read-only copy of another workspace's entry
+        return {"title": owner.title, "summary": owner.summary, "aliases": list(owner.aliases or []),
+                "refs": list(owner.refs or []), "source_key": owner.source_key, "source_entry_id": owner.source_entry_id,
+                "source_version": owner.source_version, "source_trust": owner.source_trust, "read_only": True}
     return {}
 
 

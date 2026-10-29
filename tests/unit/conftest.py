@@ -45,6 +45,7 @@ def sqlite_db(monkeypatch):
         "model_config_override",  # S05-T3: the router reads a workspace's model layers
         "model_evaluation",  # S05-T5: model-switch gate scores
         "context_ledger_entry", "context_ledger_change",  # S03-T1: owner writes project into the ledger on commit
+        "context_subscription", "context_federated_entry",  # S03-T7: federation (a ledger owner table)
         "goal", "run_plan_version",  # S06: goals and superseded plan versions
         "verified_query", "mcp_server", "mcp_client", "mcp_grant", "registered_tool", "tool_invocation", "tool_signing_key",  # S10 registry
         "publication",  # S08 dashboards

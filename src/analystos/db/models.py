@@ -2505,7 +2505,12 @@ class GroundingEvaluation(Base):
 
 from analystos.autonomy.models import Goal, RunPlanVersion  # noqa: E402,F401  (autonomy engine, S06)
 from analystos.context import ledger as _context_ledger  # noqa: E402,F401  (registers the ledger projection hook)
-from analystos.context.models import ContextLedgerChange, ContextLedgerEntry  # noqa: E402,F401  (Context Ledger, S03)
+from analystos.context.models import (  # noqa: E402,F401  (Context Ledger, S03; federation S03-T7)
+    ContextFederatedEntry,
+    ContextLedgerChange,
+    ContextLedgerEntry,
+    ContextSubscription,
+)
 from analystos.conversations.models import (  # noqa: E402,F401  (conversation memory, S04)
     ConversationCorrection,
     ConversationState,

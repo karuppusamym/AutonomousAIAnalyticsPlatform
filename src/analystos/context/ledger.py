@@ -13,7 +13,8 @@ call ``mark`` or ``reconcile`` after one.
 
 Trust is derived by code from the owner's state, never from text: certified (an approved semantic metric, an
 active verified query), approved (reviewed mapping, accepted relationship, verified finding, reviewed dataset,
-desk-certified answer), workspace, personal (author only) and suggested (drafts, imports).
+desk-certified answer, an entry federated from another workspace), workspace, personal (author only) and suggested
+(drafts, imports).
 """
 from __future__ import annotations
 
@@ -388,12 +389,39 @@ def _aware(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
+def _federated(session: Session, ws: str, tags: _Tags) -> list[Projected]:
+    """S03-T7: what this workspace's subscriptions copied from another workspace's ledger. ``approved`` and read-only
+    here (spec S03 §6): the source owns the content, a new source version opens a new ledger version, and a retired
+    copy retires its entry. Classification is the stricter of the source's and this workspace's own column tags."""
+    from analystos.context.federation import MAX_COPIES
+    from analystos.context.models import ContextFederatedEntry as F
+    from analystos.context.models import ContextSubscription as S
+
+    out = []
+    for f, source_ws in session.execute(select(F, S.source_workspace_id).join(S, S.id == F.subscription_id)
+                                        .where(F.workspace_id == ws, F.retired.is_(False), S.status == "active")
+                                        .order_by(F.id).limit(MAX_COPIES)):  # the apply keeps it within
+        refs = _uniq(f.refs or [], 50)
+        declared = f.classification if f.classification in CLASSIFICATIONS else "restricted"
+        out.append(Projected("context_federated_entry", f.id, f.kind if f.kind in KINDS else "document_section", "approved",
+                             _text(f.title, 300), str(f.summary or "")[:SUMMARY_CHARS * 4], source="federation",
+                             classification=CLASSIFICATIONS[max(CLASSIFICATIONS.index(declared),
+                                                                CLASSIFICATIONS.index(tags.classify(refs)))],
+                             fingerprint=f.fingerprint, aliases=_uniq(f.aliases or []), refs=refs,
+                             provenance={"subscription_id": f.subscription_id, "source_workspace_id": source_ws,
+                                         "source_key": f.source_key, "source_entry_id": f.source_entry_id,
+                                         "source_version": f.source_version, "source_trust": f.source_trust},
+                             valid_from=_aware(f.valid_from) if f.valid_from else None))
+    return out
+
+
 Projector = Callable[[Session, str, _Tags], list[Projected]]
 PROJECTORS: dict[str, Projector] = {
     "context_entry": _context_entries, "semantic_metric": _semantic_metrics, "verified_query": _verified_queries,
     "insight": _findings, "semantic_relationship_candidate": _relationships, "source_asset": _datasets,
     "knowledge_document": _documents, "knowledge_suggestion": _suggestions, "request": _desk_playbooks,
     "conversation_summary": _conversation_summaries, "conversation_correction": _conversation_corrections,
+    "context_federated_entry": _federated,
 }
 
 
@@ -489,7 +517,8 @@ OWNER_MODELS: dict[str, str] = {"context_entry": "ContextEntry", "semantic_metri
                                 "source_asset": "SourceAsset", "knowledge_document": "KnowledgeDocument",
                                 "knowledge_suggestion": "KnowledgeSuggestion", "request": "Request",
                                 "conversation_summary": "ConversationSummary",
-                                "conversation_correction": "ConversationCorrection"}
+                                "conversation_correction": "ConversationCorrection",
+                                "context_federated_entry": "ContextFederatedEntry"}
 
 
 def owner_of(session: Session, entry: ContextLedgerEntry) -> Any:

@@ -594,6 +594,12 @@ def housekeeping() -> dict[str, Any]:
         out["deliveries"] = process_due()
     except Exception:
         log.exception("external delivery failed")
+    try:  # S03-T7: follow subscribed context ledgers (each subscription at most every SYNC_INTERVAL)
+        from analystos.context.federation import sync_due
+
+        out["context_federation"] = sync_due()
+    except Exception:
+        log.exception("context federation sync failed")
     try:  # S08-T5: at most hourly, flag drift between Superset and the latest publications
         from analystos.dashboards.reconcile import reconcile_all_quietly
 
