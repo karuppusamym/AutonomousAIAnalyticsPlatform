@@ -1161,6 +1161,12 @@ source entry (named in the ledger provenance).
 | Story → report, digests | `services/stories.py`: `to_report` (a CONV-04 document with story text and derived values, rewritten on refresh); `digest_report` / `attach_digests` for schedules (`config.digest_dashboards`) and monitors (`config.attach_digest`, a how-key) through the existing delivery path (destinations must accept reports) | Unit (SQLite) and integration tests |
 | UI | Reports page: "Write a report by asking" → `components/ReportBuilder.tsx` (outline, chat panel, sandboxed preview, export request and download, versions). Engineering detail (ops, ids, snapshot hash) is behind Show expert tools. Dashboard Summary panel `components/DashboardSummary.tsx` with "Turn this into a report" | `web/src/test/reportBuilder.test.tsx` (8), `web/e2e/report-builder.spec.ts` (build by chat → refusal → preview → export request, axe clean) |
 
-Not verified: the Postgres integration test (`tests/integration/test_report_documents.py`) was written but not run,
-because the compose Postgres was down on the dev host. No live delivery to email or a webhook, and no model wording
-(`always` mode) against a real model.
+Postgres evidence (2026-10-29, Windows dev host, Postgres 16, strict tenancy): `tests/integration/test_report_documents.py`
+passed all 3 tests over REST:
+* a report built by conversation from a builder dashboard, with the numbers guard, If-Match, versions and the preview;
+* the export approval bound to version and snapshot hash (requester only, single use, audited), then fork-on-edit;
+  another workspace's member gets 404;
+* an edit after the request invalidates the export; revert is a new version;
+* the dashboard story → a report document; a pinned report refreshed on a schedule fire into a final `report` snapshot.
+
+Not verified: a live delivery to email or a webhook, and model wording (`always` mode) against a real model.
