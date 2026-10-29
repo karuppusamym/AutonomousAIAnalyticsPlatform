@@ -2,15 +2,15 @@
 
 `analystos worker --queues analysis,compute` serves only those queues, so each pool is deployed and
 scaled on its own (compose `worker-*` services, `deploy/helm/analystos` (Helm chart, one Deployment per pool)). The compute pool
-runs activities in a bounded *process* pool: CPU-bound statistics neither block this process's event
-loop nor stop its heartbeats, and a statistic hung in native code only freezes its own pool process.
+runs activities in a bounded *process* pool (`compute_pool.ComputePool`): CPU-bound statistics neither block this
+process's event loop nor stop its heartbeats, and a statistic hung in native code only freezes its own pool process.
 """
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import multiprocessing
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from analystos.core.config import get_settings
@@ -48,10 +48,16 @@ def build_workers(client: Any, workloads: list[str], *, prefix: str, stack: cont
         if spec.executor == "process":
             # spawn, not fork: a forked child would inherit this process's DB pools and Temporal threads.
             # The manager outlives the pool (entered first, exited last): pool processes heartbeat through it.
+            # ComputePool, not ProcessPoolExecutor: it recycles children without losing capacity and outlives a
+            # dead child (see compute_pool.py; both stalled every run on the 2026-10-28 Windows load test).
+            from analystos.workflows.compute_pool import ComputePool
+
             ctx = multiprocessing.get_context("spawn")
             manager = stack.enter_context(ctx.Manager())
-            executor = stack.enter_context(ProcessPoolExecutor(max_workers=spec.max_concurrent, mp_context=ctx,
-                                                               max_tasks_per_child=spec.max_tasks_per_child))
+            executor = stack.enter_context(ComputePool(spec.max_concurrent, mp_context=ctx,
+                                                       max_tasks_per_child=spec.max_tasks_per_child))
+            _check_picklable(activities.get(workload, []))  # what temporalio checks for a ProcessPoolExecutor
+            executor.wait_ready(timeout=max(spec.heartbeat_seconds, 30))
             kwargs["shared_state_manager"] = SharedStateManager.create_from_multiprocessing(manager)
         else:
             executor = stack.enter_context(ThreadPoolExecutor(max_workers=spec.max_concurrent,
@@ -61,6 +67,17 @@ def build_workers(client: Any, workloads: list[str], *, prefix: str, stack: cont
                               max_concurrent_activities=spec.max_concurrent, **kwargs))
         log.info("temporal worker: queue %s (%s pool of %d)", queue_name(prefix, workload), spec.executor, spec.max_concurrent)
     return workers
+
+
+def _check_picklable(fns: list) -> None:
+    """Fail at start-up, not at the first task, when an activity cannot cross into a pool process."""
+    import pickle
+
+    for fn in fns:
+        try:
+            pickle.dumps(fn)
+        except Exception as exc:
+            raise TypeError(f"activity {getattr(fn, '__name__', fn)!r} must be picklable for the process pool") from exc
 
 
 async def _main(workloads: list[str]) -> None:
