@@ -20,7 +20,8 @@ from fontTools.ttLib import TTFont
 from fpdf import FPDF
 from fpdf.fonts import FontFace
 
-from analystos.contracts.reports import ReportData, ReportInsight
+from analystos.contracts.reports import ReportData, ReportInsight, ReportSection
+from analystos.core.ids import stable_hash
 from analystos.reports import _common as C
 from analystos.reports.charts import render_chart_png
 
@@ -127,7 +128,8 @@ class _ReportPDF(FPDF):
         self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
         self.set_font(FONT, "", 7)
         self.set_text_color(*MUTED)
-        left = pdf_text(f"{self.data.title} | run {self.data.run_id} | generated {C.generated_label(self.data)}")
+        origin = f"run {self.data.run_id}" if not self.data.origin else self.data.origin
+        left = pdf_text(f"{self.data.title} | {origin} | generated {C.generated_label(self.data)}")
         if self.get_string_width(left) > self.epw - 30:
             while left and self.get_string_width(left + "...") > self.epw - 30:
                 left = left[:-1]
@@ -308,6 +310,47 @@ def _section(pdf: _ReportPDF, key: str, d: ReportData) -> None:
                 _p(pdf, f"Showing {C.MAX_TABLE_ROWS} of {len(rows)} rows.", size=8, color=MUTED)
 
 
+def _doc_section(pdf: _ReportPDF, sec: ReportSection) -> None:
+    """A report document section (CONV-04): its blocks in order, each chart as an image (else its table)."""
+    _h2(pdf, sec.title)
+    for kind, item in C.section_items(sec):
+        if kind == "text":
+            for b in C.parse_markdown(item):
+                if b.kind == "para":
+                    _p(pdf, C.inline_plain(b.items[0]))
+                else:
+                    _bullets(pdf, [C.inline_plain(it) for it in b.items])
+                pdf.ln(1.5)
+        elif kind == "note":
+            _p(pdf, item, size=8.5, style="I", color=MUTED)
+            pdf.ln(1)
+        elif kind == "kpis":
+            _table(pdf, C.DOC_KPI_HEADERS, [C.kpi_row(m) for m, _ in item], (60, 36, 36, 46))
+            for src in dict.fromkeys(s for _, s in item if s):
+                _p(pdf, f"Source: {src}", size=7.5, color=MUTED)
+        elif kind == "chart":
+            ch, src = item
+            _h3(pdf, ch.title)
+            png = render_chart_png(ch, width_px=CHART_W, height_px=CHART_H)
+            if png:
+                h = pdf.epw * CHART_H / CHART_W
+                if pdf.get_y() + h > pdf.page_break_trigger:
+                    pdf.add_page()
+                pdf.image(io.BytesIO(png), x=pdf.l_margin, w=pdf.epw, h=h)
+            elif rows := C.valid_rows(ch):
+                _table(pdf, [str(c) for c in ch.columns], [[C.cell_text(v) for v in r] for r in rows[: C.MAX_TABLE_ROWS]], size=7.5)
+            else:
+                _p(pdf, "No data.", size=8.5, color=MUTED)
+            if src:
+                _p(pdf, f"Source: {src}", size=7.5, color=MUTED)
+            pdf.ln(2)
+        elif kind == "finding":
+            ins, src = item
+            _insight(pdf, ins, False)
+            if src:
+                _p(pdf, f"Source: {src}", size=7.5, color=MUTED)
+
+
 def _charts(pdf: _ReportPDF, d: ReportData) -> None:
     images = [(ch, png) for ch in d.charts if (png := render_chart_png(ch, width_px=CHART_W, height_px=CHART_H))]
     if not images:
@@ -325,8 +368,11 @@ def _charts(pdf: _ReportPDF, d: ReportData) -> None:
 
 def _provenance(pdf: _ReportPDF, d: ReportData) -> None:
     _h2(pdf, C.SECTION_TITLES["provenance"])
-    _p(pdf, f"Run: {d.run_id}", size=9)
+    label, origin = C.origin_line(d)
+    _p(pdf, f"{label}: {origin}", size=9)
     _p(pdf, f"Generated: {C.generated_label(d)}", size=9)
+    if d.kind == "document":
+        _p(pdf, f"Report snapshot: {stable_hash(d.snapshot())}", size=9)
     if d.lineage_note:
         _p(pdf, f"Lineage: {d.lineage_note}", size=9)
     if d.caveats:
@@ -346,6 +392,8 @@ def build_pdf(data: ReportData) -> FPDF:
     pdf.set_subject(pdf_text(C.KIND_LABELS.get(d.kind, d.kind)))
     pdf.set_author(pdf_text(d.workspace_name))
     pdf.set_creator("AnalystOS")
+    if d.kind == "document":  # the snapshot hash an export approval binds, as in the Office core properties
+        pdf.set_keywords(f"analystos-report-data:{stable_hash(d.snapshot())}")
     pdf.add_page()
 
     pdf.set_fill_color(*ACCENT)
@@ -356,11 +404,14 @@ def build_pdf(data: ReportData) -> FPDF:
     meta = f"{d.workspace_name}  |  generated {C.generated_label(d)}" + (f"  |  period {d.period}" if d.period else "")
     _p(pdf, meta, size=9, color=MUTED)
     pdf.ln(1)
-    _p(pdf, f"Objective: {d.objective}", size=9.5)
+    if d.objective or d.kind != "document":
+        _p(pdf, f"Objective: {d.objective}", size=9.5)
     pdf.ln(2)
 
     for key in C.sections_for(d.kind):
         _section(pdf, key, d)
+    for sec in d.sections:
+        _doc_section(pdf, sec)
     _charts(pdf, d)
     _provenance(pdf, d)
     return pdf

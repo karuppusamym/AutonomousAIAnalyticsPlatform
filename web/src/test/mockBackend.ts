@@ -16,6 +16,7 @@ import { mlMonitors } from "./mockMl";
 import { resetWave2, wave2Route } from "./mockWave2";
 import { investigationValueRoute, resetInvestigationValue } from "./mockInvestigationValue";
 import { groundingRoute, resetGrounding } from "./mockGrounding";
+import { reportArtifacts, reportRoute, resetReports } from "./mockReports";
 
 export const WS = "ws_demo";
 export const RUN = "run_demo";
@@ -339,6 +340,7 @@ const state = { planned: false, buildApproval: "pending", proposed: [] as Semant
 export function resetMockState(): void {
   resetInvestigationValue();
   resetGrounding();
+  resetReports();
   state.conversation = [];
   state.workModes = ["analysis", "engineering", "ml"];
   state.planned = false;
@@ -789,6 +791,8 @@ export function mockBackend(method: string, path: string, requestBody?: string |
   if (value) return json(value.body, value.status);
   const grounding = groundingRoute(m, p, requestBody, WS, headers);
   if (grounding) return json(grounding.body, grounding.status);
+  const reported = reportRoute(m, p, requestBody, WS);  // CONV-04 report documents
+  if (reported) return { status: reported.status, body: JSON.stringify(reported.body), contentType: reported.contentType ?? "application/json" };
   const wave2 = wave2Route(m, p, url, WS, requestBody, headers);
   if (wave2) return wave2.status === 204 ? { status: 204, body: "", contentType: "application/json" } : json(wave2.body, wave2.status);
 
@@ -875,7 +879,7 @@ export function mockBackend(method: string, path: string, requestBody?: string |
   if (m === "GET" && p === `${W}/artifacts`) {
     const type = url.searchParams.get("type");
     const run = url.searchParams.get("run_id");
-    return json(ARTIFACTS.filter((a) => (!type || a.type === type) && (!run || a.run_id === run)));
+    return json([...ARTIFACTS, ...reportArtifacts(WS)].filter((a) => (!type || a.type === type) && (!run || a.run_id === run)));
   }
   if (p.endsWith("/events")) {
     return { status: 200, body: `event: end\ndata: {"status":"COMPLETED"}\n\n`, contentType: "text/event-stream" };

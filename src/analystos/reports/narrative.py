@@ -11,7 +11,8 @@ import html
 import re
 from collections.abc import Callable
 
-from analystos.contracts.reports import ReportData, ReportInsight
+from analystos.contracts.reports import ReportData, ReportInsight, ReportSection
+from analystos.core.ids import stable_hash
 from analystos.reports import _common as C
 
 # =============================================================================================
@@ -168,9 +169,41 @@ def _md_section(key: str, d: ReportData) -> list[str]:
     return []
 
 
+def _md_doc_section(sec: ReportSection) -> list[str]:
+    """A report document section (CONV-04): its blocks in order."""
+    out = [f"## {md_escape(sec.title)}", ""]
+    for kind, item in C.section_items(sec):
+        if kind == "text":
+            out += _md_summary(item)
+        elif kind == "note":
+            out += [f"_{md_escape(item)}_", ""]
+        elif kind == "kpis":
+            out += _md_table(C.DOC_KPI_HEADERS, [C.kpi_row(m) for m, _ in item])
+            out += [f"_Source: {md_escape(src)}_" for src in dict.fromkeys(s for _, s in item if s)] + [""]
+        elif kind == "chart":
+            ch, src = item
+            out += [f"### {md_escape(ch.title)}", ""]
+            rows = C.valid_rows(ch)
+            if rows:
+                out += _md_table([str(c) for c in ch.columns], [[C.cell_text(v) for v in r] for r in rows[: C.MAX_TABLE_ROWS]])
+            else:
+                out += ["_No data._", ""]
+            if src:
+                out += [f"_Source: {md_escape(src)}_", ""]
+        elif kind == "finding":
+            ins, src = item
+            out += _md_insight(ins, "document", with_evidence=False)
+            if src:
+                out += [f"_Source: {md_escape(src)}_", ""]
+    return out
+
+
 def _md_provenance(d: ReportData) -> list[str]:
+    label, origin = C.origin_line(d)
     out = ["---", "", f"## {C.SECTION_TITLES['provenance']}", "",
-           f"- Run: {_md_code_span(d.run_id)}", f"- Generated: {md_escape(C.generated_label(d))}"]
+           f"- {label}: {_md_code_span(origin)}", f"- Generated: {md_escape(C.generated_label(d))}"]
+    if d.kind == "document":
+        out.append(f"- Report snapshot: {_md_code_span(stable_hash(d.snapshot()))}")
     if d.lineage_note:
         out.append(f"- Lineage: {md_escape(d.lineage_note)}")
     if d.caveats:
@@ -185,9 +218,12 @@ def render_markdown(data: ReportData) -> str:
            f"**{C.KIND_LABELS.get(d.kind, d.kind)}** · {md_escape(d.workspace_name)} · {md_escape(C.generated_label(d))}", ""]
     if d.period:
         out += [f"Period: {md_escape(d.period)}", ""]
-    out += [f"Objective: {md_escape(d.objective)}", ""]
+    if d.objective or d.kind != "document":
+        out += [f"Objective: {md_escape(d.objective)}", ""]
     for key in C.sections_for(d.kind):
         out += _md_section(key, d)
+    for sec in d.sections:
+        out += _md_doc_section(sec)
     out += _md_provenance(d)
     return "\n".join(out).rstrip() + "\n"
 
@@ -338,6 +374,44 @@ def _html_section(key: str, d: ReportData) -> str:
     return h + body + "</section>"
 
 
+def _html_doc_section(sec: ReportSection) -> str:
+    """A report document section (CONV-04): its blocks in order; charts as bounded data tables."""
+    parts = [f'<section class="sec-doc"><h2>{esc(sec.title)}</h2>']
+    for kind, item in C.section_items(sec):
+        if kind == "text":
+            parts.append(_html_summary(item))
+        elif kind == "note":
+            parts.append(f'<p class="small note-held">{esc(item)}</p>')
+        elif kind == "kpis":
+            rows = []
+            for m, _ in item:
+                ch = C.metric_change(m)
+                cls = {"↑": "up", "↓": "down"}.get(ch.arrow, "flat")
+                rows.append([f"<strong>{esc(m.display_name)}</strong>", f'<span class="num">{esc(C.format_value(m.value, m.format))}</span>',
+                             esc(C.format_value(m.previous_value, m.format)), f'<span class="chg {cls}">{esc(ch.arrow)} {esc(ch.text)}</span>'])
+            parts.append(_html_table(C.DOC_KPI_HEADERS, rows, "kpi"))
+            parts += [f'<p class="small">Source: {esc(src)}</p>' for src in dict.fromkeys(s for _, s in item if s)]
+        elif kind == "chart":
+            ch, src = item
+            rows = C.valid_rows(ch)
+            parts.append(f'<div class="chart"><h3>{esc(ch.title)}</h3>')
+            if rows:
+                parts.append(_html_table([str(c) for c in ch.columns], [[esc(C.cell_text(v)) for v in r] for r in rows[: C.MAX_TABLE_ROWS]], "data"))
+                if len(rows) > C.MAX_TABLE_ROWS:
+                    parts.append(f'<p class="small">Showing {C.MAX_TABLE_ROWS} of {len(rows)} rows.</p>')
+            else:
+                parts.append('<p class="small">No data.</p>')
+            if src:
+                parts.append(f'<p class="small">Source: {esc(src)}</p>')
+            parts.append("</div>")
+        elif kind == "finding":
+            ins, src = item
+            parts.append(_html_insight(ins, "document", False))
+            if src:
+                parts.append(f'<p class="small">Source: {esc(src)}</p>')
+    return "".join(parts) + "</section>"
+
+
 _CSS = """
 :root{--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--bg:#ffffff;--soft:#f6f8fa;--accent:#2f5d8a;
 --ok:#1a7f37;--warn:#9a6700;--crit:#cf222e}
@@ -371,7 +445,10 @@ a{color:inherit;text-decoration:none}@page{margin:16mm}}
 
 
 def _html_provenance(d: ReportData) -> str:
-    items = [f"<li>Run: <code>{esc(d.run_id)}</code></li>", f"<li>Generated: {esc(C.generated_label(d))}</li>"]
+    label, origin = C.origin_line(d)
+    items = [f"<li>{esc(label)}: <code>{esc(origin)}</code></li>", f"<li>Generated: {esc(C.generated_label(d))}</li>"]
+    if d.kind == "document":
+        items.append(f"<li>Report snapshot: <code>{esc(stable_hash(d.snapshot()))}</code></li>")
     if d.lineage_note:
         items.append(f"<li>Lineage: {esc(d.lineage_note)}</li>")
     if d.caveats:
@@ -385,15 +462,18 @@ def render_html(data: ReportData) -> str:
     meta = [esc(C.KIND_LABELS.get(d.kind, d.kind)), esc(d.workspace_name), esc(C.generated_label(d))]
     if d.period:
         meta.append("Period " + esc(d.period))
-    head = (f'<header><h1>{esc(d.title)}</h1><div class="meta">{" · ".join(meta)}</div>'
-            f'<p><strong>Objective:</strong> {esc(d.objective)}</p></header>')
-    sections = "\n".join(_html_section(k, d) for k in C.sections_for(d.kind))
+    objective = f'<p><strong>Objective:</strong> {esc(d.objective)}</p>' if d.objective or d.kind != "document" else ""
+    head = f'<header><h1>{esc(d.title)}</h1><div class="meta">{" · ".join(meta)}</div>{objective}</header>'
+    sections = "\n".join([*(_html_section(k, d) for k in C.sections_for(d.kind)), *(_html_doc_section(s) for s in d.sections)])
+    # A document snapshot names its hash in the head, as the PDF keywords and the Office core properties do.
+    snapshot = (f'<meta name="analystos-report-data" content="{esc(stable_hash(d.snapshot()))}">'
+                if d.kind == "document" else "")
     return (
         "<!DOCTYPE html>\n"
         '<html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:\">"
-        f"<title>{esc(d.title)}</title><style>{_CSS}</style></head>"
+        f"{snapshot}<title>{esc(d.title)}</title><style>{_CSS}</style></head>"
         f'<body><main class="kind-{esc(d.kind)}">{head}\n{sections}\n{_html_provenance(d)}</main></body></html>\n'
     )
 

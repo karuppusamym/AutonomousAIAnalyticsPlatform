@@ -96,6 +96,12 @@ def _check_definition(session: Session, workspace_id: str, config: dict) -> None
         from analystos.services.deliveries import check_targets
 
         check_targets(session, workspace_id, config["deliver_to"], "report")
+    if config.get("digest_dashboards") is not None:  # CONV-05: dashboard digests delivered with each fire
+        from analystos.services.stories import check_digest_target
+
+        if not isinstance(config["digest_dashboards"], list):
+            raise InvalidInput("config.digest_dashboards must be a list of builder dashboard ids")
+        check_digest_target(session, workspace_id, config["digest_dashboards"])
 
 
 def _pin_baseline(session: Session, sch: Schedule) -> None:
@@ -240,6 +246,16 @@ def _finish(srun_id: str, status: str, result: dict | None = None, error: str | 
             queued = deliver(s, srun.workspace_id, sch.config["deliver_to"], subject_type="report", subject_id=report_id,
                              origin={"schedule_id": sch.id, "schedule_run_id": srun.id})
             srun.result = {**(srun.result or {}), "deliveries": queued}
+        if status == "succeeded" and sch:  # CONV-04/05: pinned report documents and dashboard digests
+            from analystos.services.report_docs import after_schedule_fire
+
+            try:
+                extra = after_schedule_fire(s, sch, srun)
+            except Exception:  # never fails the fire; the hook records its own per-report errors
+                log.exception("report documents of schedule %s failed", sch.id)
+                extra = {"report_documents_error": "refreshing the pinned reports failed; see the server log"}
+            if extra:
+                srun.result = {**(srun.result or {}), **extra}
 
 
 @owned_by("schedule_run", "srun_id")

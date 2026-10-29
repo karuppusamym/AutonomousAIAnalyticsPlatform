@@ -7,6 +7,7 @@ import { fmtDate } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import { ChartView } from "./Chart";
 import { cellStyle, ROW_PX } from "./DashboardPreview";
+import { DashboardSummary } from "./DashboardSummary";
 import { EmbeddedDashboard } from "./EmbeddedDashboard";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { Markdown } from "./Markdown";
@@ -300,6 +301,7 @@ export function DashboardBuilder({ artifactId, role, onSwitch }: {
       </>}>
         <BuilderGrid doc={d.document} focus={focus} onFocus={(id) => setFocus(focus === id ? null : id)} />
       </Card>
+      <DashboardSummary dashboard={d} />
       {d.status === "published" && d.platform === "superset" && (
         <Card title="Published in Superset" label="Published dashboard in Superset">
           <EmbeddedDashboard artifactId={d.id} title={d.document.title} />

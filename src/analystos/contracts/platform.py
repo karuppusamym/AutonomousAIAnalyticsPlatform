@@ -23,7 +23,7 @@ MODEL_RUNGS: tuple[str, ...] = ("decision", "llm_small", "llm_large")
 
 # Purposes where a deterministic path produces an equivalent result (auto = deterministic first).
 DETERMINISTIC_CAPABLE = {"planning", "hypothesis_generation", "follow_up_generation", "insight_narrative", "summarization",
-                         "semantic_modeling", "dashboard_design", "feedback_interpretation", "metadata_enrichment",
+                         "semantic_modeling", "dashboard_design", "report_design", "data_story", "feedback_interpretation", "metadata_enrichment",
                          "hypothesis_priority", "chart_selection", "feedback_classification", "stop_check", "agent_actions",
                          "pipeline_proposal",
                          "ask_route", "clarify_needed", "metric_match", "join_path_choice", "semantic_query",

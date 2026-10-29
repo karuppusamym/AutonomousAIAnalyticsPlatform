@@ -14,7 +14,7 @@ from pptx.dml.color import RGBColor
 from pptx.presentation import Presentation as PptxPresentation
 from pptx.util import Emu, Inches, Pt
 
-from analystos.contracts.reports import ReportData
+from analystos.contracts.reports import ReportData, ReportSection
 from analystos.reports import _common as C
 from analystos.reports import _ooxml as O
 from analystos.reports.charts import render_chart_png
@@ -170,6 +170,62 @@ def _section(prs: PptxPresentation, key: str, d: ReportData) -> None:
                    note=f"Showing {len(shown)} of {len(rows)} rows." if len(rows) > len(shown) else None)
 
 
+def _picture(prs: PptxPresentation, title: str, png: bytes, note: str = "") -> None:
+    s = _slide(prs, title)
+    width = W - 2 * MARGIN
+    s.shapes.add_picture(io.BytesIO(png), MARGIN, Inches(1.3), width=width, height=Emu(int(width * CHART_H / CHART_W)))
+    if note:
+        box = s.shapes.add_textbox(MARGIN, H - Inches(0.6), W - 2 * MARGIN, Inches(0.4))
+        r = box.text_frame.paragraphs[0].add_run()
+        r.text, r.font.size, r.font.color.rgb = O.xml_text(note), Pt(11), MUTED
+
+
+def _doc_section(prs: PptxPresentation, sec: ReportSection) -> None:
+    """A report document section (CONV-04): text, findings and notes as line slides, KPIs as a table slide,
+    each chart as its own picture slide (else a table), in the section's order."""
+    lines: list[Line] = []
+
+    def flush() -> None:
+        if lines:
+            _lines(prs, sec.title, list(lines))
+            lines.clear()
+
+    for kind, item in C.section_items(sec):
+        if kind == "text":
+            for b in C.parse_markdown(item):
+                if b.kind == "para":
+                    lines.append(Line(C.inline_plain(b.items[0])))
+                else:
+                    lines.extend(Line(C.inline_plain(it), level=1) for it in b.items)
+        elif kind == "note":
+            lines.append(Line(item, size=12, color=MUTED))
+        elif kind == "finding":
+            ins, src = item
+            lines.append(Line(ins.title, bold=True, size=16))
+            lines.append(Line(O.finding_meta(ins), size=11, color=MUTED))
+            lines.append(Line(ins.finding, size=14))
+            if src:
+                lines.append(Line(f"Source: {src}", size=11, color=MUTED))
+        elif kind == "kpis":
+            flush()
+            sources = "; ".join(dict.fromkeys(s for _, s in item if s))
+            _table(prs, sec.title, C.DOC_KPI_HEADERS, [C.kpi_row(m) for m, _ in item],
+                   note=f"Source: {sources}" if sources else None)
+        elif kind == "chart":
+            flush()
+            ch, src = item
+            png = render_chart_png(ch, width_px=CHART_W, height_px=CHART_H)
+            if png:
+                _picture(prs, f"{sec.title}: {ch.title}", png, f"Source: {src}" if src else "")
+            elif rows := C.valid_rows(ch):
+                _table(prs, f"{sec.title}: {ch.title}", [str(c) for c in ch.columns],
+                       [[C.cell_text(v) for v in r] for r in rows[: C.MAX_TABLE_ROWS]], note=f"Source: {src}" if src else None)
+            else:
+                lines.append(Line(f"{ch.title}: no data.", color=MUTED))
+    if lines or not sec.blocks:
+        _lines(prs, sec.title, list(lines))
+
+
 def _charts(prs: PptxPresentation, d: ReportData) -> None:
     for ch in d.charts:
         png = render_chart_png(ch, width_px=CHART_W, height_px=CHART_H)
@@ -192,7 +248,7 @@ def build_pptx(data: ReportData) -> PptxPresentation:
     tf.word_wrap = True
     head = [(C.KIND_LABELS.get(d.kind, d.kind).upper(), 14, True, ACCENT), (d.title, 36, True, TEXT),
             (f"{d.workspace_name}  |  generated {C.generated_label(d)}" + (f"  |  period {d.period}" if d.period else ""), 14, False, MUTED),
-            (f"Objective: {d.objective}", 16, False, TEXT)]
+            *([(f"Objective: {d.objective}", 16, False, TEXT)] if d.objective or d.kind != "document" else [])]
     for k, (text, size, bold, color) in enumerate(head):
         p = tf.paragraphs[0] if k == 0 else tf.add_paragraph()
         r = p.add_run()
@@ -200,8 +256,11 @@ def build_pptx(data: ReportData) -> PptxPresentation:
 
     for key in C.sections_for(d.kind):
         _section(prs, key, d)
+    for sec in d.sections:
+        _doc_section(prs, sec)
     _charts(prs, d)
-    prov = [Line(f"Run: {d.run_id}", size=14), Line(f"Generated: {C.generated_label(d)}", size=14),
+    label, origin = C.origin_line(d)
+    prov = [Line(f"{label}: {origin}", size=14), Line(f"Generated: {C.generated_label(d)}", size=14),
             Line(f"Report snapshot: {O.snapshot_hash(d)}", size=14)]
     if d.lineage_note:
         prov.append(Line(f"Lineage: {d.lineage_note}", size=14))

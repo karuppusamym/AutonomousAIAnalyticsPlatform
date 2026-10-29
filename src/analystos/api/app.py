@@ -40,6 +40,7 @@ from analystos.api.routers import playbook_editor as playbook_editor_router
 from analystos.api.routers import process as process_router
 from analystos.api.routers import recipes as recipes_router
 from analystos.api.routers import registries as registries_router
+from analystos.api.routers import report_docs as report_docs_router
 from analystos.api.routers import scenarios as scenarios_router
 from analystos.api.routers import semantic as semantic_router
 from analystos.api.routers import steps as steps_router
@@ -145,6 +146,8 @@ app.include_router(desk_router.router)  # Analyst Request Desk (S13)
 app.include_router(conversations_router.router)  # API v2 conversations and memory (S04)
 app.include_router(goals_v2_router.router)  # Goal API v2 (S06): goals, signals, run state, SSE, evidence, plans
 app.include_router(goals_v2_router.router, prefix="/api")  # the same, for the web client (/api/v2/...)
+# before S08's /schemas/{kind}: /schemas/report-document is this router's
+app.include_router(report_docs_router.router)  # CONV-04/05: report documents by conversation, dashboard stories
 app.include_router(dashboards_v2_router.router)  # S08 dashboard builder: typed ops, versions, publish, embed, exports
 app.include_router(deliveries_router.router)  # approved external email/webhook delivery (N-3)
 app.include_router(data_shape_router.router)  # what the selected tables are good for (patterns, next steps)

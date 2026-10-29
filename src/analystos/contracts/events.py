@@ -116,6 +116,9 @@ EVENT_TYPES |= {"dashboard.version_created", "dashboard.forked", "dashboard.publ
                 "publication.drift_detected", "export.created"}
 # BI-VIEWS-02: grouping existing BI dashboards under the workspace name (an approved title update)
 EVENT_TYPES |= {"dashboard.grouping_requested", "dashboard.grouping_applied"}
+# CONV-04: report documents shaped by conversation (versions, forks, export approvals, scheduled refreshes)
+EVENT_TYPES |= {"report_document.created", "report_document.version_created", "report_document.forked",
+                "report_document.export_requested", "report_document.exported", "report_document.refreshed"}
 # Proactive monitoring, triggers and recurring work (S09): ingress, anti-noise outcomes, alert groups, channels, packs
 EVENT_TYPES |= {"trigger.received", "trigger.processed", "alert.deferred", "alert.released", "alert_group.opened",
                 "alert_group.merged", "alert_group.resolved", "monitor.rule_approved", "channel.request_created",

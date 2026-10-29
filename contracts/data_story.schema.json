@@ -1,0 +1,135 @@
+{
+  "$defs": {
+    "StoryFact": {
+      "description": "One deterministic fact about a dashboard (CONV-05). `values` are the numbers its sentence may quote,\neach computed by code from the chart previews or the version diff.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "top_mover",
+            "leader",
+            "latest_change",
+            "trend_change",
+            "threshold_breach",
+            "kpi_change",
+            "structure_change",
+            "overview"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "score": {
+          "default": 0.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "chart_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Chart Id"
+        },
+        "values": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Values",
+          "type": "array"
+        },
+        "how": {
+          "default": "",
+          "title": "How",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "title": "StoryFact",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "dashboard_id": {
+      "title": "Dashboard Id",
+      "type": "string"
+    },
+    "version": {
+      "title": "Version",
+      "type": "integer"
+    },
+    "previous_version": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Version"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "shows": {
+      "title": "Shows",
+      "type": "string"
+    },
+    "facts": {
+      "items": {
+        "$ref": "#/$defs/StoryFact"
+      },
+      "title": "Facts",
+      "type": "array"
+    },
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/StoryFact"
+      },
+      "title": "Changes",
+      "type": "array"
+    },
+    "wording": {
+      "default": "rules",
+      "enum": [
+        "rules",
+        "llm_small"
+      ],
+      "title": "Wording",
+      "type": "string"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+    },
+    "story_hash": {
+      "default": "",
+      "title": "Story Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "dashboard_id",
+    "version",
+    "title",
+    "shows"
+  ],
+  "title": "DataStory",
+  "type": "object"
+}
