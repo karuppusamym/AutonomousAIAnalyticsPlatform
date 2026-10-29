@@ -4,7 +4,11 @@ Context Ledger, plus OKF export/import (S03-T6). Every read applies the caller's
 
 Served under `/api/v2/context` (the spec's `/v2/context`): `/api/context/search` already names the v1 search.
 An export is built for the requesting user's view and downloadable by that user only; like the workspace context
-download it stays inside the platform, so it needs no approval and is audited (`context.exported`)."""
+download it stays inside the platform, so it needs no approval and is audited (`context.exported`).
+
+Federation (S03-T7): `/subscriptions` lets a workspace owner follow another workspace they own (same or another tenant
+they belong to); `/feed` is the same change feed for an external subscriber, with the caller's access applied.
+Subscribing copies context between workspaces of the platform, like an import, so it is audited rather than approved."""
 from __future__ import annotations
 
 from typing import Literal
@@ -15,7 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from analystos.api.deps import current_user, db
-from analystos.context import interchange, ledger, retrieval
+from analystos.context import federation, interchange, ledger, retrieval
 from analystos.core.errors import NotFound, UnsupportedCapability
 from analystos.db.models import Artifact, User
 from analystos.governance.audit import audit
@@ -134,3 +138,56 @@ def reconcile(body: ReconcileIn, user: User = Depends(current_user), session: Se
     require_role(session, user, body.workspace, "owner")
     counts = ledger.reconcile(session, body.workspace)
     return {"changes": counts, "consistency": ledger.check_consistency(session, body.workspace)}
+
+
+# ------------------------------------------------------------------------------------------- federation (S03-T7)
+@router.get("/feed")
+def feed(workspace: str, since: int = Query(0, ge=0), limit: int = Query(200, ge=1, le=1000), kinds: str | None = None,
+         user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    """The federation feed after `since`: `upsert` items (the full shareable entry, keyed by `key`, with `version`)
+    and `remove` items (`key`, `version`). Apply an upsert when its version is newer than yours, a remove when it is
+    not older; pass the returned `cursor` back as `since`. Delivery is at least once."""
+    access = retrieval.access_for(session, user, workspace)
+    return federation.feed(session, access, since=since, limit=limit, kinds=_kinds(kinds))
+
+
+class SubscribeIn(BaseModel):
+    workspace: str
+    source_workspace: str
+    kinds: list[str] | None = None
+
+
+@router.get("/subscriptions")
+def list_subscriptions(workspace: str, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    return federation.list_subscriptions(session, user, workspace)
+
+
+@router.post("/subscriptions", status_code=201)
+def subscribe(body: SubscribeIn, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    """Follow `source_workspace`'s ledger (owner of both). The first sync runs before the reply."""
+    sub = federation.subscribe(session, user, body.workspace, body.source_workspace, kinds=body.kinds)
+    session.commit()  # the sync below reads the subscription in its own transactions
+    return {"subscription": federation.as_dict(sub), "sync": federation.sync_subscription(sub.id)}
+
+
+@router.post("/subscriptions/{subscription_id}/sync")
+def sync_subscription(subscription_id: str, user: User = Depends(current_user),
+                      session: Session = Depends(db, scope="function")):
+    federation.load(session, user, subscription_id, federation.SUBSCRIBER_ROLE)
+    session.commit()
+    return federation.sync_subscription(subscription_id)
+
+
+@router.post("/subscriptions/{subscription_id}/resync")
+def resync_subscription(subscription_id: str, user: User = Depends(current_user),
+                        session: Session = Depends(db, scope="function")):
+    """Replay the source's feed from the start; resumes a suspended subscription if the subject's access is back."""
+    federation.reset(session, user, federation.load(session, user, subscription_id, federation.SUBSCRIBER_ROLE))
+    session.commit()
+    return federation.sync_subscription(subscription_id)
+
+
+@router.delete("/subscriptions/{subscription_id}")
+def revoke_subscription(subscription_id: str, user: User = Depends(current_user),
+                        session: Session = Depends(db, scope="function")):
+    return federation.revoke(session, user, federation.load(session, user, subscription_id, federation.SUBSCRIBER_ROLE))
