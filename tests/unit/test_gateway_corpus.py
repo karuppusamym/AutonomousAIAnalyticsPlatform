@@ -159,7 +159,7 @@ def _anonymous_names(sql: str, dialect: str) -> set[str]:
     return {n.name.lower() for n in sqlglot.parse_one(sql, read=dialect).find_all(exp.Anonymous)}
 
 
-@pytest.mark.parametrize("dialect", ["postgres", "tsql"])
+@pytest.mark.parametrize("dialect", ["postgres", "tsql", "trino"])
 def test_every_function_the_compiler_emits_is_allowlisted(dialect: str) -> None:
     """Strict postgres/tsql must not refuse the platform's own SQL: every unmodelled function that
     ``skills/sqlbuild`` (and so Ask, methods, profiling and the benchmarks) emits is allowlisted."""

@@ -61,6 +61,7 @@ def _fmt(x) -> str:
 
 def render(results: dict, args: argparse.Namespace, problems: list[str]) -> str:
     from evaluation.analytical import ALPHA, THRESHOLDS
+    from evaluation.live import fallback_label, fallback_lines
 
     now = datetime.now(UTC)
     rev = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
@@ -82,7 +83,8 @@ def render(results: dict, args: argparse.Namespace, problems: list[str]) -> str:
              "Thresholds: " + ", ".join(f"{k} {v}" for k, v in THRESHOLDS.items()) + ".", ""]
     for tier, (summary, _scores) in results.items():
         s = summary
-        lines += [f"## Tier: {tier}", "",
+        found = (getattr(args, "usage", {}).get(tier) or {}).get("fallbacks")
+        lines += [f"## Tier: {tier}{fallback_label(found)}", "",
                   "| Measure | Value |", "|---|---|",
                   f"| replicates (with effects + global null) | {s.replicates} |",
                   f"| hypotheses tested | {s.tested} |",
@@ -119,6 +121,7 @@ def render(results: dict, args: argparse.Namespace, problems: list[str]) -> str:
                 lines += ["| Purpose / model | calls | errors | tokens in | tokens out | USD |", "|---|---|---|---|---|---|"]
                 lines += [f"| {k} | {v['calls']} | {v['errors']} | {v['input_tokens']} | {v['output_tokens']} | {v['cost_usd']:.4f} |"
                           for k, v in sorted(usage["by_purpose"].items())]
+            lines += [""] + fallback_lines(found)
         lines.append("")
     lines += LIMITS.splitlines() + ["", "## Verdict", "",
                                      "PASS — every threshold met." if not problems else "FAIL — " + "; ".join(problems), ""]
@@ -168,6 +171,8 @@ def main() -> int:
             u = args.usage[tier]
             print(f"[{tier}] model calls={u['calls']} errors={u['errors']} cost=${u['cost_usd']:.4f} skipped={u['skipped']} "
                   f"approval_required={u['approval_required']}")
+            for f in u.get("fallbacks") or []:
+                print(f"[{tier}] FELL BACK to {f['rung']}: {f['purpose']} ({f['cause']}) x{f['count']}")
     if args.report:
         tiers = "-".join(results)
         path = (ROOT / "docs" / "60-delivery" / "evidence" /

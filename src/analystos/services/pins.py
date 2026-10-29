@@ -97,6 +97,14 @@ def _definition_item(session: Session, d: dict[str, Any]) -> PinItem | None:
     if row is None or row.status == "retired":
         return PinItem(type="definition", id=str(d.get("key")), pinned=label, state="retired",
                        reason=(row.reason if row else "the pinned version no longer exists"))
+    if row.kind == "playbook":  # S06-T6: a pinned playbook whose signature no longer verifies never fires
+        from analystos.autonomy.playbook_signing import verify_definition
+        from analystos.toolreg.signing import ManifestRefused
+
+        try:
+            verify_definition(session, row)
+        except ManifestRefused as exc:
+            return PinItem(type="definition", id=row.key, pinned=label, state="rejected", reason=exc.message)
     newer = latest_published(session, row.workspace_id, row.kind, row.key)
     if newer is not None and newer.version > row.version:
         return PinItem(type="definition", id=row.key, pinned=label, current=f"{row.kind}:{row.key}@{newer.version}", state="newer",

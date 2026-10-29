@@ -71,7 +71,7 @@ def model_usage(*, run_ids: list[str] | None = None, workspace_ids: list[str] | 
         conds.append(ModelCall.workspace_id.in_(workspace_ids))
     if not conds:
         return {"calls": 0, "cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0, "by_purpose": {}, "skipped": 0,
-                "approval_required": 0}
+                "approval_required": 0, "fallbacks": []}
     q = select(ModelCall).where(or_(*conds))
     if since is not None:
         q = q.where(ModelCall.created_at >= since)
@@ -97,4 +97,51 @@ def model_usage(*, run_ids: list[str] | None = None, workspace_ids: list[str] | 
     out["cost_usd"] = round(out["cost_usd"], 6)
     for row in out["by_purpose"].values():
         row["cost_usd"] = round(row["cost_usd"], 6)
+    out["fallbacks"] = fallbacks(run_ids=run_ids, workspace_ids=workspace_ids, since=since)
     return out
+
+
+def fallbacks(*, run_ids: list[str] | None = None, workspace_ids: list[str] | None = None,
+              since: datetime | None = None) -> list[dict[str, Any]]:
+    """N-14: the purposes these runs answered by rules because no model route was allowed (their `model.fallback`
+    events, folded per purpose and cause). A live tier with any is not a measurement of those purposes' model."""
+    from sqlalchemy import or_, select
+
+    from analystos.db.base import session_scope
+    from analystos.db.models import RunEvent
+    from analystos.llm.fallback import summarize
+
+    conds = []
+    if run_ids:
+        conds.append(RunEvent.run_id.in_(run_ids))
+    if workspace_ids:
+        conds.append(RunEvent.workspace_id.in_(workspace_ids))
+    if not conds:
+        return []
+    q = select(RunEvent.payload).where(RunEvent.type == "model.fallback", or_(*conds)).order_by(RunEvent.id)
+    if since is not None:
+        q = q.where(RunEvent.created_at >= since)
+    with session_scope() as s:
+        return summarize([p for p in s.scalars(q) if isinstance(p, dict)])
+
+
+def fallback_label(found: list[dict[str, Any]] | None) -> str:
+    """The suffix a tier heading carries when the tier fell back ('' when it did not)."""
+    if not found:
+        return ""
+    purposes = sorted({f["purpose"] for f in found})
+    return f" — fell back to rules ({len(purposes)} purpose{'s' if len(purposes) != 1 else ''})"
+
+
+def fallback_lines(found: list[dict[str, Any]] | None) -> list[str]:
+    """Report lines that label a tier which fell back: per purpose, the cause and how often ([] when none)."""
+    if not found:
+        return []
+    lines = ["### Fell back to rules (no allowed model route)", "",
+             "These purposes wanted a model and were answered by the rules rung instead, so this tier does not measure "
+             "their model. The cause is the router's (models disabled by the stored settings, a spend cap or budget, a "
+             "missing price, policy, no key); re-run with `--enable-models` / `--preset` (this process only) to measure "
+             "the model.", "", "| Purpose | cause | times | rung | detail |", "|---|---|---|---|---|"]
+    lines += [f"| {f['purpose']} | {f['cause']} | {f['count']} | {f['rung']} | {str(f['detail']).replace('|', '/')[:200]} |"
+              for f in found]
+    return lines + [""]

@@ -844,6 +844,33 @@ def model_outcome(exc: AnalystOSError) -> ModelOutcome:
     return ModelOutcome(code, exc.message, **exc.details)
 
 
+def note_fallback(ctx: Any, purpose: str, outcome: Any, *, say: bool) -> Any:
+    """N-14: a purpose that wanted a model had no allowed route (models disabled by the settings, a spend cap or
+    budget, a missing price, policy, no key...), so the rules rung answers. Emit the structured reason as a
+    `model.fallback` event (once per purpose and cause in a step) and, with `say`, the plain sentence as a run
+    message. Returns the ModelFallback, or None when `outcome` is not a route fallback."""
+    from analystos.llm.fallback import fallback_for
+
+    fallback = fallback_for(purpose, outcome)
+    if fallback is None:
+        return None
+    seen = _memo(ctx, "_aos_fallbacks")
+    if (purpose, fallback.cause) in seen:
+        return fallback
+    seen[(purpose, fallback.cause)] = True
+    payload = fallback.to_dict()
+    if say:
+        ctx.say(fallback.sentence, kind="decision", data={"purpose": purpose, "model_fallback": payload})
+    event = getattr(ctx, "event", None)
+    if callable(event):
+        task = getattr(getattr(ctx, "task", None), "key", None)
+        try:
+            event("model.fallback", {**payload, **({"task": task} if task else {})})
+        except Exception as exc:  # the event is a report; losing it must not fail the rules answer
+            log.warning("model.fallback event for %s not recorded: %s", purpose, exc)
+    return fallback
+
+
 def llm_json(ctx: RunContext, purpose: str, prompt_name: str, payload: Any, *,
              exclude_families: list[str] | None = None, max_tokens: int | None = None,
              prompt_vars: dict[str, str] | None = None, validate: Callable[[Any], str | None] | None = None,
@@ -890,7 +917,12 @@ def llm_json(ctx: RunContext, purpose: str, prompt_name: str, payload: Any, *,
     call.with_policy(getattr(ctx, "policy", None))
     if not ctx.router.available(purpose, call):  # before compiling: an unavailable route needs no context
         why = getattr(ctx.router, "unavailable", lambda *_: None)(purpose, call)
-        return None, (model_outcome(why) if why is not None else ModelOutcome("no_route", f"no model route for {purpose}"))
+        outcome = model_outcome(why) if why is not None else ModelOutcome("no_route", f"no model route for {purpose}")
+        fallback = note_fallback(ctx, purpose, outcome, say=True)
+        if fallback is not None:  # the avoided call, accounted like any other rules answer
+            ctx.router.record_skip(purpose, call, estimated_tokens=estimate_tokens(_prompt_text(payload)) + 500,
+                                   reason=f"fallback {fallback.cause}: {fallback.detail}"[:200], rung=fallback.rung)
+        return None, outcome
     if isinstance(payload, DeferredContext):
         payload = payload.resolve()
     compiled = payload if isinstance(payload, CompiledContext) else None
@@ -939,10 +971,13 @@ def llm_json(ctx: RunContext, purpose: str, prompt_name: str, payload: Any, *,
             ctx.say(f"{purpose}: no larger model to escalate to ({exc.message}).", kind="decision")
             return None, model_outcome(exc)
         remedy = exc.details.get("remedy") if isinstance(exc.details, dict) else None
+        outcome = model_outcome(exc)
+        fallback = note_fallback(ctx, purpose, outcome, say=False)
         ctx.say(f"Model call for {purpose} unavailable ({exc.code}); using deterministic fallback."
                 + (f" {remedy}" if remedy else ""), kind="decision",
-                data={"purpose": purpose, "code": exc.code, **({"remedy": remedy} if remedy else {})})
-        return None, model_outcome(exc)
+                data={"purpose": purpose, "code": exc.code, **({"remedy": remedy} if remedy else {}),
+                      **({"model_fallback": fallback.to_dict()} if fallback is not None else {})})
+        return None, outcome
 
 
 def llm_json_batch(ctx: RunContext, purpose: str, prompt_name: str, items: list[dict[str, Any]], *, list_key: str,

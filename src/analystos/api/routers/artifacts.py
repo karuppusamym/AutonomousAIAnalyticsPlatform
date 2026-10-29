@@ -160,6 +160,11 @@ def _decide(approval_id: str, user: User, session: Session, approve: bool, reaso
                 rules.apply_decision(session, approval)
             elif approval.action == packs.REVIEW_ACTION:  # S09-T4: a recurring pack's brief, reviewed
                 packs.apply_review(session, approval)
+            else:
+                from analystos.autonomy import playbook_signing
+
+                if approval.action == playbook_signing.ACTION:  # S06-T6: a playbook draft's signature sign-off
+                    playbook_signing.apply_decision(session, approval)
     session.flush()
     result = row(approval, exclude={"payload"})
     run_id = approval.run_id
@@ -234,10 +239,20 @@ def rollback(publication_id: str, user: User = Depends(current_user), session: S
         raise Conflict(f"publication {pub.id} is already rolled back")
     if pub.status not in ("succeeded", "partial"):
         raise Conflict(f"publication {pub.id} is {pub.status}; only a succeeded or partial publication can be rolled back")
-    removed = get_publisher(pub.destination, get_settings()).rollback(pub.external_ids)
+    from analystos.dashboards.collections import rollback_ids, selection_of
+
+    collection = selection_of(pub) is not None  # BI-VIEWS-02: a collection published on its own
+    targets = rollback_ids(session, pub) if collection else pub.external_ids
+    removed = get_publisher(pub.destination, get_settings()).rollback(targets)
     pub.status = "rolled_back"
     if pub.artifact_id:  # S08 builder dashboard: the artifact this publication published
         published = select(Artifact).where(Artifact.id == pub.artifact_id, Artifact.status == "published")
+    elif collection:  # only what it removed; charts and datasets other publications still show stay published
+        from sqlalchemy import and_, or_
+
+        published = select(Artifact).where(Artifact.run_id == pub.run_id, Artifact.status == "published", or_(*[
+            and_(Artifact.type == kind[:-1], Artifact.name.in_(list(targets.get(kind) or {})))
+            for kind in ("dashboards", "charts", "datasets")]))
     elif pub.run_id:
         published = select(Artifact).where(Artifact.run_id == pub.run_id, Artifact.status == "published")
     else:  # an Ask answer publication: only the charts this publication placed (never every run-less artifact)

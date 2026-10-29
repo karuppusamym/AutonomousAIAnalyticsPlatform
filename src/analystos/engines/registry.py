@@ -3,8 +3,9 @@
 One engine per SQL source kind, derived from the source-kind catalog so a new kind is still a YAML
 entry. Features are derived, never declared: ``pushdown`` only when the kind may be queried in place
 (``SourceKind.pushdown_allowed``: validator + analysis compiler + a read-only session), ``federate``
-only for DuckDB (live, local) and the draft Trino engine. The status is ``certified`` only when the
-kind has live connector evidence (``connectors/certification.py``); every other engine is ``draft``.
+only for DuckDB (local, over pulled legs) and Trino (in place, across catalogs of one cluster, TRN-004).
+The status is ``certified`` only when the kind has live connector evidence (``connectors/certification.py``);
+every other engine is ``draft``.
 Snowflake, BigQuery and Databricks therefore exist as draft engines with validated dialects but no
 pushdown: none of them can make a session read-only, and none has a live certification (P4-E02).
 """
@@ -14,8 +15,9 @@ from typing import Any
 
 from analystos.connectors import kinds as catalog
 from analystos.engines.base import Engine
-from analystos.engines.duckdb import DraftFederationEngine, DuckDBEngine
+from analystos.engines.duckdb import DuckDBEngine
 from analystos.engines.sql import PostgresEngine, SessionSQLEngine
+from analystos.engines.trino import TrinoEngine
 from analystos.gateway.dialects import SUPPORTED_DIALECTS
 
 FEDERATION_ENGINE = "duckdb"
@@ -29,6 +31,8 @@ def engine_for_kind(kind: str, dialect: str | None = None) -> Engine:
         return PostgresEngine()
     if dialect == "duckdb":
         return DuckDBEngine()
+    if dialect == "trino" and spec.pushdown_allowed:
+        return TrinoEngine()
     return SessionSQLEngine(spec.kind, dialect, features=frozenset({"pushdown"}) if spec.pushdown_allowed else frozenset())
 
 
@@ -36,7 +40,7 @@ def federation_engine(name: str = FEDERATION_ENGINE) -> Any:
     if name == "duckdb":
         return DuckDBEngine()
     if name == "trino":
-        return DraftFederationEngine("trino", "trino")
+        return TrinoEngine()
     raise ValueError(f"unknown federation engine {name!r}")
 
 

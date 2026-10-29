@@ -3,8 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, type DefinitionVersion, type Source } from "../api";
 import { useAction, useAsync } from "../lib/hooks";
 import { roleAtLeast, to } from "../routes";
+import { useExpertView } from "../lib/expert";
 import { agentDefinitions, AgentsPanel } from "./AgentForms";
 import { Drawer } from "./Drawer";
+import { PlaybookEditor, SigningSteps } from "./PlaybookEditor";
 import { Card, EmptyState, ErrorBox, Field, Loading, Notice, StatusBadge } from "./ui";
 
 type AgentChoice = { id: string; summary: string; side_effect: string };
@@ -33,11 +35,13 @@ export function WorkflowPanel({ wsId, role }: { wsId: string; role: string | und
   const defs = useAsync(() => workflowDefinitions(wsId), [wsId]);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
+  const [yamlId, setYamlId] = useState<string | null>(null);
+  const expert = useExpertView();
   const canEdit = roleAtLeast(role, "editor");
   return <div className="stack">
   <AgentsPanel wsId={wsId} role={role} />
   <Card title="Workflows" actions={canEdit && <button type="button" className="btn btn-sm btn-primary" onClick={() => setEditor({ mode: "new" })}>Build workflow</button>}>
-    <p className="small muted">Compose registered agents into steps. Drafts are checked before saving; published versions can be run manually and stay pinned for history.</p>
+    <p className="small muted">Compose registered agents into steps. Drafts are checked before saving, simulated and signed off by an approver before they are published; published versions can be run manually and stay pinned for history.</p>
     <ErrorBox error={defs.error} onRetry={defs.reload} />
     {defs.loading && !defs.data && <Loading />}
     {defs.data?.length === 0 && <EmptyState title="No workspace workflows yet">Build a short workflow from registered agents.</EmptyState>}
@@ -46,7 +50,8 @@ export function WorkflowPanel({ wsId, role }: { wsId: string; role: string | und
         <div><strong>{d.title || d.key}</strong> <span className="small muted">{d.key} · v{d.version}</span>
           <div><StatusBadge status={d.status} /></div></div>
         <div className="chip-row">
-          {canEdit && d.status === "draft" && <button type="button" className="btn btn-xs" onClick={() => setEditor({ mode: "edit", id: d.id })}>Edit</button>}
+          {canEdit && (d.status === "draft" || d.status === "tested") && <button type="button" className="btn btn-xs" onClick={() => setEditor({ mode: "edit", id: d.id })}>Edit</button>}
+          {expert && <button type="button" className="btn btn-xs btn-ghost" onClick={() => setYamlId(d.id)}>Open in YAML editor<span className="sr-only"> {d.key} v{d.version}</span></button>}
           {canEdit && d.status === "published" && <button type="button" className="btn btn-xs" onClick={() => setEditor({ mode: "copy", id: d.id })}>New version</button>}
           {d.status === "published" && <button type="button" className="btn btn-xs btn-primary" onClick={() => setRunId(d.id)}>Run</button>}
         </div>
@@ -56,6 +61,7 @@ export function WorkflowPanel({ wsId, role }: { wsId: string; role: string | und
       onSaved={() => { setEditor(null); void defs.reload(); }} />}
     {runId && <RunWorkflow wsId={wsId} definitionId={runId} onClose={() => setRunId(null)} />}
   </Card>
+  <PlaybookEditor wsId={wsId} role={role} openId={yamlId} onChanged={() => void defs.reload()} />
   </div>;
 }
 
@@ -66,7 +72,6 @@ function WorkflowEditor({ wsId, editor, onClose, onSaved }: { wsId: string; edit
   const playbooks = useAsync(() => api.listCapabilities({ kind: "Playbook" }), []);
   const original = useAsync(() => editor.id ? api.getDefinition(wsId, editor.id) : Promise.resolve(null), [wsId, editor.id]);
   const act = useAction();
-  const publish = useAction();
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [summary, setSummary] = useState("");
@@ -125,11 +130,6 @@ function WorkflowEditor({ wsId, editor, onClose, onSaved }: { wsId: string; edit
       : api.createDefinition(wsId, { kind: "playbook", key, title: title.trim(), spec }));
     if (row) setSaved(row);
   };
-  const doPublish = async () => {
-    if (!saved) return;
-    const row = await publish.run(() => api.publishDefinition(wsId, saved.id, saved.revision));
-    if (row) onSaved();
-  };
   if (source && !editable(source)) return <Drawer title="Edit workflow" onClose={onClose}>
     <Notice tone="warning">This workflow has advanced manifest fields. Its version is preserved; edit it through the manifest API.</Notice>
   </Drawer>;
@@ -164,10 +164,10 @@ function WorkflowEditor({ wsId, editor, onClose, onSaved }: { wsId: string; edit
       <div className="form-actions"><button type="submit" className="btn btn-primary" disabled={!!problem || act.busy || !agents.data}>Save draft</button></div>
     </form>}
     {saved && <div className="stack"><Notice tone="success">Draft v{saved.version} saved and validated.</Notice>
-      <p className="small">Publishing freezes this version. Its certification remains draft, so autonomous runs and schedules are blocked until certified through platform review.</p>
-      <ErrorBox error={publish.error} />
-      <div className="form-actions"><button type="button" className="btn btn-primary" disabled={publish.busy} onClick={() => void doPublish()}>Publish version</button>
-        <button type="button" className="btn" onClick={onSaved}>Finish later</button></div>
+      <p className="small">Publishing freezes this version and enables it here. It needs a passing simulation and a signature approved by
+        someone else first; any later change needs a new version and a new sign-off.</p>
+      <SigningSteps wsId={wsId} draft={saved} onChange={setSaved} onPublished={onSaved} />
+      <div className="form-actions"><button type="button" className="btn" onClick={onSaved}>Finish later</button></div>
       <Link to={to.data(wsId, "definitions")} onClick={onClose}>See all definitions</Link>
     </div>}
   </Drawer>;

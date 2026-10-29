@@ -348,6 +348,7 @@ export function resetMockState(): void {
   resetKnowledgeState();
   resetWave1();
   resetWave2();
+  resetCollections();
 }
 
 const BUILD_TARGET: BuildTarget = { id: "btg_1", workspace_id: WS, engine: "postgres:analytics", schema_name: "aos_mart",
@@ -553,7 +554,90 @@ function buildRoute(m: string, p: string, requestBody?: string | null): MockResp
   const art = /^\/artifacts\/(art_dash|art_chart)$/.exec(p);
   if (m === "GET" && art) return json(artifactDetail(ARTIFACTS.find((a) => a.id === art[1])!));
   if (m === "POST" && p === "/artifacts/art_dash/publish") return json({ ...APPROVAL, payload: undefined });
+  return collectionsRoute(m, p, requestBody);
+}
+
+/** BI-VIEWS-02: the demo run's dashboards published one collection at a time; existing BI dashboards grouped by name. */
+const collections = { requests: [] as { approval_id: string; status: string; collection: string[]; publication: { id: string; status: string; error: null } | null }[],
+  renamed: false, grouping: null as string | null };
+
+export function resetCollections(): void {
+  collections.requests = [];
+  collections.renamed = false;
+  collections.grouping = null;
+}
+
+/** Tests flip a request's status the way an approver's decision in the inbox would. */
+export function decideCollection(status: string): void {
+  for (const r of collections.requests) r.status = status;
+  if (collections.grouping) collections.grouping = status;
+}
+
+const GROUPING_OLD = "Executive overview: Why are P1 incidents slow?";
+
+function collectionsRoute(m: string, p: string, requestBody?: string | null): MockResponse | null {
+  const W = `/v2/workspaces/${WS}`;
+  const keys = (): string[] => requestBody ? [...(JSON.parse(requestBody) as { keys: string[] }).keys].sort() : [];
+  if (m === "GET" && p === `/v2/runs/${RUN}/collections`) {
+    return json({ run_id: RUN, workspace_id: WS, destination: "superset", destination_note: null, dashboards: [
+      { key: "P1 resolution", title: "P1 resolution (weekly)", kind: "operational", audience: "operational", charts: 1,
+        artifact_id: "art_dash", status: collections.requests.some((r) => r.status === "executed") ? "published" : "draft",
+        external_url: collections.requests.some((r) => r.status === "executed") ? "http://localhost:8088/superset/dashboard/41/" : null },
+      { key: "topic_delivery", title: "Demo / Delivery reliability", kind: "topic", audience: "operational", charts: 2,
+        artifact_id: "art_topic", status: "draft", external_url: null },
+    ], requests: collections.requests.map((r) => ({ ...r, destination: "superset", payload_hash: `hash-${r.collection.join("+")}`,
+      risk_tier: "high", created_at: T, expires_at: "2099-01-01T00:00:00Z", reason: null })) });
+  }
+  if (m === "POST" && p === `/v2/runs/${RUN}/collections/publish-request`) {
+    const collection = keys();
+    const approval_id = `apr_col_${collections.requests.length + 1}`;
+    collections.requests.unshift({ approval_id, status: "pending", collection, publication: null });
+    return json({ approval_id, status: "pending", risk_tier: "high", destination: "superset", payload_hash: `hash-${collection.join("+")}`,
+      collection, expires_at: "2099-01-01T00:00:00Z" }, 202);
+  }
+  if (m === "POST" && p === "/v2/collections/publish") {
+    const id = requestBody ? (JSON.parse(requestBody) as { approval_id: string }).approval_id : "";
+    const r = collections.requests.find((x) => x.approval_id === id);
+    if (!r || r.status !== "approved") {
+      return json({ error: { code: "approval_required", message: `approval is ${r?.status ?? "missing"}`, details: {} } }, 409);
+    }
+    r.status = "executed";
+    r.publication = { id: "pub_col_1", status: "succeeded", error: null };
+    return json({ status: "published", publication_id: "pub_col_1", collection: r.collection, destination: "superset",
+      urls: Object.fromEntries(r.collection.map((k, i) => [k, `http://localhost:8088/superset/dashboard/${41 + i}/`])) });
+  }
+  const change = { id: 16, slug: "aos-ws-demo-executive", from: GROUPING_OLD, to: `Demo / ${GROUPING_OLD}` };
+  if (m === "GET" && p === `${W}/dashboard-grouping`) {
+    return json({ workspace_id: WS, group: "Demo", separator: " / ", available: true, reason: null, to_change: collections.renamed ? 0 : 1,
+      dashboards: [
+        { ...change, from: collections.renamed ? change.to : change.from, url: "http://localhost:8088/superset/dashboard/16/", published: true, grouped: collections.renamed },
+        { id: 17, slug: "aos-ws-demo-operational", from: "Demo / Operations deep-dive", to: "Demo / Operations deep-dive",
+          url: "http://localhost:8088/superset/dashboard/17/", published: true, grouped: true },
+      ] });
+  }
+  if (m === "POST" && p === `${W}/dashboard-grouping/request`) {
+    collections.grouping = "pending";
+    return json({ approval_id: "apr_group", status: "pending", risk_tier: "medium", payload_hash: "hash-group", changes: [change],
+      expires_at: "2099-01-01T00:00:00Z" }, 202);
+  }
+  if (m === "POST" && p === `${W}/dashboard-grouping/apply`) {
+    if (collections.grouping !== "approved") {
+      return json({ error: { code: "approval_required", message: `approval is ${collections.grouping ?? "missing"}`, details: {} } }, 409);
+    }
+    collections.grouping = "executed";
+    collections.renamed = true;
+    return json({ status: "applied", approval_id: "apr_group", renamed: [change] });
+  }
   return null;
+}
+
+/** The open grouping request as the approvals list shows it (with its payload). */
+export function groupingApproval(): Approval | null {
+  if (!collections.grouping) return null;
+  return { ...APPROVAL, id: "apr_group", run_id: null, action: "dashboard.grouping_update", risk_tier: "medium",
+    status: collections.grouping, payload_hash: "hash-group", evidence: {},
+    payload: { workspace_id: WS, destination: "superset", group: "Demo",
+      changes: [{ id: 16, slug: "aos-ws-demo-executive", from: GROUPING_OLD, to: `Demo / ${GROUPING_OLD}` }] } };
 }
 
 const SETTINGS: PlatformSettings = {
@@ -720,6 +804,11 @@ export function mockBackend(method: string, path: string, requestBody?: string |
     if (body.password !== "ChangeMe123!") return json({ error: { code: "unauthorized", message: "invalid credentials", details: {} } }, 401);
     return json({ access_token: "mock-token", token_type: "bearer", user: USER });
   }
+  // playbook editor (S06-T6, expert tools in Work → Workflows): options and a template; nothing is drafted here
+  if (m === "GET" && p === `${W}/playbook-editor`) {
+    return json({ agents: [], checks: [], replan_reasons: [], fixtures: [{ name: "supervised", description: "A person approves the plan" }],
+      schema: {}, template: "apiVersion: analystos/v1\nkind: Playbook\nid: playbook.my_review\nversion: 1.0.0\nspec:\n  steps: []\n" });
+  }
   // capability registry: list (with enablement per workspace), manifest, enable toggle, reload, run
   if (m === "GET" && p === "/capabilities") return json(capabilityList(url.searchParams.get("workspace_id")));
   if (p === `${W}/work-modes` || p === `${W}/work-modes/preview`) {
@@ -768,7 +857,9 @@ export function mockBackend(method: string, path: string, requestBody?: string |
   }
   if (m === "GET" && p === `${W}/approvals`) {
     const status = url.searchParams.get("status");
-    const all = [...wave2Approvals(), ...(state.planned ? [buildApproval(), APPROVAL, APPROVAL_EXECUTED] : [APPROVAL, APPROVAL_EXECUTED])];
+    const grouping = groupingApproval();
+    const all = [...wave2Approvals(), ...(grouping ? [grouping] : []),
+      ...(state.planned ? [buildApproval(), APPROVAL, APPROVAL_EXECUTED] : [APPROVAL, APPROVAL_EXECUTED])];
     return json(all.filter((a) => !status || a.status === status));
   }
   const wave = wave1Route(m, p, WS, requestBody);

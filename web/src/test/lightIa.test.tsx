@@ -323,11 +323,25 @@ it("builds, publishes and runs a workspace workflow using the exact definition v
     ] } };
     if (method === "POST" && path === `/api/workspaces/${WS}/definitions`) {
       const input = JSON.parse(body || "{}") as Record<string, unknown>;
-      definition = { ...input, id: "defn_workflow", workspace_id: WS, version: 1, status: "draft", revision: 1 };
+      definition = { ...input, id: "defn_workflow", workspace_id: WS, version: 1, status: "draft", revision: 1, content_hash: "c1" };
       return { status: 201, body: definition };
     }
+    // S06-T6: simulate, request a signature, someone else approves, then publish signs and enables it
+    const editor = `/api/workspaces/${WS}/playbook-editor/drafts/defn_workflow`;
+    if (method === "POST" && path === `${editor}/simulate`) {
+      definition = { ...definition, status: "tested", revision: 2, test_evidence: { content_hash: "c1", simulations: [] } };
+      return { status: 200, body: definition };
+    }
+    if (method === "POST" && path === `${editor}/request-signature`) {
+      definition = { ...definition, revision: 3, signature: { state: "requested", approval_id: "apr_sign" } };
+      return { status: 201, body: { definition, approval: { id: "apr_sign", status: "pending" } } };
+    }
+    if (method === "GET" && path === editor) {
+      if (definition?.status !== "published") definition = { ...definition, signature: { state: "approved", approval_id: "apr_sign" } };
+      return { status: 200, body: definition };
+    }
     if (method === "POST" && path === `/api/workspaces/${WS}/definitions/defn_workflow/publish`) {
-      definition = { ...definition, status: "published", revision: 2 };
+      definition = { ...definition, status: "published", revision: 4, signature: { state: "signed" } };
       return { status: 200, body: definition };
     }
     if (method === "GET" && path === `/api/workspaces/${WS}/definitions/defn_workflow`) return { status: 200, body: definition };
@@ -349,7 +363,13 @@ it("builds, publishes and runs a workspace workflow using the exact definition v
   expect(created.kind).toBe("playbook");
   expect(created.spec.certification.status).toBe("draft");
   expect(created.spec.spec.steps).toEqual([{ key: "metadata", title: "Discover metadata", use: "agent.metadata", after: [], optional: false }]);
-  fireEvent.click(await screen.findByRole("button", { name: "Publish version" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Simulate draft" }));
+  await waitFor(() => expect((screen.getByRole("button", { name: "Request signature" }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole("button", { name: "Request signature" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Check status" }));
+  await waitFor(() => expect((screen.getByRole("button", { name: "Publish and enable" }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole("button", { name: "Publish and enable" }));
+  await waitFor(() => expect(calls(f, "POST", /defn_workflow\/publish$/)).toHaveLength(1));
   const runButton = await screen.findByRole("button", { name: "Run" });
   fireEvent.click(runButton);
   const runForm = await screen.findByRole("form", { name: "Run workflow" });

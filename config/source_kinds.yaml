@@ -13,17 +13,21 @@
 #   driver           python modules that must import, the pip packages, and the analystos[extra].
 #   sqlglot_dialect  the source's native dialect. Pushdown (querying in place through the gateway) is
 #                    allowed ONLY when the gateway validator has a security suite for it
-#                    (gateway/dialects.py), the analysis compiler emits it (postgres, tsql, duckdb) AND
-#                    the session can be made read-only (session_sql.readonly or connect_args.read_only;
+#                    (gateway/dialects.py), the analysis compiler emits it (postgres, tsql, duckdb, trino)
+#                    AND the session can be made read-only (session_sql.readonly, connect_args.read_only
+#                    or readonly_transaction;
 #                    sqlserver is the one legacy least-privilege-identity exception). Every other SQL
 #                    kind is staged: extracted with a read-only session into the analytics DB and
 #                    queried there in the postgres dialect. The validator already speaks snowflake,
-#                    bigquery, databricks, trino and mysql; those kinds stay staged until the other
-#                    two conditions hold (engines/registry.py lists them as draft engines).
+#                    bigquery, databricks and mysql; those kinds stay staged until the other two
+#                    conditions hold (engines/registry.py lists them as draft engines). trino meets all
+#                    three (compiler, validator, readonly_transaction) and pushes down on request.
 #   pushdown_default false: pushdown is allowed but opt-in (execution_mode: pushdown on the source).
 #   session_sql      readonly: run on every connection the connector opens (discover/extract) and by
 #                    the gateway before pushdown queries. Kinds with an empty list have no session-level
 #                    read-only switch: the configured identity MUST be least-privilege (SELECT only).
+#   readonly_transaction  true: the driver opens every transaction READ ONLY itself (trino: its client
+#                    tracks transactions by header, so a START TRANSACTION statement would not hold).
 #                    timeout: statement timeout; {timeout_ms} / {timeout_s} are substituted.
 #   connect_args     static DBAPI connect() arguments (e.g. DuckDB read_only).
 #   connect_timeout_arg  DBAPI connect() argument that bounds connection time (seconds).
@@ -266,14 +270,19 @@ kinds:
     session_sql:
       readonly: []
       timeout: ["SET SESSION query_max_execution_time = '{timeout_s}s'"]
+    readonly_transaction: true
+    pushdown_default: false
     connect_timeout_arg: null
     row_estimate: none
     catalog: inspector
     system_schemas: [information_schema, "$*"]
     default_schemas: null
     docs: >-
-      Staged. Password authentication requires http_scheme=https. Restrict the user with Trino
-      access control (read-only catalog rules); there is no session read-only switch.
+      One source per Trino catalog (config.catalog). Pushdown is opt-in: every connection the connector or the
+      gateway opens runs inside START TRANSACTION READ ONLY (engines/trino.py), so Trino refuses writes whatever
+      the user may do; still give the user read-only catalog rules. A federated query over several trino sources
+      of one cluster and identity runs on Trino itself (TRN-004). Password authentication requires
+      http_scheme=https.
 
   clickhouse:
     label: ClickHouse

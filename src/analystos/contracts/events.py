@@ -36,6 +36,9 @@ EVENT_TYPES = {
     # Definition lifecycle and pinned schedules (P7-03, ADR-0021)
     "definition.draft_saved", "definition.published", "definition.deprecated", "definition.retired",
     "definition.tested", "definition.promoted",
+    # Playbook signing (S06-T6): a hash-bound sign-off approval, then the tenant signature at publish
+    "definition.signature_requested", "definition.signature_approved", "definition.signature_rejected",
+    "definition.signature_invalidated", "definition.signed",
     "schedule.upgrade_available", "schedule.upgraded", "schedule.pin_warning", "schedule.blocked", "narrative.stale",
     # Typed work orders and the dispatch outbox (P4-06)
     "work_order.created", "work_order.updated", "run.dispatched", "run.dispatch_failed",
@@ -92,6 +95,10 @@ EVENT_TYPES |= {"context.binding_saved", "context.binding_validated", "context.e
 # Autonomy engine (S06): goals, remaining budget, budget exhaustion, typed replans
 EVENT_TYPES |= {"goal.created", "goal.signal", "run.budget", "run.limited"}
 
+# Visible rules fallback (N-14): a purpose that wanted a model had no allowed route (models disabled by the
+# settings, a spend cap or budget, a missing price, policy, no key); payload = llm.fallback.ModelFallback
+EVENT_TYPES |= {"model.fallback"}
+
 # Analysis, verification and evidence (S07): an investigation gate's result; a published artifact's void banner
 EVENT_TYPES |= {"investigation.check", "publication.void_banner", "publication.banner_cleared", "request.void_added"}
 
@@ -107,6 +114,8 @@ EVENT_TYPES |= {"tool.published", "tool.quarantined", "tool.deprecated", "tool.s
 # Dashboards and publishing (S08): op versions, forks of published dashboards, publish requests, reconcile drift, exports
 EVENT_TYPES |= {"dashboard.version_created", "dashboard.forked", "dashboard.publish_requested",
                 "publication.drift_detected", "export.created"}
+# BI-VIEWS-02: grouping existing BI dashboards under the workspace name (an approved title update)
+EVENT_TYPES |= {"dashboard.grouping_requested", "dashboard.grouping_applied"}
 # Proactive monitoring, triggers and recurring work (S09): ingress, anti-noise outcomes, alert groups, channels, packs
 EVENT_TYPES |= {"trigger.received", "trigger.processed", "alert.deferred", "alert.released", "alert_group.opened",
                 "alert_group.merged", "alert_group.resolved", "monitor.rule_approved", "channel.request_created",

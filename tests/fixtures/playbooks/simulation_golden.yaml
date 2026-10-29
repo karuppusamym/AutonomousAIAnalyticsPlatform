@@ -1,0 +1,163 @@
+# Golden simulation of investigate.v1 against every built-in fixture (S06-T6, spec §5 'playbook simulation
+# golden test'; tests/unit/test_playbook_authoring.py). A change here is a change in what the playbook does.
+supervised:
+  outcome: completed
+  reason: null
+  timeline:
+  - plan_approval:approval_granted
+  - context:completed
+  - metadata:completed
+  - relationships:completed
+  - profile:completed
+  - quality:completed
+  - hypotheses:completed
+  - test:sim_1:completed
+  - followups:sim_1:completed
+  - insights:completed
+  - verify:completed
+  - dataset:completed
+  - semantic:completed
+  - visualize:completed
+  - publish_request:approval_granted
+  - publish:side_effect
+  - finalize:completed
+  used:
+    steps: 17
+    retries: 0
+    replans: 0
+  approvals:
+  - plan_approval:approved
+  - publish_request:executed
+autonomous:
+  outcome: completed
+  reason: null
+  timeline:
+  - plan_approval:excluded
+  - context:completed
+  - metadata:completed
+  - relationships:completed
+  - profile:completed
+  - quality:completed
+  - hypotheses:completed
+  - test:sim_1:completed
+  - followups:sim_1:completed
+  - insights:completed
+  - verify:completed
+  - dataset:completed
+  - semantic:completed
+  - visualize:completed
+  - publish_request:approval_granted
+  - publish:side_effect
+  - finalize:completed
+  used:
+    steps: 16
+    retries: 0
+    replans: 0
+  approvals:
+  - publish_request:executed
+scheduled:
+  outcome: completed
+  reason: null
+  timeline:
+  - publish_request:skipped
+  - publish:skipped
+  - plan_approval:excluded
+  - context:completed
+  - metadata:completed
+  - relationships:completed
+  - profile:completed
+  - quality:completed
+  - hypotheses:completed
+  - test:sim_1:completed
+  - followups:sim_1:completed
+  - insights:completed
+  - verify:completed
+  - dataset:completed
+  - semantic:completed
+  - visualize:completed
+  - finalize:completed
+  used:
+    steps: 14
+    retries: 0
+    replans: 0
+  approvals: []
+rejected:
+  outcome: rejected
+  reason: plan approval rejected at plan_approval
+  timeline:
+  - plan_approval:approval_rejected
+  - context:not_reached
+  - metadata:not_reached
+  - relationships:not_reached
+  - profile:not_reached
+  - quality:not_reached
+  - hypotheses:not_reached
+  - insights:not_reached
+  - verify:not_reached
+  - dataset:not_reached
+  - semantic:not_reached
+  - visualize:not_reached
+  - publish_request:not_reached
+  - publish:not_reached
+  - finalize:not_reached
+  used:
+    steps: 1
+    retries: 0
+    replans: 0
+  approvals:
+  - plan_approval:rejected
+tight_budget:
+  outcome: completed_with_limitations
+  reason: max_steps reached before quality
+  timeline:
+  - plan_approval:approval_granted
+  - context:completed
+  - metadata:completed
+  - relationships:completed
+  - profile:completed
+  - quality:not_reached
+  - hypotheses:not_reached
+  - insights:not_reached
+  - verify:not_reached
+  - dataset:not_reached
+  - semantic:not_reached
+  - visualize:not_reached
+  - publish_request:not_reached
+  - publish:not_reached
+  - finalize:not_reached
+  used:
+    steps: 5
+    retries: 0
+    replans: 0
+  approvals:
+  - plan_approval:approved
+redirect:
+  outcome: completed
+  reason: null
+  timeline:
+  - plan_approval:approval_granted
+  - context:completed
+  - metadata:completed
+  - relationships:completed
+  - profile:completed
+  - quality:completed
+  - hypotheses:completed
+  - _run:replanned
+  - hypotheses:completed
+  - test:sim_1:completed
+  - followups:sim_1:completed
+  - insights:completed
+  - verify:completed
+  - dataset:completed
+  - semantic:completed
+  - visualize:completed
+  - publish_request:approval_granted
+  - publish:side_effect
+  - finalize:completed
+  used:
+    steps: 17
+    retries: 1
+    replans: 1
+  approvals:
+  - plan_approval:invalidated
+  - publish_request:executed

@@ -118,17 +118,47 @@ def list_keys(session: Session, tenant: str) -> list[dict[str, Any]]:
                                      .order_by(ToolSigningKey.created_at))]
 
 
-def sign(session: Session, tenant: str, manifest: ToolManifestV2, *, actor: str = "system") -> ToolManifestV2:
+def sign_payload(session: Session, tenant: str, payload: dict[str, Any], *, actor: str = "system") -> ToolSignature:
+    """The tenant's ed25519 signature over a payload's canonical JSON. Callers put a purpose field in the
+    payload (a playbook signature carries `purpose`), so a signature made for one artifact kind can never
+    verify as another kind's."""
     key = active_key(session, tenant, actor=actor)
-    payload = canonical_json(manifest.signing_payload()).encode()
-    value = _b64(_private(tenant, key.key_id).sign(payload))
-    return manifest.model_copy(update={"signature": ToolSignature(alg=ALG, key_id=key.key_id, value=value)})
+    value = _b64(_private(tenant, key.key_id).sign(canonical_json(payload).encode()))
+    return ToolSignature(alg=ALG, key_id=key.key_id, value=value)
+
+
+def verify_payload(session: Session, tenant: str, payload: dict[str, Any], signature: ToolSignature | dict[str, Any] | None,
+                   *, label: str) -> ToolSignature:
+    """`ManifestRefused` unless `signature` is this tenant's valid signature over `payload` by a known, unrevoked key."""
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    from pydantic import ValidationError
+
+    if signature is None:
+        raise ManifestRefused(f"{label} is unsigned", details={"reason": "unsigned"})
+    try:
+        sig = signature if isinstance(signature, ToolSignature) else ToolSignature.model_validate(signature)
+    except ValidationError:
+        raise ManifestRefused(f"{label} has a malformed signature", details={"reason": "tampered"}) from None
+    key = session.scalar(select(ToolSigningKey).where(ToolSigningKey.tenant_id == tenant, ToolSigningKey.key_id == sig.key_id))
+    if key is None or key.status == "revoked":
+        raise ManifestRefused(f"{label} is signed by an unknown or revoked key", details={"reason": "key"})
+    derived = _public_b64(tenant, key.key_id)
+    if not hmac.compare_digest(derived, key.public_key):
+        raise ManifestRefused(f"signing key {key.key_id} does not match this platform's secret", details={"reason": "key"})
+    try:
+        Ed25519PublicKey.from_public_bytes(_unb64(derived)).verify(_unb64(sig.value), canonical_json(payload).encode())
+    except (InvalidSignature, ValueError):
+        raise ManifestRefused(f"{label} has an invalid signature", details={"reason": "tampered"}) from None
+    return sig
+
+
+def sign(session: Session, tenant: str, manifest: ToolManifestV2, *, actor: str = "system") -> ToolManifestV2:
+    return manifest.model_copy(update={"signature": sign_payload(session, tenant, manifest.signing_payload(), actor=actor)})
 
 
 def verify(session: Session, tenant: str, manifest: dict[str, Any], *, manifest_hash: str | None = None) -> ToolManifestV2:
     """The manifest as the runtime may run it, or `ManifestRefused` with why not."""
-    from cryptography.exceptions import InvalidSignature
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
     from pydantic import ValidationError
 
     try:
@@ -139,16 +169,5 @@ def verify(session: Session, tenant: str, manifest: dict[str, Any], *, manifest_
         raise ManifestRefused(f"manifest {m.ref} is unsigned", details={"reason": "unsigned"})
     if manifest_hash is not None and not hmac.compare_digest(m.content_hash(), manifest_hash):
         raise ManifestRefused(f"manifest {m.ref} changed after it was signed", details={"reason": "tampered"})
-    key =session.scalar(select(ToolSigningKey).where(ToolSigningKey.tenant_id == tenant,
-                                                      ToolSigningKey.key_id == m.signature.key_id))
-    if key is None or key.status == "revoked":
-        raise ManifestRefused(f"manifest {m.ref} is signed by an unknown or revoked key", details={"reason": "key"})
-    derived = _public_b64(tenant, key.key_id)
-    if not hmac.compare_digest(derived, key.public_key):
-        raise ManifestRefused(f"signing key {key.key_id} does not match this platform's secret", details={"reason": "key"})
-    try:
-        Ed25519PublicKey.from_public_bytes(_unb64(derived)).verify(_unb64(m.signature.value),
-                                                                    canonical_json(m.signing_payload()).encode())
-    except (InvalidSignature, ValueError):
-        raise ManifestRefused(f"manifest {m.ref} has an invalid signature", details={"reason": "tampered"}) from None
+    verify_payload(session, tenant, m.signing_payload(), m.signature, label=f"manifest {m.ref}")
     return m

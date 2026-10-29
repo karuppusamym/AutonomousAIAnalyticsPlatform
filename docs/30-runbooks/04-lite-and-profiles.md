@@ -25,6 +25,7 @@ replaces `COMPOSE_PROFILES` from the env files):
 | `demo` | the ServiceNow mock source, in its own small image | `--env-file deploy/compose/demo.env --profile demo` |
 | `sandbox` | the container sandbox image (build only) | `docker compose --profile sandbox build sandbox` |
 | `pooled` | PgBouncer | runbook 02 "Connection pooling" |
+| `federation` | Trino 476 over a demo Postgres + TPC-H (TRN-004), loopback only | `--profile federation`, [runbook 10](10-trino-federation.md) |
 | `isolated` | the credential-free `compute-py` / `compute-ml` worker pools on an internal network (§5) | `--env-file deploy/compose/standard.env --env-file deploy/compose/isolated.env` (standard + isolated) |
 
 The CI stack (everything): `docker compose --env-file .env --env-file deploy/compose/standard.env
