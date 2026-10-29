@@ -128,12 +128,12 @@ def test_session_hook_restricts_only_bound_transactions(monkeypatch):
     assert calls == []  # unbound in `bound` mode: owner identity, as before
     with tenant_scope("tnt_a"):
         hook.on_after_begin(S(), None, Conn())
-    assert calls == [("sql", 'SET LOCAL ROLE "analystos_app"'), ("set", {"t": "tnt_a"})]
+    assert calls == [("set", {"r": "analystos_app", "t": "tnt_a"})]  # role and tenant in one statement
 
     calls.clear()
     monkeypatch.setattr(hook, "_settings", lambda: settings("strict"))
     hook.on_after_begin(S(), None, Conn())
-    assert calls == [("sql", 'SET LOCAL ROLE "analystos_app"'), ("set", {"t": ""})]  # fail closed
+    assert calls == [("set", {"r": "analystos_app", "t": ""})]  # fail closed
     calls.clear()
     with system_scope():
         hook.on_after_begin(S(), None, Conn())

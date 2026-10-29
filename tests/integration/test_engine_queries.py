@@ -20,9 +20,9 @@ SOURCES, ASSETS, COLUMNS = 3, 10, 30
 NOISE_EDGES, OTHER_WS_EDGES = 3000, 1000
 
 
-# The per-transaction tenant binding (ADR-009, strict tenancy): two fixed statements, not data access; they are
-# counted apart so the budgets below keep measuring the engine's own reads and writes.
-TENANCY_PRELUDE = ("SET LOCAL ROLE", "SELECT set_config('app.tenant_id'")
+# The per-transaction tenant binding (ADR-009, strict tenancy): one fixed statement (role + tenant), not data
+# access; it is counted apart so the budgets below keep measuring the engine's own reads and writes.
+TENANCY_PRELUDE = ("SELECT set_config('role'",)
 
 
 class _Counter:
