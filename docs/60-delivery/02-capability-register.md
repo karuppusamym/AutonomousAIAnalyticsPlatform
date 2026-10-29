@@ -1,5 +1,35 @@
 # Capability register (evidence)
 
+## 2026-10-29 — SQL Server live: connector certification (S02-T6), session identity (S02-T5), META-002
+
+SQL Server 2022 Developer runs locally as compose profile `mssql` (container `analystos-mssql`, host port 14330; SA
+password from the environment, never the repository). `scripts/mssql_cert_seed.py` creates `analystos_cert`
+(`cert.items`, `cert.other`) and the least-privilege login `aos_cert_ro` (db_datareader). The certification kit gained
+SQL Server checks (`connectors/certify_kit.py::_mssql_checks`) that run through the gateway's tsql path
+(`run_session_sql` with the connector's query URL and session statements): `analystos certify-connector --kind
+sqlserver --dsn-ref env:ANALYSTOS_CERT_MSSQL_DSN --schemas cert` passed 9/9 —
+[evidence](../evidence/connectors/sqlserver-2026-10-29.md). The tsql validator suite now also holds identity spoofing
+(`EXEC sp_set_session_context`), dynamic SQL, `SET CONTEXT_INFO`, `OPENQUERY` / `OPENDATASOURCE`, four-part and
+cross-database names, `sys.sql_logins` and `SELECT INTO` (30 statements).
+
+The first live run failed five checks; four were defects in `engines/sql.py::run_session_sql`, fixed here: (1) pymssql
+raises OperationalError for server errors, so a permission refusal (262) was reported as the source being unavailable
+— errors are now classified by SQL Server / DB-Library number (`MSSQL_DENIED`, `MSSQL_TIMEOUT`, `MSSQL_UNAVAILABLE`);
+(2) a driver timeout left a dead connection whose rollback raised and masked the timeout — failed or cancelled
+connections are now closed, not pooled; (3) `cancel_running` found no cancel on a pymssql connection — it now uses the
+inner `_mssql` cancel (interrupts `WAITFOR` in 0.3 s); (4) **the read-only `SESSION_CONTEXT` stayed on the pooled
+connection, so the next user's query on it failed** (and nothing else stopped a reused session from carrying the
+previous user) — a connection that carried session identity is now always closed. The fifth was the kit's own
+comparison. Unit tests: `tests/unit/test_engine_session_sql.py` (classification, discard, cancel). Live:
+`tests/integration/test_gateway_mssql.py` (needs compose Postgres + `ANALYSTOS_MSSQL_SA_PASSWORD`; skips otherwise) —
+a SQL Server security policy on `SESSION_CONTEXT(N'app.user')` filters `s02shop.events` per end user through
+`QueryGateway.execute` with users alternating, a denied column is refused, a statement setting its own identity is
+refused; with the identity fix reverted the alternating-user test fails.
+
+Not done: no SQL Server plan estimate (tsql has no explainer, so `max_scan_bytes` cannot stop a statement before it
+runs; row cap and driver timeout bound it); a connection per identity-bearing query (no pooling for those);
+Snowflake and BigQuery remain blocked on live access; the kit ran against a local container, not a customer server.
+
 ## 2026-10-27 — S05 Model gateway: providers, layered configuration, switch gate, air-gap, Admin › Models
 
 Providers (`llm/providers.py`, `llm/config.py`): `openai_compatible` with declared capabilities (json_mode, tools,
