@@ -109,6 +109,11 @@ export function draftsRoute(m: string, p: string, body: string | null | undefine
   if (!r || !d) return null;
   const action = r[2] ?? "";
   if (m === "GET" && action === "") return ok(d.dash);
+  if (m === "GET" && action === "/story") {  // CONV-05 summary panel on the builder
+    return ok({ dashboard_id: d.dash.id, version: d.dash.version, previous_version: null, title: d.dash.document.title,
+      shows: `${d.dash.document.title}: ${d.dash.document.charts.length} charts.`, facts: [], changes: [], wording: "rules",
+      notes: [], story_hash: "s1", markdown: "" });
+  }
   if (m === "GET" && action === "/versions" && r[3]) return ok(d.versions.find((v) => v.version === Number(r[3])));
   if (m === "GET" && action === "/versions") return ok(d.versions.map(({ document: _doc, ...v }) => v));
   if (m === "POST" && action === "/messages") {
