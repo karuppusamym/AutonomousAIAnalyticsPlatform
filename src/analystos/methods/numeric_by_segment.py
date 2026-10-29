@@ -105,11 +105,11 @@ class NumericBySegment(AnalysisMethod):
                 exp.Avg(this=o.copy()).as_(sb.ident("mean")), exp.Min(this=o.copy()).as_(sb.ident("min")),
                 exp.Max(this=o.copy()).as_(sb.ident("max"))]
         columns = {"segment": "segment", "n_rows": "n_rows", "n": "n", "mean": "mean", "min": "min", "max": "max"}
-        if dialect != "tsql":
-            aggs.append(sb.median(o.copy()).as_(sb.ident("median")))
+        if dialect != "tsql" and dialect not in sb.NO_EXACT_PERCENTILE:
+            aggs.append(sb.median(o.copy(), dialect).as_(sb.ident("median")))
             columns["median"] = "median"
         else:
-            notes.append("tsql: PERCENTILE_CONT is window-only; medians come from the row sample")
+            notes.append(f"{dialect}: no exact grouped PERCENTILE_CONT; medians come from the row sample")
         if ordered:
             columns["segment_order"] = "segment_order"
         q = (exp.select(*group, *aggs).from_(sb.subquery(inner, "d")).group_by(*[g.copy() for g in group])

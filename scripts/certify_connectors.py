@@ -29,8 +29,9 @@ LIVE_TESTS = {  # kind -> pytest -k expression selecting its real-engine tests (
     "sqlite": "file_database and sqlite",
     "duckdb": "file_database and duckdb",
     "csv": "",  # real CSV/JSON/NDJSON/Excel/Parquet files: ingest, stage, gateway read under the workspace role
+    "trino": "",  # the compose `federation` profile: catalogs pg + tpch + memory, cross-catalog join (TRN-004)
 }
-TEST_FILES = {"csv": "tests/integration/test_file_ingest_loads.py"}
+TEST_FILES = {"csv": "tests/integration/test_file_ingest_loads.py", "trino": "tests/integration/test_trino_federation.py"}
 # Kinds whose only test here is a double: never certified by this script (spec v1 §62), listed so a run says so.
 MOCK_ONLY = {"servicenow": "tests/integration/test_staging_servicenow_load.py (the Table-API mock)"}
 
@@ -44,6 +45,15 @@ def engine(kind: str) -> str:
         return f"DuckDB {duckdb.__version__} (file database)"
     if kind == "csv":
         return "real CSV, JSON, NDJSON, Excel and Parquet files staged into the test PostgreSQL"
+    if kind == "trino":
+        try:
+            import requests
+
+            url = os.environ.get("ANALYSTOS_TEST_TRINO_URL", "http://127.0.0.1:8086")
+            version = requests.get(f"{url}/v1/info", timeout=5).json()["nodeVersion"]["version"]
+            return f"Trino {version} (docker image trinodb/trino:{version}; catalogs pg, tpch, memory)"
+        except Exception:  # noqa: BLE001 - the version is descriptive only
+            return "Trino"
     if kind == "mysql":
         return f"MySQL (docker image {os.environ.get('ANALYSTOS_TEST_MYSQL_IMAGE', 'mysql:8.4')})"
     try:
