@@ -87,8 +87,8 @@ def test_migration_0041_up_down_up(control_db):
 
         command.upgrade(cfg, "0041")
         # columns later migrations add: tenant_id (0057, ADR-009) everywhere; S04 conversations (0062); the S09 noise
-        # gate on monitors (0071)
-        later = {"monitor": {"noise_state", "approval_id", "rule_hash"},
+        # gate on monitors (0071); the S06-T6 playbook signature (0073)
+        later = {"definition": {"signature"}, "monitor": {"noise_state", "approval_id", "rule_hash"},
                  "ask_thread": {"summarized_at", "closed_at", "legal_hold", "branch_from_message_id", "parent_conversation_id",
                                 "request_id", "channel"}}
         for table, model in (("definition", Definition), ("monitor", Monitor), ("ask_thread", AskThread)):
