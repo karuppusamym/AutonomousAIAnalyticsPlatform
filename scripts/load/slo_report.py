@@ -474,9 +474,9 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         if hasattr(os, "killpg"):
             harness.stop(procs)
-        else:  # Windows: no process groups; the API has no pool children here (local orchestrator, threads)
-            for p in procs:
-                p.terminate()
+        else:  # Windows: no process groups. End each tree: a worker's compute pool children and its manager
+            for p in procs:  # outlive a plain terminate() (orphans after the 2026-10-29 Temporal run)
+                subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True, check=False)
                 try:
                     p.wait(timeout=15)
                 except subprocess.TimeoutExpired:
