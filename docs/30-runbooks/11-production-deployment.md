@@ -22,7 +22,9 @@ switch (CI job `supply-chain / helm`).
   cannot use it (render fails).
 * **gVisor** (`gvisor.enabled`): `runtimeClassName: gvisor` on pools with `gvisor: true` (compute, compute-py,
   compute-ml). GKE Sandbox has the class; elsewhere install runsc on a node pool and set `gvisor.createRuntimeClass`
-  (+ `handler`, `nodeSelector`).
+  (+ `handler`, `nodeSelector`). Isolated pools under the class get `ANALYSTOS_WORKER_REQUIRE_RUNTIME=gvisor` and exit 78
+  on any other kernel (`workers.<pool>.requireRuntime` overrides: `kata`, or `""` for no check). Proof on kind:
+  `deploy/kind/README.md`.
 * **External Secrets** (`externalSecrets.enabled`, `secretStoreRef`, `data`/`dataFrom`): the ExternalSecret that
   writes `secrets.existingSecret` is a pre-install/pre-upgrade hook (weight -10), so the migration Job finds the
   Secret; `creationPolicy: Orphan` keeps the Secret when the hook object is replaced. Source credentials referenced
@@ -57,6 +59,9 @@ cosign verify-attestation --type spdxjson ghcr.io/<owner>/analystos-app@sha256:<
 
 Deploy the commit tag that was signed (`image.tag=<git sha>`) and enforce signatures at admission (Kyverno
 `verifyImages` or the Sigstore policy-controller with the identity above), so a re-pushed tag cannot slip in.
+
+Releases (tag → signed images and chart on GHCR → gated `staging` deploy) and the owner's environment setup:
+[14-release-and-deploy.md](14-release-and-deploy.md).
 
 ## Release gates
 

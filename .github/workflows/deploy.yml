@@ -1,0 +1,119 @@
+# Deploy a published release to one GitHub Environment (FND-004). Called by release.yml after a release, or run by
+# hand to redeploy or roll back to any published version. The Environment holds the gate (required reviewers) and
+# the cluster: secret KUBECONFIG (base64 kubeconfig of a namespace-scoped deployer), optional secret HELM_VALUES
+# (an extra values file, YAML), variables NAMESPACE, RELEASE_NAME, HELM_VALUES_FILES, APP_URL. Nothing about a
+# cluster lives in the repository (docs/30-runbooks/14-release-and-deploy.md).
+#
+# What is deployed is what release.yml signed: cosign verifies every image and the chart against this repository's
+# release workflow identity, and the pods are pinned to the verified digests, never to a mutable tag.
+name: deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment: {type: string, required: true}
+      version: {type: string, required: true}
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "GitHub Environment to deploy to"
+        required: true
+        type: choice
+        options: [staging, production]
+      version:
+        description: "Published version (semver without the v), e.g. 0.2.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read               # pull the chart and resolve the images on GHCR
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.APP_URL }}
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+    env:
+      VERSION: ${{ inputs.version }}
+      NAMESPACE: ${{ vars.NAMESPACE || 'analystos' }}
+      RELEASE: ${{ vars.RELEASE_NAME || 'analystos' }}
+      VALUES_FILES: ${{ vars.HELM_VALUES_FILES || 'deploy/helm/analystos/values-small.yaml' }}
+      SIGNER: ^https://github\.com/${{ github.repository }}/\.github/workflows/release\.yml@refs/
+      ISSUER: https://token.actions.githubusercontent.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the inputs and the Environment
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG }}
+        run: |
+          printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' || { echo "::error::bad version '$VERSION'"; exit 1; }
+          if [ -z "$KUBECONFIG_B64" ]; then
+            echo "::error::Environment '${{ inputs.environment }}' has no KUBECONFIG secret (docs/30-runbooks/14-release-and-deploy.md)"; exit 1
+          fi
+          for f in $VALUES_FILES; do test -f "$f" || { echo "::error::values file $f is not in the repository"; exit 1; }; done
+          echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+      - uses: azure/setup-helm@v4
+        with: {version: v3.16.4}
+      - uses: sigstore/cosign-installer@v3
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Verify the signatures and resolve the digests
+        run: |
+          verified() {  # the digest cosign verified for a tag (fails when unsigned or signed by anyone else)
+            cosign verify "$1" --certificate-identity-regexp "$SIGNER" --certificate-oidc-issuer "$ISSUER" --output json \
+              | jq -r '.[0].critical.image."docker-manifest-digest"'
+          }
+          app=$(verified "ghcr.io/$OWNER/analystos-app:$VERSION")
+          web=$(verified "ghcr.io/$OWNER/analystos-web:$VERSION")
+          chart=$(verified "ghcr.io/$OWNER/charts/analystos:$VERSION")
+          helm pull "oci://ghcr.io/$OWNER/charts/analystos" --version "$VERSION" --destination chart 2>&1 | tee pull.log
+          grep -q "$chart" pull.log || { echo "::error::pulled chart digest differs from the signed $chart"; exit 1; }
+          { echo "APP_DIGEST=$app"; echo "WEB_DIGEST=$web"; echo "CHART_DIGEST=$chart"; } >> "$GITHUB_ENV"
+      - name: Cluster credentials (runner temp, owner-only)
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG }}
+          HELM_VALUES: ${{ secrets.HELM_VALUES }}
+        run: |
+          umask 077
+          printf '%s' "$KUBECONFIG_B64" | base64 -d > "$RUNNER_TEMP/kubeconfig"
+          printf '%s\n' "$HELM_VALUES" > "$RUNNER_TEMP/values-environment.yaml"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+      - name: helm upgrade --install (pinned to the verified digests; rolled back on failure)
+        run: |
+          args=()
+          for f in $VALUES_FILES; do args+=(-f "$f"); done
+          helm upgrade --install "$RELEASE" "chart/analystos-$VERSION.tgz" \
+            --namespace "$NAMESPACE" --create-namespace \
+            "${args[@]}" -f "$RUNNER_TEMP/values-environment.yaml" \
+            --set image.registry=ghcr.io \
+            --set "image.repository=$OWNER/analystos-app" --set "image.tag=$VERSION@$APP_DIGEST" \
+            --set "webImage.repository=$OWNER/analystos-web" --set "webImage.tag=$VERSION@$WEB_DIGEST" \
+            --atomic --wait --timeout 20m --history-max 10
+      - name: Smoke test (API health, web page)
+        run: |
+          deploy_of() { kubectl -n "$NAMESPACE" get deploy -l "app.kubernetes.io/instance=$RELEASE,app.kubernetes.io/component=$1" -o name | head -1; }
+          kubectl -n "$NAMESPACE" port-forward "$(deploy_of api)" 18000:8000 > /dev/null 2>&1 &
+          kubectl -n "$NAMESPACE" port-forward "$(deploy_of web)" 18080:8080 > /dev/null 2>&1 &
+          sleep 5
+          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors http://127.0.0.1:18000/api/health | tee health.json
+          jq -e '.ok == true' health.json > /dev/null
+          curl -fsS --retry 5 --retry-delay 2 --retry-all-errors http://127.0.0.1:18080/ | grep -qi '<div id="root"'
+          kill %1 %2 || true
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Deployed ${{ inputs.environment }}: $RELEASE $VERSION (namespace $NAMESPACE)"
+            echo "- chart: ghcr.io/$OWNER/charts/analystos@${CHART_DIGEST:-?}"
+            echo "- app: ghcr.io/$OWNER/analystos-app@${APP_DIGEST:-?}"
+            echo "- web: ghcr.io/$OWNER/analystos-web@${WEB_DIGEST:-?}"
+          } >> "$GITHUB_STEP_SUMMARY"

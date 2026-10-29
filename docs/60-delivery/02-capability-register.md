@@ -1,5 +1,18 @@
 # Capability register (evidence)
 
+## 2026-10-29 — Release pipeline, kind proof install, gVisor compute pods (FND-004, S07-T1)
+
+| Capability | Code path | Evidence |
+|---|---|---|
+| Release | `.github/workflows/release.yml`: tag `vX.Y.Z` or dispatch → app, web, mock, sandbox, superset built, SBOM + Grype gate (fixable high/critical stop the release before any push), pushed as `:<version>` and `:sha-<commit>`, cosign keyless sign + SPDX attestation by digest; chart packaged at the release version, pushed to `oci://ghcr.io/<owner>/charts`, signed; `release-manifest.yaml` with every digest | `tests/unit/test_supply_chain.py::test_release_publishes_signed_images_and_chart_then_deploys_through_a_gated_environment`; actionlint 1.7.12 + shellcheck 0.11.0 clean |
+| Deploy | `.github/workflows/deploy.yml` (reusable + dispatch for redeploy/rollback): Environment `staging` (required reviewers, `KUBECONFIG` secret, `HELM_VALUES_FILES`), cosign verify against the release workflow identity, pods pinned to the verified digests, `helm upgrade --install --atomic --wait`, `/api/health` + web smoke test; `production` only with its own Environment and `PRODUCTION_DEPLOY=true` | `test_deploy_verifies_signatures_and_pins_digests_with_cluster_credentials_from_the_environment`; owner setup [14-release-and-deploy.md](../30-runbooks/14-release-and-deploy.md) |
+| First install | `templates/migrate-job.yaml`: the pre-install migration Job brings its own hook ServiceAccount and ConfigMap (the release's do not exist yet), same `analystos.configData` | `test_the_migration_hook_brings_its_own_service_account_and_config`; the kind install that found the hang |
+| Runtime requirement | `analystos.poolRequiredRuntime`: isolated pools under the gVisor class get `ANALYSTOS_WORKER_REQUIRE_RUNTIME=gvisor` (`workers.<pool>.requireRuntime` overrides) | `test_isolated_gvisor_pools_require_the_runtime_they_are_given` |
+| Proof install | `deploy/kind/` (`proof.sh up/check/down`, `install-gvisor.sh`, `infra.yaml`), `values-kind.yaml` | Live run on kind 2026-10-29: packaged chart deployed, API health `ok`, web page and proxy answer; gVisor pods report the gVisor kernel, `check_runtime` accepts; forced onto runc the isolated worker exits 78. [evidence/fnd-004-s07-t1-kind-gvisor-20261029.md](evidence/fnd-004-s07-t1-kind-gvisor-20261029.md) |
+
+Not verified: a run of either workflow on GitHub (Actions is blocked by account billing), a push to GHCR, and a deploy to
+a real staging cluster; the production target is not configured (owner's choice).
+
 ## 2026-10-29 — Drill-down and cross-filtering in the dashboard preview, every re-query governed (CONV-06)
 
 From the [conversational analyst gap review](../70-reviews/2026-10-29-conversational-analyst-gap-review.md), wave 2.

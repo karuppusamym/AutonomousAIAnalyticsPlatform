@@ -1,0 +1,9 @@
+# kind cluster for the proof install (FND-004, S07-T1): deploy/kind/README.md. One node; install-gvisor.sh adds
+# runsc to its containerd, so the chart's `gvisor` RuntimeClass (handler runsc) schedules there.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: aos-proof
+nodes:
+  - role: control-plane
+    labels:
+      analystos.io/gvisor: "true"

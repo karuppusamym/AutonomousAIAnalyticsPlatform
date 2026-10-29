@@ -151,6 +151,9 @@ openshift:
 # gVisor for the compute roles (S12 §1, S07 / ADR-012): pools with `gvisor: true` get runtimeClassName. The
 # node pool needs runsc installed (GKE Sandbox: runtimeClassName gvisor exists already; elsewhere set
 # createRuntimeClass and the handler your containerd config names). A pool may set its own runtimeClassName.
+# Isolated pools under this class also get ANALYSTOS_WORKER_REQUIRE_RUNTIME=gvisor: the worker refuses to start
+# (exit 78) when its kernel is not gVisor's, e.g. a node whose handler silently maps to runc. A pool's
+# `requireRuntime` overrides it (gvisor | kata | "" for no check).
 gvisor:
   enabled: false
   runtimeClassName: gvisor
