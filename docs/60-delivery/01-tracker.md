@@ -122,6 +122,19 @@ This repository was seeded from AnalystOS `codex/investigator-demo` (561 commits
 | S12-T8 | Customer IdP integration + pen test coordination | External | Hand-off: `docs/60-delivery/s12-t8-idp-pentest-handoff.md` (customer IdP steps and acceptance evidence, pen-test scope and rules of engagement, §5 checklist status) |
 
 
+### Conversational analyst — dynamic dashboards and reports (2026-10-29)
+
+From the [conversational analyst gap review](../70-reviews/2026-10-29-conversational-analyst-gap-review.md): the platform compared with Databricks AI/BI Genie, Power BI Copilot, Tableau Pulse / QuickSight stories, WrenAI and LIDA.
+
+| ID | Scope | Status | Evidence / notes |
+|---|---|---|---|
+| CONV-01 | Builder: a new chart from a question ("add resolution time by priority"). The question becomes a governed query (semantic model or verified query → compiler → gateway); the chart type comes from `skills/viz.py`; the preview is computed with provenance | Not started | Wave 1a |
+| CONV-02 | A whole draft dashboard from a prompt (KPIs, charts, filters, layout), each tile via CONV-01, then refined by conversation; no full investigation needed | Not started | Wave 1a |
+| CONV-03 | Ask answer → "Add to dashboard" puts a recommended chart into a draft builder dashboard (new or existing), not only a table published to Superset | Not started | Wave 1a |
+| CONV-04 | Conversational report authoring: a versioned report document (sections, charts, KPI blocks, text) shaped by typed ops from conversation; numbers guard; PDF/DOCX/PPTX from the verified document; schedulable | Not started | Wave 1b |
+| CONV-05 | Data stories and dashboard digests: what a dashboard shows and what changed since its last refresh, deterministic facts with optional model wording, numbers-guarded | Not started | Wave 1b |
+| CONV-06 | Drill-down and cross-filtering in the in-platform dashboard preview, each re-query governed | Not started | Wave 2 (after 1a; same builder files) |
+
 ### October 26 demo — investigation brief (2026-10-25)
 
 | ID | Scope | Status | Evidence / notes |
