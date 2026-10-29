@@ -148,13 +148,15 @@ kinds:
     system_schemas: [sys, INFORMATION_SCHEMA, guest, "db_*"]
     default_schemas: [dbo]
     capabilities:
-      # SESSION_CONTEXT, read-only for the rest of the session: a security policy reads SESSION_CONTEXT(N'app.user')
+      # SESSION_CONTEXT, read-only for the rest of the session: a security policy reads SESSION_CONTEXT(N'app.user').
+      # The keys cannot be reset, so the engine closes a connection that carried them instead of pooling it.
       session_identity:
         - "EXEC sp_set_session_context @key = N'app.user', @value = %(user)s, @read_only = 1"
         - "EXEC sp_set_session_context @key = N'app.user_email', @value = %(user_email)s, @read_only = 1"
     docs: >-
       Pushdown (tsql). SQL Server has no session read-only switch: the login MUST be a least-privilege
       reader (db_datareader or explicit SELECT grants). The query timeout is the driver's `timeout`.
+      Certified live on SQL Server 2022 (docs/evidence/connectors/sqlserver-*.md; compose profile `mssql`).
 
   oracle:
     label: Oracle Database
