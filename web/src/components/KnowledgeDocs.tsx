@@ -4,7 +4,7 @@ import { useAuth } from "../auth";
 import {
   DOC_STATUSES, draftFrom, draftProblems, emptyDraft, frontmatterOf, groupByFolder, matchesDoc, trustTier, type DocDraft,
 } from "../lib/knowledge";
-import { fmtDate, shortHash } from "../lib/format";
+import { fmtDate, optionLabel, shortHash } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import { Markdown } from "./Markdown";
 import { Card, CodeBlock, EmptyState, ErrorBox, Field, KeyValue, Loading, Notice, Tag } from "./ui";
@@ -73,7 +73,7 @@ function PackDocs({ wsId, pack, packs, params, set, onChanged }: {
       <div className="split-list">
         <label className="inline-field small" htmlFor={`${id}-pack`}>Pack</label>
         <select id={`${id}-pack`} value={pack.id} onChange={(e) => set({ pack: e.target.value, path: null, rev: null, new: null })}>
-          {packs.map((p) => <option key={p.id} value={p.id}>{p.title || p.slug} · {PACK_KIND_LABEL[p.kind] ?? p.kind}</option>)}
+          {packs.map((p) => <option key={p.id} value={p.id}>{optionLabel(p.title || p.slug, 60)} · {PACK_KIND_LABEL[p.kind] ?? p.kind}</option>)}
         </select>
         <p className="muted small">
           {pack.head_revision ? <>Revision {pack.head_revision} · {pack.files} files</> : "No revision yet."}

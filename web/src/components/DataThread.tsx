@@ -2,7 +2,7 @@ import { useId, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api, type Branch, type BranchCompare, type ContainerType, type MergeResult, type PinResult, type Step, type StepResult,
   type StepRevision, type StepWithResult } from "../api";
-import { fmtDate, fmtValue, shortHash } from "../lib/format";
+import { fmtDate, fmtValue, optionLabel, shortHash } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import { roleAtLeast, to } from "../routes";
 import { ChartView } from "./Chart";
@@ -383,7 +383,7 @@ function AddStepForm({ wsId, branchId, steps, onAdded }: { wsId: string; branchI
         <Field label="Reads" htmlFor={`${id}-d`}>
           <select id={`${id}-d`} value={dep} onChange={(e) => setDep(e.target.value)}>
             <option value="">no upstream step</option>
-            {steps.filter((x) => x.kind === "query" || x.kind === "method").map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}
+            {steps.filter((x) => x.kind === "query" || x.kind === "method").map((x) => <option key={x.id} value={x.id}>{optionLabel(x.title)}</option>)}
           </select>
         </Field>
       )}
@@ -516,7 +516,7 @@ export function DataThread({ wsId, type, id, branch, role, onBranch }: {
         <label className="inline-field small">Branch
           <select value={current?.id ?? ""} onChange={(e) => { setCmp(null); setMerged(null); setMarks({}); onBranch(e.target.value === main.data!.branch.id ? null : e.target.value); }}
             aria-label="Branch">
-            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}{b.parent_branch_id ? " (fork)" : ""}{b.status === "merged" ? " — merged" : ""}</option>)}
+            {branches.map((b) => <option key={b.id} value={b.id}>{optionLabel(b.name, 50)}{b.parent_branch_id ? " (fork)" : ""}{b.status === "merged" ? " — merged" : ""}</option>)}
           </select>
         </label>
         {current?.forked_from && <span className="small muted">forked from step {current.forked_from.step_id} v{current.forked_from.version}</span>}
@@ -552,7 +552,7 @@ export function DataThread({ wsId, type, id, branch, role, onBranch }: {
               <label className="inline-field small">Compare {current.name} with
                 <select value={compareWith} onChange={(e) => setCompareWith(e.target.value)} aria-label="Compare with">
                   <option value="">choose a branch…</option>
-                  {branches.filter((b) => b.id !== current.id).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  {branches.filter((b) => b.id !== current.id).map((b) => <option key={b.id} value={b.id}>{optionLabel(b.name, 50)}</option>)}
                 </select>
               </label>
               <button type="submit" className="btn btn-sm" disabled={!compareWith || act.busy}>Compare side by side</button>
@@ -600,9 +600,9 @@ export function DataThreadPanel({ wsId, role, container, branch, onChange }: {
         <select id={`${id}-c`} value={container ?? ""} onChange={(e) => onChange({ container: e.target.value || null, branch: null })}>
           <option value="">Choose an investigation or an Ask thread…</option>
           {(runs.data ?? []).length > 0 && <optgroup label="Investigations">
-            {runs.data!.map((r) => <option key={r.id} value={`run:${r.id}`}>{r.objective}</option>)}</optgroup>}
+            {runs.data!.map((r) => <option key={r.id} value={`run:${r.id}`} title={r.objective}>{optionLabel(r.objective)}</option>)}</optgroup>}
           {(threads.data ?? []).length > 0 && <optgroup label="Ask threads">
-            {threads.data!.map((t) => <option key={t.id} value={`ask_thread:${t.id}`}>{t.title}</option>)}</optgroup>}
+            {threads.data!.map((t) => <option key={t.id} value={`ask_thread:${t.id}`} title={t.title}>{optionLabel(t.title)}</option>)}</optgroup>}
         </select>
       </Field>
       <ErrorBox error={runs.error ?? threads.error} />

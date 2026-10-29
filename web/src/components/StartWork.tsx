@@ -9,6 +9,7 @@ import { to } from "../routes";
 import { ReadinessResult } from "./Brief";
 import { Drawer } from "./Drawer";
 import { ReviewedContext } from "./ReviewedContext";
+import { optionLabel } from "../lib/format";
 import { valueApi } from "../lib/investigationValue";
 import { ErrorBox, Field, KeyValue, Loading, Notice, TechnicalDetails, Value } from "./ui";
 
@@ -182,7 +183,7 @@ function MLStartForm({ kind, wsId, onBack, onNewSpec, onStarted }: {
     {!!options.length && <Field label="Published model plan" htmlFor={`${id}-spec`} hint="The exact version selected here will be trained.">
       <select id={`${id}-spec`} value={selected} onChange={(e) => setSelected(e.target.value)}>
         <option value="">Choose a plan…</option>
-        {options.map((d) => <option key={d.id} value={d.id}>{d.title || d.key} · v{d.version}</option>)}
+        {options.map((d) => <option key={d.id} value={d.id}>{optionLabel(d.title || d.key, 60)} · v{d.version}</option>)}
       </select>
     </Field>}
     {chosen && <section className="preflight" aria-labelledby={`${id}-pf`}>
@@ -248,7 +249,7 @@ function InvestigationForm({ kind, ws, sources, draft, update, onBack, onChooseK
         <select id={`${id}-template`} value={draft.templateId ?? ""} onChange={(e) => {
           const selected = templates.data?.find((t) => t.id === e.target.value);
           update({ templateId: selected?.id, contextId: undefined, ...(selected ? { objective: selected.question } : {}) });
-        }}><option value="">Custom question</option>{templates.data?.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}</select>
+        }}><option value="">Custom question</option>{templates.data?.map((t) => <option key={t.id} value={t.id} title={t.title}>{optionLabel(t.title)}</option>)}</select>
       </Field>
       <ErrorBox error={templates.error} onRetry={templates.reload} />
       {template && <>
@@ -268,7 +269,7 @@ function InvestigationForm({ kind, ws, sources, draft, update, onBack, onChooseK
           update({ contextId: picked?.id, sourceId: undefined, ...(picked ? { objective: contextSpec(picked).question_template } : {}) });
         }}>
           <option value="">One-off investigation</option>
-          {publishedContexts.map((c) => <option key={c.id} value={c.id}>{c.title ?? c.key} · v{c.version}</option>)}
+          {publishedContexts.map((c) => <option key={c.id} value={c.id}>{optionLabel(c.title ?? c.key, 60)} · v{c.version}</option>)}
         </select>
       </Field>}
       {context && <p className="small muted">Purpose: {contextSpec(context).purpose}</p>}

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type BiDashboardImport } from "../api";
-import { fmtDate } from "../lib/format";
+import { fmtDate, optionLabel } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import { needsRole, to } from "../routes";
 import { Card, CodeBlock, EmptyState, ErrorBox, Loading, RecordTable, StatusBadge } from "./ui";
@@ -54,7 +54,7 @@ export function ExistingDashboards({ wsId, role }: { wsId: string; role?: string
           <span>Imported dashboards</span>
           <select value={openId ?? ""} onChange={(e) => setOpenId(e.target.value || null)}>
             <option value="">Select an import</option>
-            {(imports.data ?? []).map((i) => <option key={i.id} value={i.id}>{i.title} · v{i.version} · {i.status} · {fmtDate(i.created_at)}</option>)}
+            {(imports.data ?? []).map((i) => <option key={i.id} value={i.id}>{optionLabel(i.title, 60)} · v{i.version} · {i.status} · {fmtDate(i.created_at)}</option>)}
           </select>
         </label>
       )}

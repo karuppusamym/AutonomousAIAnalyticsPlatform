@@ -1,7 +1,7 @@
 import { useId, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { session, type Run } from "../api";
-import { fmtNumber, fmtPct } from "../lib/format";
+import { fmtNumber, fmtPct, optionLabel } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import { valueApi, type PilotInput, type PilotReview } from "../lib/investigationValue";
 import { roleAtLeast, to } from "../routes";
@@ -51,7 +51,7 @@ export function PilotScorecard({ wsId, role, runs }: { wsId: string; role?: stri
     {roleAtLeast(role, "analyst") && !open && <button type="button" className="btn btn-sm" onClick={() => { setEditing(undefined); setDraft(blank()); setOpen(true); act.setError(null); }}>Record an assessment</button>}
     {open && <form className="form value-form" aria-label="Pilot assessment" onSubmit={submit}>
       <Field label="Assessment type" htmlFor={`${id}-kind`}><select id={`${id}-kind`} disabled={!!editing} value={draft.evidence_kind} onChange={(e) => set({ evidence_kind: e.target.value as PilotInput["evidence_kind"] })}><option value="rehearsal">Demo rehearsal (excluded from real pilot results)</option><option value="real_pilot">Real analyst pilot observation</option></select></Field>
-      <Field label="Investigation assessed" htmlFor={`${id}-run`} hint="Include failed or inconclusive investigations so the score is not biased toward successes."><select id={`${id}-run`} disabled={!!editing} required value={draft.run_id} onChange={(e) => set({ run_id: e.target.value })}><option value="">Choose a finished investigation or one with findings</option>{runs.filter((r) => ["COMPLETED", "WAITING_USER", "FAILED", "CANCELLED", "REJECTED"].includes(r.status)).map((r) => <option key={r.id} value={r.id}>{r.objective} · {r.status.toLowerCase().replace(/_/g, " ")}</option>)}</select></Field>
+      <Field label="Investigation assessed" htmlFor={`${id}-run`} hint="Include failed or inconclusive investigations so the score is not biased toward successes."><select id={`${id}-run`} disabled={!!editing} required value={draft.run_id} onChange={(e) => set({ run_id: e.target.value })}><option value="">Choose a finished investigation or one with findings</option>{runs.filter((r) => ["COMPLETED", "WAITING_USER", "FAILED", "CANCELLED", "REJECTED"].includes(r.status)).map((r) => <option key={r.id} value={r.id}>{optionLabel(r.objective, 70)} · {r.status.toLowerCase().replace(/_/g, " ")}</option>)}</select></Field>
       <Field label="Task measured" htmlFor={`${id}-task`}><input id={`${id}-task`} required minLength={5} maxLength={500} value={draft.task} onChange={(e) => set({ task: e.target.value })} /></Field>
       <div className="grid-2"><Field label="Manual baseline (minutes)" htmlFor={`${id}-baseline`}><input id={`${id}-baseline`} required type="number" min="0.1" max="100000" step="0.1" value={draft.baseline_minutes} onChange={(e) => set({ baseline_minutes: Number(e.target.value) })} /></Field>
         <Field label="Assisted time including review (minutes)" htmlFor={`${id}-assisted`}><input id={`${id}-assisted`} required type="number" min="0" max="100000" step="0.1" value={draft.assisted_minutes} onChange={(e) => set({ assisted_minutes: Number(e.target.value) })} /></Field></div>
