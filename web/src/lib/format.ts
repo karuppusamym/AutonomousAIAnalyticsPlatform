@@ -90,6 +90,12 @@ export function shortHash(h: string | null | undefined, n = 12): string {
   return h ? h.slice(0, n) : "—";
 }
 
+/** One-line option text: a native dropdown's popup is as wide as its longest option, so long free text (an investigation's goal) is clipped. */
+export function optionLabel(text: string | null | undefined, max = 80): string {
+  const t = (text ?? "").replace(/\s+/g, " ").trim();
+  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+}
+
 export function titleCase(s: string): string {
   return s.replace(/[_.]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
