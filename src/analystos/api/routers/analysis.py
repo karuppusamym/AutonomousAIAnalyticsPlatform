@@ -21,6 +21,7 @@ from analystos.db.models import (
     Insight,
     ModelCall,
     QueryExecution,
+    RunEvent,
     RunTask,
     ToolExecution,
     User,
@@ -109,7 +110,18 @@ def _run_detail(session: Session, run: AnalysisRun) -> dict:
                 "test", "n", "p_value", "p_adjusted", "effect_size", "effect_label", "highlights", "groups", "warnings",
                 "strength")} if h.id in exps else None, "experiment_id": exps[h.id].id if h.id in exps else None,
                 "holdout": held.get(h.id)} for h in hyps],
-            "insights": with_verification(session, insights), "approvals": rows(approvals, exclude={"payload"})}
+            "insights": with_verification(session, insights), "approvals": rows(approvals, exclude={"payload"}),
+            "model_fallbacks": model_fallbacks(session, run.id)}
+
+
+def model_fallbacks(session: Session, run_id: str) -> list[dict]:
+    """N-14: the purposes this run answered by rules because no model route was allowed, one per purpose and
+    cause (llm.fallback.summarize of the run's `model.fallback` events)."""
+    from analystos.llm.fallback import summarize
+
+    events = session.scalars(select(RunEvent.payload).where(RunEvent.run_id == run_id, RunEvent.type == "model.fallback")
+                             .order_by(RunEvent.id).limit(500))
+    return summarize([p for p in events if isinstance(p, dict)])
 
 
 @router.get("/workspaces/{workspace_id}/analysis/{run_id}")

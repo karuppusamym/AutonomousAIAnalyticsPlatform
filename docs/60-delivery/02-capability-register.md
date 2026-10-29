@@ -1025,3 +1025,11 @@ Supply chain: `.github/workflows/supply-chain.yml` (gitleaks, Syft SBOM, Grype, 
 attestation on main, npm audit, pip-audit, weekly rescan) — checked by `tests/unit/test_supply_chain.py` (5); not yet
 run on GitHub. Not done: actions pinned by SHA, `uv.lock`, engines filling `scan_bytes`/`credits`, desk/context/compute
 spans, a cluster install, the customer IdP and pen test (T8, hand-off `s12-t8-idp-pentest-handoff.md`).
+
+## 2026-10-29 — N-14 visible rules fallback (dev model policy still open)
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| Structured fallback reason | `llm/fallback.py` (`ModelFallback`, `fallback_for`, `summarize`); `llm/router.py` `_no_route` names `models_disabled` + the disabled models, `_within_cost` flags `missing_price`; `agents/common.py` `note_fallback` in `llm_json` (run message, `model.fallback` event once per purpose and cause per step, avoided call recorded as a rules skip); `contracts/events.py` | `tests/unit/test_model_fallback_n14.py` (22, no services): disabled models, allowlist, missing price, cap reached, mode off not a fallback, one report per step, classification table |
+| Run detail and run view | `api/routers/analysis.py` `model_fallbacks` (folded `model.fallback` events); `web/src/components/ModelFallbacks.tsx` on `RunView.tsx` — one plain sentence in business view, cause/steps/router detail with expert tools on | `web/src/test/modelFallbacks.test.tsx` (4): business vs expert view, run view from the run detail |
+| Live evaluation labels | `evaluation/live.py` (`fallbacks`, `fallback_label`, `fallback_lines`; `model_usage` returns `fallbacks`), `scripts/benchmark_analytical.py`, `scripts/benchmark_heldout.py` + `evaluation/heldout/report.py`: a tier heading carries "fell back to rules (n purposes)" and a per-purpose cause table | Unit-tested on SQLite events; no live benchmark re-run yet. The dev-stack model policy (which models are enabled, the $2/day cap) is the owner's decision and was not changed |

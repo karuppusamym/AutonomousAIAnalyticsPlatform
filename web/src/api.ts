@@ -705,6 +705,20 @@ export interface RunDetail extends Run {
   hypotheses: Hypothesis[];
   insights: Insight[];
   approvals: Approval[];
+  /** N-14: purposes answered by rules because no model route was allowed (absent on older servers). */
+  model_fallbacks?: ModelFallback[];
+}
+
+/** One purpose answered by a deterministic rung for want of an allowed model (`model.fallback` events, folded). */
+export interface ModelFallback {
+  purpose: string;
+  cause: string;
+  detail: string;
+  rung: string;
+  code: string;
+  message: string;
+  count: number;
+  tasks: string[];
 }
 
 export interface RunEvent {

@@ -92,6 +92,10 @@ EVENT_TYPES |= {"context.binding_saved", "context.binding_validated", "context.e
 # Autonomy engine (S06): goals, remaining budget, budget exhaustion, typed replans
 EVENT_TYPES |= {"goal.created", "goal.signal", "run.budget", "run.limited"}
 
+# Visible rules fallback (N-14): a purpose that wanted a model had no allowed route (models disabled by the
+# settings, a spend cap or budget, a missing price, policy, no key); payload = llm.fallback.ModelFallback
+EVENT_TYPES |= {"model.fallback"}
+
 # Analysis, verification and evidence (S07): an investigation gate's result; a published artifact's void banner
 EVENT_TYPES |= {"investigation.check", "publication.void_banner", "publication.banner_cleared", "request.void_added"}
 
