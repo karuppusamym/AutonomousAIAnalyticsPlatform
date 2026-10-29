@@ -54,6 +54,8 @@
   "crawl.started",
   "dashboard.created",
   "dashboard.forked",
+  "dashboard.grouping_applied",
+  "dashboard.grouping_requested",
   "dashboard.publish_requested",
   "dashboard.published",
   "dashboard.version_created",

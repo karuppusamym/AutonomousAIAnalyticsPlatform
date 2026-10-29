@@ -10,6 +10,7 @@ import { PublishedOutputs } from "../components/PublishedOutputs";
 import { DashboardPreview } from "../components/DashboardPreview";
 import { DashboardBuilder, NewBuilderDashboard } from "../components/DashboardBuilder";
 import { ExistingDashboards } from "../components/ExistingDashboards";
+import { DashboardGrouping } from "../components/DashboardGrouping";
 import { LineageGraph } from "../components/LineageGraph";
 import { Markdown } from "../components/Markdown";
 import { ModelsOutput } from "../components/Ml";
@@ -187,6 +188,12 @@ export function OutputsPage() {
             <p className="small muted">Start empty, then change it by asking: every change is a typed, versioned operation.</p>
             <NewBuilderDashboard wsId={wsId} onCreated={(id) => { void artifacts.reload(); set({ artifact: id }); }} />
           </div>
+        </details>
+      )}
+      {type === "dashboard" && (
+        <details className="card generate-report">
+          <summary>Group published dashboards under this workspace’s name</summary>
+          <div className="card-body"><DashboardGrouping wsId={wsId} role={role} /></div>
         </details>
       )}
       {type === "dashboard" && (
