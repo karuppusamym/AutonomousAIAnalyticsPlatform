@@ -232,12 +232,14 @@ def test_engine_layer_and_catalog() -> None:
                                limits=Limits(max_rows=1, timeout_seconds=1))
     with pytest.raises(Forbidden):
         engine_for_kind("postgres").plan_write(object())
-    with pytest.raises(InvalidInput, match="draft"):
+    with pytest.raises(InvalidInput, match="in place"):  # Trino joins inside the cluster, never over pulled legs
         federation_engine("trino").federate({}, SimpleNamespace(executable_sql="SELECT 1"),
                                             limits=Limits(max_rows=1, timeout_seconds=1))
+    assert engine_for_kind("trino").id == "engine.trino" and engine_for_kind("trino").features == {"pushdown", "federate"}
     by = {e["kind"]: e for e in catalog_entries()}
-    for kind in ("snowflake", "bigquery", "databricks", "trino"):
+    for kind in ("snowflake", "bigquery", "databricks"):
         assert by[kind]["status"] == "draft" and by[kind]["dialect_validated"] and "pushdown" not in by[kind]["features"]
+    assert by["trino"]["features"] == ["federate", "pushdown"] and by["trino"]["readonly_enforcement"] == "transaction"
     assert by["duckdb"]["features"] == ["federate", "pushdown"]
     assert by["mysql"]["dialect_validated"] and by["mysql"]["features"] == []  # compiler does not emit mysql yet
     ids = {m["id"] for m in engine_manifests()}

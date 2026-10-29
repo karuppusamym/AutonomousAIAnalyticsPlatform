@@ -124,7 +124,7 @@ def connector_manifests(evidence_dir: Path | None = None) -> list[dict[str, Any]
             "tags": [k.category, mode],
             "spec": {"source_kind": k.kind, "label": k.label, "category": k.category, "sqlglot_dialect": k.sqlglot_dialect,
                      "default_execution_mode": mode, "pushdown_allowed": k.pushdown_allowed,
-                     "readonly_session": bool(k.session_sql.readonly), "required": k.required, "optional": k.optional,
+                     "readonly_session": bool(k.session_sql.readonly) or k.readonly_transaction, "required": k.required, "optional": k.optional,
                      "driver": k.driver.model_dump(), "evidence_date": cert["evidence_date"], "engine": cert["engine"]},
         })
     return out

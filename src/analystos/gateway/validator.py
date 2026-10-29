@@ -40,7 +40,8 @@ from analystos.gateway.types import ValidatedSQL
 
 DEFAULT_DIALECT = "postgres"
 MAX_SQL_LENGTH = 100_000
-FEDERATION_DIALECT = "duckdb"  # cross-source statements run on the local DuckDB federation engine
+FEDERATION_DIALECT = "duckdb"  # cross-source statements run on the local DuckDB federation engine...
+IN_PLACE_FEDERATION = frozenset({"trino"})  # ...unless every source speaks one of these: then they run on that engine
 FEDERATED_SOURCE = "federated"  # ValidatedSQL.source_id of a cross-source statement
 
 # Statement/node types that must not appear anywhere in the tree.
@@ -539,8 +540,20 @@ def validate_sql(scope: DataScope, sql: str, *, max_rows: int) -> ValidatedSQL:
     raise _reject("The query could not be matched to a single authorized source dialect.")
 
 
+def federation_dialect(scope: DataScope) -> str:
+    """The dialect a cross-source statement over ``scope`` is written in: trino when every source of the scope is
+    a trino source (the statement then runs on Trino across catalogs, TRN-004), otherwise duckdb (legs pulled
+    through the gateway and joined locally)."""
+    sources = sorted(set(scope.source_ids) | set(scope.asset_sources.values()))
+    dialects = {scope.source_dialects.get(s, DEFAULT_DIALECT) for s in sources}
+    if len(dialects) == 1 and next(iter(dialects)) in IN_PLACE_FEDERATION:
+        return next(iter(dialects))
+    return FEDERATION_DIALECT
+
+
 def validate_federated_sql(scope: DataScope, sql: str, *, max_rows: int) -> ValidatedSQL:
-    """Validate a cross-source statement (P4-E03). It is written in the federation dialect (duckdb)
+    """Validate a cross-source statement (P4-E03). It is written in the federation dialect
+    (``federation_dialect``: duckdb, or trino when every source is a Trino catalog)
     and may join assets of several sources of the scope; every other rule is the single-source one,
     applied per asset: each table must be an authorized asset of its own source, each column must be
     known for that asset, and a column denied in any source is rejected wherever it appears. The
@@ -553,7 +566,7 @@ def validate_federated_sql(scope: DataScope, sql: str, *, max_rows: int) -> Vali
         raise _reject("The statement contains a NUL byte.")
     if max_rows < 1:
         raise _reject("max_rows must be at least 1.")
-    return _validate_in_dialect(scope, sql, FEDERATION_DIALECT, max_rows, strict_dialect=False, federated=True)
+    return _validate_in_dialect(scope, sql, federation_dialect(scope), max_rows, strict_dialect=False, federated=True)
 
 
 def _validate_in_dialect(

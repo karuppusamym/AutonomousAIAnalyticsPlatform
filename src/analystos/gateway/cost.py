@@ -8,10 +8,13 @@ and refuses a statement whose estimate exceeds the budget (`budget.max_scan_byte
     mysql      EXPLAIN FORMAT=JSON: rows_examined_per_scan x row width (data_read_per_join when given)
     bigquery   dry run: totalBytesProcessed
     snowflake  EXPLAIN USING JSON: GlobalStats.bytesAssigned
+    trino      EXPLAIN (FORMAT JSON): every scan node's (TableScan, ScanFilter, ScanProject...) estimated output
+               size, summed; rows from the root. A scan without statistics (NaN) makes the plan unreadable, so a
+               budget fails closed rather than passing an unknown scan
     otherwise  row cap only (basis `row_cap`, bytes unknown: the row cap is then the only guard)
 
 The parsers are pure functions over the engine's plan output, so they are unit-tested on recorded plans;
-only PostgreSQL runs live here (MySQL, BigQuery and Snowflake are staged kinds: their queries run on the
+only PostgreSQL and Trino run live here (MySQL, BigQuery and Snowflake are staged kinds: their queries run on the
 analytics PostgreSQL, so the postgres estimator applies to them until they push down).
 """
 from __future__ import annotations
@@ -132,6 +135,41 @@ def snowflake_estimate(raw_plan: Any) -> CostEstimate:
     stats = (doc or {}).get("GlobalStats") or {}
     value = stats.get("bytesAssigned")
     return CostEstimate(bytes=int(value) if value is not None else None, basis="explain")
+
+
+def trino_estimate(raw_plan: Any) -> CostEstimate:
+    """`EXPLAIN (FORMAT JSON)` (fragments of nodes with `estimates` and `children`) -> rows and scanned bytes."""
+    import math
+
+    doc = _doc(raw_plan)
+    if not isinstance(doc, dict) or not doc:
+        return CostEstimate(basis="explain_unreadable")
+
+    def walk(node: dict[str, Any]):  # noqa: ANN202
+        yield node
+        for child in node.get("children") or []:
+            yield from walk(child)
+
+    def first(node: dict[str, Any], key: str) -> float | None:
+        estimates = node.get("estimates") or []
+        value = estimates[0].get(key) if estimates and isinstance(estimates[0], dict) else None
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return None
+        return value if math.isfinite(value) else None
+
+    scanned: list[float | None] = []
+    for fragment in doc.values():
+        if isinstance(fragment, dict):
+            scanned += [first(n, "outputSizeInBytes") for n in walk(fragment)
+                        if str(n.get("name") or "").startswith(("TableScan", "Scan"))]
+    root = doc.get("0") if isinstance(doc.get("0"), dict) else None
+    rows = first(root, "outputRowCount") if root else None
+    if not scanned or any(v is None for v in scanned):
+        return CostEstimate(rows=int(rows) if rows is not None else None, basis="explain_unreadable")
+    return CostEstimate(rows=int(rows) if rows is not None else None, bytes=int(sum(scanned)),  # type: ignore[arg-type]
+                        basis="explain")
 
 
 def row_cap_estimate(max_rows: int) -> CostEstimate:

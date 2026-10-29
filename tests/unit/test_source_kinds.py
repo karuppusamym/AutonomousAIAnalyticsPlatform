@@ -119,13 +119,13 @@ def test_url_validation() -> None:
 
 def test_pushdown_only_for_compiler_dialects() -> None:
     """Pushdown = validator suite + analysis compiler + read-only session (P4-E01); sqlserver is the
-    legacy least-privilege-identity exception, DuckDB files are opt-in."""
+    legacy least-privilege-identity exception, DuckDB files and Trino catalogs (TRN-004) are opt-in."""
     from analystos.gateway.dialects import SUPPORTED_DIALECTS
     from analystos.skills.sqlbuild import DIALECTS
 
     assert SUPPORTED_DIALECTS & set(DIALECTS) == kinds.PUSHDOWN_DIALECTS
     pushdown = {k.kind for k in kinds.list_kinds() if k.pushdown_allowed}
-    assert pushdown == {"postgres", "sqlserver", "duckdb"}
+    assert pushdown == {"postgres", "sqlserver", "duckdb", "trino"}
     for spec in kinds.list_kinds():
         if spec.pushdown_allowed:
             assert spec.sqlglot_dialect in kinds.PUSHDOWN_DIALECTS
@@ -133,12 +133,16 @@ def test_pushdown_only_for_compiler_dialects() -> None:
     assert kinds.get_kind("duckdb").readonly_enforcement == "connect"
     assert kinds.get_kind("postgres").readonly_enforcement == "session"
     assert kinds.get_kind("snowflake").readonly_enforcement == "identity"
+    assert kinds.get_kind("trino").readonly_enforcement == "transaction"  # the driver opens READ ONLY transactions
     assert kinds.execution_mode_for("postgres", None) == "pushdown"
     assert kinds.execution_mode_for("postgres", "staged") == "staged"
     assert kinds.execution_mode_for("sqlserver", "pushdown") == "pushdown"
     assert kinds.execution_mode_for("duckdb", None) == "staged"  # opt-in
     assert kinds.execution_mode_for("duckdb", "pushdown") == "pushdown"
-    for kind in ("mysql", "mariadb", "oracle", "snowflake", "bigquery", "databricks", "trino", "clickhouse", "redshift",
+    assert kinds.execution_mode_for("trino", None) == "staged"  # opt-in
+    assert kinds.execution_mode_for("trino", "pushdown") == "pushdown"
+    assert kinds.dialect_for("trino", "pushdown") == "trino" and kinds.dialect_for("trino") == "postgres"
+    for kind in ("mysql", "mariadb", "oracle", "snowflake", "bigquery", "databricks", "clickhouse", "redshift",
                  "sqlite", "servicenow", "csv", "file"):
         assert kinds.execution_mode_for(kind, "pushdown") == "staged"
         assert kinds.execution_mode_for(kind, None) == "staged"

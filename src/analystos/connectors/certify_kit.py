@@ -17,8 +17,10 @@ runs, through the same engine code the gateway uses:
 
 and writes `docs/evidence/connectors/{kind}-{YYYY-MM-DD}.md` with the outcome of every check. A kind is
 `certified` only with a passing file younger than 180 days (`connectors/certification.py`). Engine-specific
-checks are implemented for PostgreSQL; other kinds report the checks they cannot run as failed, so a kind is
-never certified by the checks it skipped.
+checks are implemented for PostgreSQL and Trino (TRN-004: the DSN names one catalog, e.g.
+`trino://user@host:8080/catalog`); other kinds report the checks they cannot run as failed, so a kind is never
+certified by the checks it skipped. A kind that declares no session identity passes `identity` as not
+applicable and says so.
 """
 from __future__ import annotations
 
@@ -68,6 +70,17 @@ DIALECT_NEGATIVE: dict[str, list[tuple[str, str]]] = {
     "bigquery": [("SELECT * FROM cert.items FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP()", "time travel"),
                  ("SELECT * FROM EXTERNAL_QUERY('conn', 'select 1')", "external query")],
     "duckdb": [("SELECT * FROM read_csv('/etc/passwd')", "file read"), ("ATTACH '/tmp/x.db' AS x", "attach")],
+    "trino": [("SELECT * FROM TABLE(system.query(query => 'DELETE FROM cert.items'))", "pass-through table function"),
+              ("SELECT * FROM system.runtime.queries", "system catalog"),
+              ("SELECT id FROM other_catalog.cert.items", "catalog hop (three-part name)"),
+              ("CALL system.kill_query(query_id => 'x')", "procedure"),
+              ("SET SESSION AUTHORIZATION admin", "session identity switch"),
+              ("EXECUTE IMMEDIATE 'DROP TABLE cert.items'", "dynamic SQL"),
+              ('SELECT "$path" FROM cert.items', "hidden column"),
+              ('SELECT * FROM "cert"."items$partitions"', "metadata table"),
+              ("SELECT id FROM cert.items FOR VERSION AS OF 1", "time travel"),
+              ("SELECT sequence(1, 100000000) AS s FROM cert.items", "unbounded generator"),
+              ("SELECT id FROM cert.items WHERE id = ?", "bind parameter")],
 }
 
 
@@ -239,6 +252,142 @@ def _pg_checks(url: str, connector: Any, report: Report, settings: Any) -> None:
         report.checks.append(_timed(name, fn))
 
 
+# ------------------------------------------------------------------------------------------------- trino
+# About 10^12 generated rows: long-running on any cluster, reads no table (timeout and cancel checks).
+TRINO_SLOW = ("SELECT count(*) AS n FROM UNNEST(sequence(1, 10000)) AS a(x) CROSS JOIN UNNEST(sequence(1, 10000)) AS b(y) "
+              "CROSS JOIN UNNEST(sequence(1, 10000)) AS c(z)")
+
+
+def _trino_checks(url: str, connector: Any, report: Report, settings: Any) -> None:
+    from analystos.core.errors import Forbidden, QueryTimeout, RunCancelled
+    from analystos.engines.sql import cancel_running
+    from analystos.engines.trino import run_trino
+    from analystos.gateway.cost import trino_estimate
+    from analystos.gateway.handles import ResultSink, path_for, uri_for
+
+    found: list[Any] = []
+
+    def assets() -> list[Any]:
+        if not found:
+            found.extend(connector.discover())
+        assert found, "the crawl found no table: point the DSN at a catalog with at least one table"
+        return found
+
+    def read_only() -> str:
+        first = assets()[0]
+        stamp = int(time.time())
+        for stmt in (f'CREATE TABLE "{first.schema_name}"."aos_cert_probe_{stamp}" (x integer)',
+                     f'DELETE FROM "{first.schema_name}"."{first.name}" WHERE 1 = 0'):
+            try:
+                run_trino(url, stmt, 1, 30)
+            except Forbidden as exc:
+                assert "read-only" in exc.message.lower(), f"refused for another reason: {exc.message}"
+                continue
+            raise AssertionError(f"the write succeeded: {stmt}")
+        return "CREATE TABLE and DELETE refused inside the engine's READ ONLY transaction (READ_ONLY_VIOLATION)"
+
+    def timeout() -> str:
+        started = time.monotonic()
+        try:
+            run_trino(url, TRINO_SLOW, 1, 1)
+        except QueryTimeout:
+            took = time.monotonic() - started
+            assert took < 8, f"stopped only after {took:.1f}s"
+            return f"stopped after {took:.1f}s with a 1s timeout (query_max_execution_time)"
+        raise AssertionError("a 10^12-row statement finished under a 1s timeout")
+
+    def cancel() -> str:
+        qid = f"qry_cert_{int(time.time() * 1000)}"
+        out: dict[str, Any] = {}
+
+        def run() -> None:
+            try:
+                run_trino(url, TRINO_SLOW, 1, 60, query_id=qid)
+            except Exception as exc:  # noqa: BLE001
+                out["error"] = exc
+
+        thread = threading.Thread(target=run, daemon=True)
+        started = time.monotonic()
+        thread.start()
+        time.sleep(1.0)  # let the statement start on the cluster
+        for _ in range(100):
+            if cancel_running(qid):
+                break
+            time.sleep(0.05)
+        thread.join(30)
+        assert isinstance(out.get("error"), RunCancelled), f"not cancelled: {out.get('error')!r}"
+        return f"interrupted after {time.monotonic() - started:.1f}s (USER_CANCELED)"
+
+    def row_cap() -> str:
+        _, rows = run_trino(url, "SELECT x FROM UNNEST(sequence(1, 1000)) AS t(x)", 10, 10)
+        assert len(rows) == 11, f"{len(rows)} rows for a cap of 10 (expected 11: cap + truncation marker)"
+        return "1000-row statement returned cap + 1 = 11 rows"
+
+    def metadata() -> str:
+        typed = [a for a in assets() if a.columns and all(c.data_type for c in a.columns)]
+        assert typed, "no table came back with typed columns"
+        return f"{len(found)} tables, {sum(len(a.columns) for a in found)} columns (e.g. {typed[0].schema_name}.{typed[0].name})"
+
+    def type_mapping() -> str:
+        sql = ("SELECT 1 AS i, BIGINT '2' AS b, DECIMAL '1.5' AS n, DOUBLE '2.5' AS d, true AS t, 'x' AS s, "
+               "DATE '2026-01-02' AS dt, TIMESTAMP '2026-01-02 03:04:05' AS ts, JSON '{\"a\": 1}' AS j, "
+               "CAST(NULL AS integer) AS z")
+        _, rows = run_trino(url, sql, 1, 30)
+        want = [1, 2, 1.5, 2.5, True, "x", "2026-01-02", "2026-01-02T03:04:05", '{"a":1}', None]
+        assert rows and rows[0] == want, f"got {rows[:1]}, want {want}"
+        sink = ResultSink(settings, uri=uri_for("cert", f"qry_cert_types_{int(time.time())}"), mode="handle", max_rows=5)
+        run_trino(url, sql, 5, 30, sink=sink)
+        facts = sink.finish()
+        kinds = [c["type"] for c in facts["schema"]]
+        path_for(settings, facts["uri"]).unlink(missing_ok=True)
+        assert kinds[:5] == ["int", "int", "float", "float", "bool"], f"handle types {kinds}"
+        return "integer, bigint, decimal, double, boolean, varchar, date, timestamp, json (as text), NULL map to " \
+               "JSON-safe values and typed Parquet columns"
+
+    def estimate() -> str:
+        first = assets()[0]
+        _, rows = run_trino(url, f'EXPLAIN (FORMAT JSON) SELECT * FROM "{first.schema_name}"."{first.name}"', 1, 30)
+        est = trino_estimate(rows[0][0] if rows and rows[0] else None)
+        assert est.basis == "explain" and est.rows is not None, f"no plan estimate: {est}"
+        return f"EXPLAIN (FORMAT JSON) read: about {est.rows} rows, {est.bytes} bytes scanned"
+
+    def identity() -> str:
+        from analystos.connectors import kinds
+
+        assert not kinds.get_kind(report.kind).capabilities.session_identity, "declared but not checked for trino"
+        return "not applicable: the kind declares no session identity; the configured Trino user is the identity"
+
+    for name, fn in (("read_only", read_only), ("timeout", timeout), ("cancel", cancel), ("row_cap", row_cap),
+                     ("metadata", metadata), ("type_mapping", type_mapping), ("estimate", estimate),
+                     ("identity", identity)):
+        report.checks.append(_timed(name, fn))
+
+
+def _trino_version(url: str) -> str:
+    from sqlalchemy.engine import make_url
+
+    from analystos.engines.trino import run_trino
+
+    _, rows = run_trino(url, "SELECT version()", 1, 30)
+    u = make_url(url)
+    return f"Trino {rows[0][0]} ({u.host}, catalog {u.database})"
+
+
+def _trino_connector(url: str, settings: Any, schemas: list[str] | None = None) -> Any:
+    from sqlalchemy.engine import make_url
+
+    from analystos.connectors.registry import build_connector
+
+    u = make_url(url)
+    config: dict[str, Any] = {"host": u.host, "port": u.port or 8080, "catalog": u.database, "username": u.username}
+    if u.query.get("http_scheme"):
+        config["http_scheme"] = u.query["http_scheme"]
+    if schemas:
+        config["schemas"] = list(schemas)
+    return build_connector(SimpleNamespace(kind="trino", config=config, secret_ref=None, execution_mode="pushdown"),
+                           settings, password=u.password or "")
+
+
 def _engine_version(url: str) -> str:
     from sqlalchemy import text
 
@@ -271,6 +420,14 @@ def certify(kind: str, dsn: str, *, settings: Any, schemas: list[str] | None = N
     url = dsn.replace("postgresql://", "postgresql+psycopg://", 1) if dsn.startswith("postgresql://") else dsn
     report = Report(kind=spec.kind, dialect=spec.sqlglot_dialect, engine=spec.label)
     report.checks.append(validator_suite(spec.sqlglot_dialect))
+    if spec.kind == "trino":
+        try:
+            report.engine = _trino_version(dsn)
+        except Exception as exc:  # noqa: BLE001
+            report.checks.append(Check("connect", False, f"could not connect: {exc.__class__.__name__}"))
+            return report
+        _trino_checks(dsn, _trino_connector(dsn, settings, schemas), report, settings)
+        return report
     if spec.sqlglot_dialect != "postgres" or spec.kind not in ("postgres",):
         for name in ("read_only", "timeout", "cancel", "row_cap", "metadata", "type_mapping", "estimate", "identity"):
             report.checks.append(Check(name, False, f"no live check for {spec.kind} in this kit yet (needs access)"))

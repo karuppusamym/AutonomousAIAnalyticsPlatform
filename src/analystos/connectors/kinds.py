@@ -9,7 +9,8 @@ strategies. ``governance.policy`` and ``services.sources`` read it through ``dia
 Pushdown (the gateway queries the source in place) is allowed only when three things hold (P4-E01):
 the gateway validator has a security suite for the kind's native dialect (``gateway/dialects.py``),
 the analysis compiler (``skills/sqlbuild``) emits that dialect, and the session can be made
-read-only (catalog ``session_sql.readonly`` statements, or a ``read_only`` connect argument).
+read-only (catalog ``session_sql.readonly`` statements, a ``read_only`` connect argument, or a driver that
+opens every transaction READ ONLY, ``readonly_transaction``: Trino, engines/trino.py).
 SQL Server predates the last rule: it pushes down with a least-privilege login instead
 (``LEGACY_IDENTITY_PUSHDOWN``). Everything else is staged into the analytics DB and queried there in
 the postgres dialect. Newly allowed kinds (DuckDB files) keep ``staged`` as their default mode and
@@ -33,7 +34,7 @@ from analystos.core.errors import InvalidInput
 CATALOG_PATH = DATA_ROOT / "config" / "source_kinds.yaml"
 # Validator dialects (gateway/dialects.py) that the analysis compiler also emits (skills/sqlbuild.DIALECTS);
 # tests/unit/test_source_kinds.py keeps the three lists in step.
-PUSHDOWN_DIALECTS = frozenset({"postgres", "tsql", "duckdb"})
+PUSHDOWN_DIALECTS = frozenset({"postgres", "tsql", "duckdb", "trino"})
 # Kinds allowed to push down with a least-privilege identity and no session read-only switch (increment 3).
 LEGACY_IDENTITY_PUSHDOWN = frozenset({"sqlserver"})
 STAGED_DIALECT = "postgres"  # staged data lives in the analytics DB
@@ -84,6 +85,7 @@ class SourceKind(BaseModel):
     connect_args: dict[str, Any] = Field(default_factory=dict)
     connect_timeout_arg: str | None = None
     timeout_url_param: str | None = None
+    readonly_transaction: bool = False  # the driver opens every transaction READ ONLY (engines/trino.py)
     row_estimate: str = "none"
     catalog: Literal["inspector", "duckdb", "none"] = "inspector"
     system_schemas: list[str] = Field(default_factory=list)
@@ -97,13 +99,15 @@ class SourceKind(BaseModel):
         return self.url_template is not None
 
     @property
-    def readonly_enforcement(self) -> Literal["session", "connect", "identity"]:
-        """How a pushdown session is kept read-only: catalog statements, a connect argument, or only
-        the configured least-privilege identity."""
+    def readonly_enforcement(self) -> Literal["session", "connect", "transaction", "identity"]:
+        """How a pushdown session is kept read-only: catalog statements, a connect argument, a READ ONLY
+        transaction the driver opens, or only the configured least-privilege identity."""
         if self.session_sql.readonly:
             return "session"
         if self.connect_args.get("read_only") is True:
             return "connect"
+        if self.readonly_transaction:
+            return "transaction"
         return "identity"
 
     @property
@@ -126,7 +130,8 @@ class SourceKind(BaseModel):
             "secret_required": bool(self.secret and self.secret.required), "default_port": self.default_port,
             "sqlglot_dialect": self.sqlglot_dialect, "pushdown_allowed": self.pushdown_allowed,
             "default_execution_mode": execution_mode_for(self.kind, None), "pip_extra": self.driver.extra,
-            "driver_available": driver_available(self.kind), "readonly_session": bool(self.session_sql.readonly),
+            "driver_available": driver_available(self.kind),
+            "readonly_session": bool(self.session_sql.readonly) or self.readonly_transaction,
             "readonly_enforcement": self.readonly_enforcement, "docs": self.docs,
             "session_identity": bool(self.capabilities.session_identity),
         }
