@@ -120,6 +120,7 @@
   "ml.scoring.planned",
   "ml.scoring.refused",
   "model.called",
+  "model.fallback",
   "monitor.evaluated",
   "monitor.rule_approved",
   "narrative.stale",
