@@ -1,10 +1,67 @@
 {{- if .Values.migrations.enabled }}
+{{- $name := printf "%s-migrate" (include "analystos.fullname" .) }}
+{{- $files := or .Values.models.customConfig .Values.oidc.enabled }}
+{{- /* Hooks run before the release's own objects exist: on a first install there is no ServiceAccount and no
+       ConfigMap yet. So the Job brings its own, as hooks of the same events (weight -5, after the ExternalSecret at
+       -10), rendered from the same values; Helm deletes them with the Job once the hooks have succeeded. */}}
+{{- if .Values.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "analystos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+automountServiceAccountToken: false
+---
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "analystos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+data:
+  {{- include "analystos.configData" . | nindent 2 }}
+{{- if $files }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-files
+  labels:
+    {{- include "analystos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+data:
+  {{- if .Values.models.customConfig }}
+  models.yaml: |
+    {{- .Values.models.customConfig | nindent 4 }}
+  {{- end }}
+  {{- if .Values.oidc.enabled }}
+  oidc.yaml: |
+    {{- .Values.oidc.mapping | nindent 4 }}
+  {{- end }}
+{{- end }}
+---
 # Schema migration + seed (registries, packs' knowledge, bootstrap admin) before pods of the new
 # version start. Alembic takes a lock, so a concurrent run of the same Job is harmless.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "analystos.fullname" . }}-migrate-{{ .Release.Revision }}
+  name: {{ $name }}-{{ .Release.Revision }}
   labels:
     {{- include "analystos.labels" . | nindent 4 }}
     app.kubernetes.io/component: migrate
@@ -21,20 +78,41 @@ spec:
         app.kubernetes.io/component: migrate
         analystos.io/role: migrate
     spec:
-      {{- include "analystos.podCommon" (dict "root" . "component" "migrate") | nindent 6 }}
+      {{- $sa := ternary $name "" .Values.serviceAccount.create }}
+      {{- include "analystos.podCommon" (dict "root" . "component" "migrate" "serviceAccountName" $sa) | nindent 6 }}
       restartPolicy: Never
       containers:
         - name: migrate
           image: {{ include "analystos.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["sh", "-c", "analystos migrate && analystos seed"]
-          {{- include "analystos.appEnv" . | nindent 10 }}
+          envFrom:
+            - configMapRef:
+                name: {{ $name }}
+            - secretRef:
+                name: {{ required "secrets.existingSecret is required (credentials are never chart values)" .Values.secrets.existingSecret }}
           {{- if .Values.migrations.databaseUrlKey }}
           env:                  # the app_migrator login (S01 §5) overrides the runtime URL for this Job only
             - name: ANALYSTOS_DATABASE_URL
               valueFrom:
                 secretKeyRef: {name: {{ .Values.secrets.existingSecret }}, key: {{ .Values.migrations.databaseUrlKey }}}
           {{- end }}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: var, mountPath: /app/var}
+            {{- if .Values.models.customConfig }}
+            - {name: files, mountPath: /etc/analystos/models.yaml, subPath: models.yaml, readOnly: true}
+            {{- end }}
+            {{- if .Values.oidc.enabled }}
+            - {name: files, mountPath: /etc/analystos/oidc.yaml, subPath: oidc.yaml, readOnly: true}
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
       volumes:
-        {{- include "analystos.appVolumes" . | nindent 8 }}
+        - {name: tmp, emptyDir: {}}
+        - {name: var, emptyDir: {}}
+        {{- if $files }}
+        - name: files
+          configMap: {name: {{ $name }}-files}
+        {{- end }}
 {{- end }}

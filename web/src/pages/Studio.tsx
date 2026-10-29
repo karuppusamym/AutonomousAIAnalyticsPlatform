@@ -21,7 +21,7 @@ import { VerificationBadge, voidCause } from "../components/WhyNumber";
 import { StartWorkButton } from "../components/StartWork";
 import { Card, CodeBlock, ConfidenceBar, EmptyState, ErrorBox, KeyValue, Loading, PageHeader, RecordTable, StatusBadge, TechnicalDetails } from "../components/ui";
 import type { Preview } from "../lib/charts";
-import { fmtDate, fmtNumber, fmtPct, shortHash } from "../lib/format";
+import { fmtDate, fmtNumber, fmtPct, optionLabel, shortHash } from "../lib/format";
 import { useAsync } from "../lib/hooks";
 import { to, type OutputType } from "../routes";
 import { FindingDetail } from "./Insights";
@@ -146,7 +146,7 @@ export function OutputsPage() {
             analysis: e.target.value || null, artifact: null, dashboard: null, run: null,
           })}>
             <option value="">All investigations</option>
-            {analysisRuns.map((r) => <option key={r.id} value={r.id}>{r.objective} · {items.filter((i) => analysisOf(i) === r.id).length} outputs</option>)}
+            {analysisRuns.map((r) => <option key={r.id} value={r.id}>{optionLabel(r.objective, 70)} · {items.filter((i) => analysisOf(i) === r.id).length} outputs</option>)}
             {unknownRuns.map((id) => <option key={id} value={id}>Earlier investigation · {id}</option>)}
           </select>
           <span className="muted small">Scope the list by the question that produced the output.</span>

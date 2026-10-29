@@ -57,6 +57,8 @@ def test_every_action_is_pinned_to_a_version():
         for line in path.read_text(encoding="utf-8").splitlines():
             if "uses:" in line:
                 ref = line.split("uses:", 1)[1].strip()
+                if ref.startswith("./"):  # a reusable workflow of this repository: versioned with it
+                    continue
                 assert "@" in ref and not ref.endswith(("@main", "@master", "@latest")), (path.name, ref)
 
 
@@ -83,3 +85,46 @@ def test_ci_runs_the_release_gates_after_migrate_and_nightly_runs_the_matrix():
 def test_images_run_as_a_numeric_non_root_user_writable_by_group_zero():
     text = (ROOT / "deploy" / "docker" / "Dockerfile").read_text(encoding="utf-8")
     assert "\nUSER 10001\n" in text and "chmod -R g=u /app/var" in text and "--gid 0" in text
+
+
+def test_release_publishes_signed_images_and_chart_then_deploys_through_a_gated_environment():
+    """FND-004: a version tag builds the five images behind the scan gate, pushes and signs them by digest, pushes
+    the chart to GHCR as OCI, and deploys through deploy.yml, whose Environment holds the reviewers and cluster."""
+    wf = _wf("release.yml")
+    assert wf["permissions"] == {"contents": "read"} and "workflow_dispatch" in wf["on"]
+    assert any(t.startswith("v[0-9]") for t in wf["on"]["push"]["tags"]) and "branches" not in wf["on"]["push"]
+    jobs = wf["jobs"]
+    images = jobs["images"]
+    assert {m["name"] for m in images["strategy"]["matrix"]["include"]} == {"app", "web", "mock", "sandbox", "superset"}
+    scan = next(s for s in images["steps"] if s.get("uses", "").startswith("anchore/scan-action"))
+    assert scan["with"]["fail-build"] is True and scan["with"]["only-fixed"] is True
+    steps = [s.get("name", s.get("uses", "")) for s in images["steps"]]
+    assert steps.index("Vulnerability scan (Grype; fixable high/critical fail)") < steps.index("Push the version and commit tags")
+    body = _steps(images)
+    assert '$IMAGE@${{ steps.push.outputs.digest }}' in body and "cosign attest" in body and "docker push \"$IMAGE:$VERSION\"" in body
+    chart = _steps(jobs["chart"])
+    assert '--version "$VERSION" --app-version "$VERSION"' in chart and 'helm push' in chart and "oci://ghcr.io/" in str(jobs["chart"]["env"])
+    assert "cosign sign --yes" in chart
+    for name in ("staging", "production"):
+        assert jobs[name]["uses"] == "./.github/workflows/deploy.yml" and jobs[name]["secrets"] == "inherit"
+        assert jobs[name]["with"]["environment"] == name and "id-token" not in jobs[name]["permissions"]
+    assert "vars.PRODUCTION_DEPLOY == 'true'" in jobs["production"]["if"] and jobs["production"]["needs"][-1] == "staging"
+    for name, job in jobs.items():  # only the publishing jobs mint OIDC tokens or write packages
+        perms = job.get("permissions") or {}
+        if name not in ("images", "chart"):
+            assert "id-token" not in perms and perms.get("packages") != "write", name
+
+
+def test_deploy_verifies_signatures_and_pins_digests_with_cluster_credentials_from_the_environment():
+    wf = _wf("deploy.yml")
+    assert set(wf["on"]) == {"workflow_call", "workflow_dispatch"} and wf["permissions"] == {"contents": "read", "packages": "read"}
+    job = wf["jobs"]["deploy"]
+    assert job["environment"]["name"] == "${{ inputs.environment }}"
+    assert job["concurrency"]["cancel-in-progress"] is False
+    body = _steps(job)
+    assert "cosign verify" in body and r"release\.yml@refs/" in job["env"]["SIGNER"]
+    assert 'image.tag=$VERSION@$APP_DIGEST' in body and 'webImage.tag=$VERSION@$WEB_DIGEST' in body
+    assert "--atomic" in body and "helm upgrade --install" in body and "/api/health" in body
+    assert "${{ secrets.KUBECONFIG }}" in body and "umask 077" in body
+    text = (WF / "deploy.yml").read_text(encoding="utf-8") + (WF / "release.yml").read_text(encoding="utf-8")
+    assert "kind: Config" not in text and "client-key-data" not in text  # no cluster in the repo

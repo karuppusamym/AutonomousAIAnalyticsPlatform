@@ -29,7 +29,7 @@ def test_every_task_queue_has_a_worker_pool():
 
 
 def test_values_never_carry_credentials():
-    text = "\n".join((CHART / f).read_text(encoding="utf-8") for f in ("values.yaml", "values-ha.yaml", "values-airgapped.yaml"))
+    text = "\n".join((CHART / f).read_text(encoding="utf-8") for f in ("values.yaml", "values-ha.yaml", "values-airgapped.yaml", "values-kind.yaml"))
     for marker in (" sk-", "\"sk-", "password:", "PASSWORD=", "postgresql://", "postgresql+psycopg://"):
         assert marker not in text, marker
     assert _values()["secrets"]["existingSecret"]
@@ -332,6 +332,66 @@ def test_gvisor_openshift_and_the_migrator_login():
     default = _render()  # without openshift the fixed UID stays
     assert _kind(default, "Deployment")["t-analystos-api"]["spec"]["template"]["spec"]["securityContext"]["runAsUser"] == 10001
 
+
+
+def _env(dep: dict) -> dict:
+    return {e["name"]: e.get("value") for e in dep["spec"]["template"]["spec"]["containers"][0].get("env", [])}
+
+
+@needs_helm
+def test_isolated_gvisor_pools_require_the_runtime_they_are_given():
+    """S07-T1: an isolated pool under the gVisor class refuses to start on any other kernel
+    (ANALYSTOS_WORKER_REQUIRE_RUNTIME -> workers/isolation.py::check_runtime, exit 78)."""
+    deps = _kind(_render("values-ha.yaml", sets=S12_FULL), "Deployment")
+    for pool in ("compute-py", "compute-ml"):
+        assert _env(deps[f"t-analystos-worker-{pool}"])["ANALYSTOS_WORKER_REQUIRE_RUNTIME"] == "gvisor"
+    without = _kind(_render("values-ha.yaml"), "Deployment")  # gVisor off: no class, no check
+    assert "ANALYSTOS_WORKER_REQUIRE_RUNTIME" not in _env(without["t-analystos-worker-compute-py"])
+    custom = _kind(_render("values-ha.yaml", sets=(*S12_FULL, "workers.compute-ml.runtimeClassName=kata-qemu",
+                                                   "workers.compute-ml.requireRuntime=kata",
+                                                   "workers.compute-py.requireRuntime=")), "Deployment")
+    ml = custom["t-analystos-worker-compute-ml"]
+    assert ml["spec"]["template"]["spec"]["runtimeClassName"] == "kata-qemu"
+    assert _env(ml)["ANALYSTOS_WORKER_REQUIRE_RUNTIME"] == "kata"
+    assert "ANALYSTOS_WORKER_REQUIRE_RUNTIME" not in _env(custom["t-analystos-worker-compute-py"])  # "" turns it off
+
+
+
+@needs_helm
+def test_the_migration_hook_brings_its_own_service_account_and_config():
+    """A first install runs the pre-install Job before any release object exists (found on kind, 2026-10-29): the Job
+    may only reference hooks of the same events with a lower weight, never the release's ServiceAccount or ConfigMap."""
+    for docs in (_render(), _render("values-ha.yaml", sets=(*S12_FULL, "models.customConfig=x: 1"))):
+        hooks = {(d["kind"], d["metadata"]["name"]): d for d in docs
+                 if "pre-install" in (d["metadata"].get("annotations") or {}).get("helm.sh/hook", "")}
+        job = next(d for (kind, _), d in hooks.items() if kind == "Job")
+        spec = job["spec"]["template"]["spec"]
+        weight = int(job["metadata"]["annotations"]["helm.sh/hook-weight"])
+        refs = [("ServiceAccount", spec["serviceAccountName"])]
+        refs += [("ConfigMap", e["configMapRef"]["name"]) for e in spec["containers"][0]["envFrom"] if "configMapRef" in e]
+        refs += [("ConfigMap", v["configMap"]["name"]) for v in spec["volumes"] if "configMap" in v]
+        for ref in refs:
+            assert ref in hooks, ref
+            assert int(hooks[ref]["metadata"]["annotations"]["helm.sh/hook-weight"]) < weight
+            assert "hook-succeeded" in hooks[ref]["metadata"]["annotations"]["helm.sh/hook-delete-policy"]
+        config = _kind(docs, "ConfigMap")
+        assert config["t-analystos-migrate"]["data"] == config["t-analystos-config"]["data"]
+
+@needs_helm
+def test_kind_values_render_the_gvisor_proof_install():
+    """deploy/kind/proof.sh: the compute roles under the chart's own RuntimeClass, images never pulled."""
+    r = subprocess.run([HELM, "lint", str(CHART), "-f", str(CHART / "values-kind.yaml")], capture_output=True, text=True,
+                       timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+    docs = _render("values-kind.yaml")
+    assert _kind(docs, "RuntimeClass")["gvisor"]["handler"] == "runsc"
+    deps = _kind(docs, "Deployment")
+    for pool in ("compute", "compute-py"):
+        spec = deps[f"t-analystos-worker-{pool}"]["spec"]["template"]["spec"]
+        assert spec["runtimeClassName"] == "gvisor" and spec["containers"][0]["imagePullPolicy"] == "Never"
+    assert _env(deps["t-analystos-worker-compute-py"])["ANALYSTOS_WORKER_REQUIRE_RUNTIME"] == "gvisor"
+    assert "runtimeClassName" not in deps["t-analystos-worker-analysis"]["spec"]["template"]["spec"]
+    assert _values("values-kind.yaml")["env"] == "dev"  # never a production overlay
 
 @needs_helm
 def test_external_secrets_sync_the_secret_before_the_migration():

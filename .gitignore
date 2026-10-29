@@ -16,3 +16,6 @@ web/dist/
 /dist/
 /eval-gates/
 dev.env
+
+# kind proof install (deploy/kind/proof.sh): kubeconfig and packaged chart
+.kind/
