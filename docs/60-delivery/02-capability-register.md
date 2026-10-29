@@ -1,5 +1,45 @@
 # Capability register (evidence)
 
+## 2026-10-29 — S06-T6 Playbook editor, simulator and signing (FR-058, P2)
+
+Editor (`autonomy/playbook_editor.py`, `api/routers/playbook_editor.py`, prefix `/api/workspaces/{id}/playbook-editor`):
+workspace playbooks are written as YAML and stored as the existing versioned `playbook` definitions (ADR-0021: one draft
+per key, If-Match revisions, immutable published versions). YAML is read with `yaml.safe_load` only (one mapping,
+256 KiB); `validate` runs the same contract and registry checks a pack load runs and lists every problem; drafts show
+the diff against the newest published version (or the installed manifest of that id). Web: `web/src/components/
+PlaybookEditor.tsx` in Work → Workflows, shown only with Show expert tools on; the form-based workflow builder now
+publishes through the same signing steps.
+
+Simulator (`autonomy/simulator.py`, fixtures `autonomy/simulation_fixtures.yaml`: supervised, autonomous, scheduled,
+rejected, tight_budget, redirect, or a custom fixture): builds the engine's plan, applies `when`/`skip_when`, asks the
+workspace's enablement and certification the way `bind_run` does, walks the DAG in dependency waves with deterministic
+mock agents, counts steps/retries/replans/cost as `autonomy/budget.py` does, stops at each approval gate with the
+fixture's decision, and applies replans with the engine's reset and approval-invalidation rules. It runs no SQL, builds
+no model router, dispatches nothing and writes nothing (`test_simulation_never_executes`). It is the playbook tester:
+`POST .../drafts/{id}/simulate` makes a draft `tested` with the simulation digests bound to its content hash.
+
+Signing (`autonomy/playbook_signing.py`): `request-signature` asks for a `playbook.sign` approval whose payload is the
+definition, content hash and simulation digests (separation of duties always); publish runs `verify_for_execution`
+immediately before signing `(purpose, tenant, key, version, content hash, approval)` with the S10 tenant ed25519 key
+(`toolreg/signing.sign_payload`, domain-separated by `purpose`) and consumes the approval. An edit invalidates the
+sign-off. `definitions.require_runnable` (every run start), schedule pin checks and promotion refuse an unsigned,
+changed, forged, other-tenant or revoked-key playbook. Migration `0073_playbook_signature` adds `definition.signature`.
+
+Tests: `tests/unit/test_playbook_authoring.py` (14: YAML safety and problem lists, versions and diff, options and
+template, golden simulation of `investigate.v1` against every fixture (`tests/fixtures/playbooks/simulation_golden.yaml`),
+never-executes, enablement/certification, budget/gates/replans, ungated side effect, the full sign-off, re-approval
+after a change, runtime refusals, failing simulation, promotion, API round trip); existing playbook-publishing tests
+go through `tests/unit/playbook_signoff.py`; `web/src/test/playbookEditor.test.tsx`. Integration tests
+(`test_agent_forms_api.py`, `test_workbench_contracts_api.py`) were updated for the sign-off and not run.
+Runs (2026-10-29, Windows host): fast suite 4765 passed, 117 skipped, 1 failed (`test_health_states.py` deadline under
+load, passes on rerun); `ruff check src tests` clean; web typecheck, `npm run build` and vitest (469 tests; the workflow
+journey in `lightIa.test.tsx` now walks simulate → sign-off → publish) pass.
+
+Not built or not evidenced: no live-stack run or browser walkthrough; migration not run against Postgres; the editor is a
+text area (no schema-aware completion); simulation cost is the agents' declared budget, not a model price; workspace
+playbooks published before this change are unsigned and refused until a new version is signed; drafts still run unsigned
+in an `environment: dev` workspace (ADR-0021).
+
 ## 2026-10-27 — S05 Model gateway: providers, layered configuration, switch gate, air-gap, Admin › Models
 
 Providers (`llm/providers.py`, `llm/config.py`): `openai_compatible` with declared capabilities (json_mode, tools,
@@ -498,7 +538,7 @@ Each of those passes changed the investigator (see tracker P3 findings).
 
 | Capability | Code | Automated coverage | Live | Limitation |
 |---|---|---|---|---|
-| Source-kind catalog + generic SQL connector | `config/source_kinds.yaml`, `connectors/{kinds,generic_sql}.py` | 120 unit tests; integration against MySQL 8.4 (docker), SQLite, DuckDB and Postgres: discovery, read-only session, staging, gateway query with a denied column | SQLite (this run) | Not certified: SQL Server, Oracle, Snowflake, BigQuery, Databricks, Trino, Redshift, ClickHouse, MariaDB |
+| Source-kind catalog + generic SQL connector | `config/source_kinds.yaml`, `connectors/{kinds,generic_sql}.py` | 120 unit tests; integration against MySQL 8.4 (docker), SQLite, DuckDB and Postgres: discovery, read-only session, staging, gateway query with a denied column | SQLite (this run) | Not certified: SQL Server, Oracle, Snowflake, BigQuery, Databricks, Redshift, ClickHouse, MariaDB (Trino certified 2026-10-29, TRN-004 row) |
 | Metadata crawler | `services/crawler.py`, `skills/catalog.py` | 72 catalog-skill tests; crawler rule tests; integration lifecycle (drift, curation kept, deprecation only on full uncapped crawls, re-staging) | ✅ | English keyword heuristics; renames are candidates only |
 | Token economy | `llm/router.py`, `llm/cache.py`, `agents/common.model_gate` | router tests: off/auto, cache, oversize refusal, overrides, downgrade within allowlists | ✅ 15 skips in one run | `tokens_saved` for skips is an estimate (prompt-size heuristic) |
 | Admin control plane | `contracts/platform.py`, `services/platform_settings.py`, `api/routers/admin.py` | integration: admin-only, reference validation, preset → router, rollback, stale-merge guard | ✅ preset + rollback | 5 s propagation between processes |
@@ -650,7 +690,7 @@ Migration 0018 (knowledge packs) now follows 0023. The chain is 0017 → 0020 �
 | OKF / Atlas bundle import and export | `knowledge/bundle.py` | real Atlas-exported sample, byte-identical round trip | — | No export API route |
 | Context providers | `knowledge/providers.py`, `mcp/client.py` | MCP SDK server + MOCK fixture | ❌ no live Atlas | External results not in prompts yet |
 | Embedding providers, re-embed | `knowledge/embeddings.py`, `scripts/benchmark_embeddings.py` | benchmark evidence | — | Default model chosen on the benchmark set |
-| Engine protocol, multi-dialect validator | `engines/`, `gateway/dialects.py` | `test_gateway_dialects.py` (286 cases) | ❌ no warehouse instance | Snowflake/BigQuery/Databricks/Trino stay staged |
+| Engine protocol, multi-dialect validator | `engines/`, `gateway/dialects.py` | `test_gateway_dialects.py` (286 cases) | ❌ no warehouse instance (Trino: live, TRN-004 row) | Snowflake/BigQuery/Databricks stay staged; Trino pushes down on request |
 | Federated cross-source runs | `QueryGateway._execute_federated`, `skills/federation.py` | `test_federation.py`, `test_cross_source_runs.py` | ✅ Postgres + DuckDB file | Not yet a playbook step; no filter pushdown per leg |
 
 Evidence: `evidence/2026-09-25-knowledge-k01-k10.md`, `evidence/engines-federation-20260925.md`.
@@ -900,7 +940,8 @@ The 2026-09-28 N-2 (`services/existing_dashboard.py`) and N-3 (`services/externa
 | N-2 existing dashboards | `services/existing_dashboards.py`, `publishing/{base,superset,superset_import}.py`, `api/routers/bi_dashboards.py`, `ExistingDashboards.tsx`, migration 0048_n2 | `test_existing_dashboards.py` (13), `test_existing_dashboards_superset.py` (13), live `test_existing_dashboards_live.py` (compose Superset, 2026-09-28) | KPI, bar and weekly series verified through the gateway against Superset's chart data; histogram not reproducible; certify write round-trips. No BI-012 copy mode |
 | N-3 external delivery | `services/deliveries.py`, `api/routers/deliveries.py`, `DeliveryDestinations.tsx`, migration 0047_n3 | `test_deliveries_n3.py` (44, fake SMTP / httpx MockTransport), `deliveries.test.tsx` (3) | No live SMTP relay or webhook receiver run; standing destination authorization (90 days) needs an owner decision for restricted-scope reports |
 | N-6-font Unicode PDF | `reports/pdf.py`, `reports/fonts/` (DejaVu, licence) | `test_reports_pdf.py` (10) | Latin-ext/Greek/Cyrillic as written; CJK/Indic fall back |
-| N-7 / INT-004 entity matching | `skills/entity_matching.py`, `services/entity_matching.py`, `api/routers/entity_matching.py`, `evaluation/entity_match_datasets.py`, migration 0054_n7 | `test_entity_matching.py` (19), live `test_entity_matching_live.py` (3, compose Postgres) | n=1000: match band P 1.0 / R 0.870; match+review P 0.994 / R 0.997 (synthetic truth). TRN-004 open |
+| N-7 / INT-004 entity matching | `skills/entity_matching.py`, `services/entity_matching.py`, `api/routers/entity_matching.py`, `evaluation/entity_match_datasets.py`, migration 0054_n7 | `test_entity_matching.py` (19), live `test_entity_matching_live.py` (3, compose Postgres) | n=1000: match band P 1.0 / R 0.870; match+review P 0.994 / R 0.997 (synthetic truth). TRN-004 done (next row) |
+| N-7 / TRN-004 Trino federation | `engines/trino.py` (READ ONLY connection, run, catalog qualification), `gateway/service.py` (`_run` trino, `_federate_on_trino`, trino estimate), `gateway/validator.py` (`federation_dialect`), `gateway/cost.py` (`trino_estimate`), `skills/sqlbuild.py` (trino), `connectors/certify_kit.py` (trino checks), `config/source_kinds.yaml`, compose profile `federation` + `deploy/trino/` | `test_trino_engine.py` (17), live `test_trino_federation.py` (6, Trino 476 + demo Postgres, 2026-10-29); kit 9/9 (`evidence/connectors/trino-2026-10-29.md`); `evidence/trn004-trino-federation-20261029.md` | Federated revenue by region (`pg.sales` ⋈ `tpch.tiny`) through the gateway; denied column refused inside the join; timeout 1 s → stopped < 2 s; cancel < 3 s. Limits: one cluster and identity per federated statement; no PK/FK/comments from the Trino PostgreSQL connector; JSON as text; no grouped median (no exact percentile); no session identity; `explain()` summaries postgres-only |
 | N-8 evidence fusion | `contracts/citations.py`, `evidence/fusion.py`, `services/citations.py`, `agents/critic.py`, `services/ask.py`, `Citations.tsx`, migration 0050_n8 | `test_evidence_fusion_n8.py` (22), `citations.test.tsx` (5) | Conflict detection lexical; no live run |
 | N-9 what-if scenarios | `contracts/scenario.py`, `skills/scenario.py`, `services/scenarios.py`, `api/routers/scenarios.py`, `WhatIf.tsx`, migration 0051_n9 | `test_scenarios.py` (18), `whatIf.test.tsx` (3) | Simulated numbers never publishable; no knock-on effects; no live run |
 | N-10 PPTX/DOCX | `reports/{word,slides,_ooxml}.py`, `services/reports.py` | `test_reports_office.py` (19) | Same `report_data_hash` as the other formats; deterministic bytes |
@@ -953,6 +994,27 @@ Compose now shares persistent `runtime-data:/app/var` across the API and trusted
 ## 2026-10-25 — Workspace report collections (BI-VIEWS-01/02)
 
 Workspace display names now prefix generated dashboards; topic collections reuse available descriptive measures and validated chart specs. Eleven local dashboard drafts and eight historical-run HTML/Markdown reports were prepared with snapshot caveats. 114 unit tests, three local full-flow integrations and a real-API browser preview pass. Existing eight Superset dashboards remain unchanged pending refreshed bundles and approval. Independent per-collection publishing remains open. See [evidence](evidence/workspace-bi-20261025.md) and [usage guide](../30-runbooks/workspace-reports-and-superset.md).
+
+## 2026-10-29 — Collections published on their own; grouping of existing Superset dashboards (BI-VIEWS-02)
+
+`dashboards/collections.py`. A person chooses some of an investigation's dashboards (by default the one open) and asks
+for approval `dashboard.collection_publish`; the payload binds the run, its plan hash, the sorted dashboard keys and a
+bundle holding only those dashboards, their charts (previews stripped) and the KPIs those charts use, so another
+selection, an edited chart or a replan is a different hash. The request runs the run publication's governance review
+(bundle structure, dataset SQL against the requester's current scope, destination policy, VOID-finding gate, KPI
+stamping; unapproved KPIs are approved with the publication by its approver). `POST /api/v2/collections/publish`
+re-derives the payload from the stored artifacts, calls `verify_for_execution` and the Superset switch check, consumes
+the approval, then publishes; a failed BI call restores it for a retry. Idempotency key `collection:<run>:<selection>:<hash>`
+keeps reconcile's "newest per run" apart per selection; a collection rollback removes its dashboards and only the
+charts/datasets no other live publication uses. Grouping: `GET/POST /api/v2/workspaces/{ws}/dashboard-grouping[/request|/apply]`
+lists dashboards this workspace published (slug prefix and provenance stamp both checked) with `Workspace / title`;
+`dashboard.grouping_update` binds the exact {id, slug, from, to} list, and apply re-reads the titles from Superset so a
+title changed there since invalidates the approval instead of being overwritten. `SupersetPublisher.rename_dashboard` PUTs
+the title only. Web: Outputs › Dashboards › Publish chooser and a "Group published dashboards" panel, business wording;
+approval inbox labels. 20 unit tests (`tests/unit/test_dashboard_collection_publish.py`) and 4 UI tests
+(`web/src/test/collections.test.tsx`). Limits: not exercised against live Superset (compose stack down on 2026-10-29),
+so the existing dashboards are unchanged until an editor requests and an approver approves the rename; a later
+republish of an older approved bundle carries that bundle's own titles.
 
 ## 2026-10-25 — Single-reviewer publishing (PUBLISH-SELF-01)
 
@@ -1007,7 +1069,7 @@ spans, a cluster install, the customer IdP and pen test (T8, hand-off `s12-t8-id
 ## 2026-10-29 — S03-T7 Context federation subscription
 
 A workspace follows another workspace's Context Ledger through its change feed (`context/federation.py`, migration
-`0073_context_federation`: `context_subscription` and `context_federated_entry`, both owned by the subscriber workspace
+`0074_context_federation`: `context_subscription` and `context_federated_entry`, both owned by the subscriber workspace
 with RLS, policy and fill trigger). The source may be in another tenant the subscribing owner belongs to. Each source
 read re-binds from `system_scope()` to the source workspace's tenant, so it runs under that tenant's RLS. What is
 shared:
@@ -1044,3 +1106,11 @@ Tests (Windows dev host, Python 3.12, Postgres 16 with pgvector image and array 
 Not built: subscriptions to a published pack URL, an MCP tool for the feed, a UI, and lineage edges from a copy to its
 source entry (named in the ledger provenance).
 
+
+## 2026-10-29 — N-14 visible rules fallback (dev model policy still open)
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| Structured fallback reason | `llm/fallback.py` (`ModelFallback`, `fallback_for`, `summarize`); `llm/router.py` `_no_route` names `models_disabled` + the disabled models, `_within_cost` flags `missing_price`; `agents/common.py` `note_fallback` in `llm_json` (run message, `model.fallback` event once per purpose and cause per step, avoided call recorded as a rules skip); `contracts/events.py` | `tests/unit/test_model_fallback_n14.py` (22, no services): disabled models, allowlist, missing price, cap reached, mode off not a fallback, one report per step, classification table |
+| Run detail and run view | `api/routers/analysis.py` `model_fallbacks` (folded `model.fallback` events); `web/src/components/ModelFallbacks.tsx` on `RunView.tsx` — one plain sentence in business view, cause/steps/router detail with expert tools on | `web/src/test/modelFallbacks.test.tsx` (4): business vs expert view, run view from the run detail |
+| Live evaluation labels | `evaluation/live.py` (`fallbacks`, `fallback_label`, `fallback_lines`; `model_usage` returns `fallbacks`), `scripts/benchmark_analytical.py`, `scripts/benchmark_heldout.py` + `evaluation/heldout/report.py`: a tier heading carries "fell back to rules (n purposes)" and a per-purpose cause table | Unit-tested on SQLite events; no live benchmark re-run yet. The dev-stack model policy (which models are enabled, the $2/day cap) is the owner's decision and was not changed |

@@ -342,6 +342,13 @@ class GenericSQLConnector:
         if self._engine is None:
             catalog.require_driver(self.kind)
             engine = sa.create_engine(self.sqlalchemy_url(), connect_args=self._connect_args(), poolclass=NullPool)
+            if self.spec.readonly_transaction:
+                from analystos.engines.trino import connect_read_only
+
+                @event.listens_for(engine, "do_connect")
+                def _read_only_transaction(_dialect: Any, _record: Any, cargs: Any, cparams: Any) -> Any:
+                    return connect_read_only(**cparams)  # every transaction it opens is READ ONLY
+
             statements = catalog.session_statements(self.kind, self.config.get("statement_timeout_seconds"))
             if statements:
                 @event.listens_for(engine, "connect")
@@ -381,7 +388,7 @@ class GenericSQLConnector:
                 latency_ms=int((time.perf_counter() - started) * 1000),
             )
         details: dict[str, Any] = {"kind": self.kind, "execution_mode": self.execution_mode, "dialect": self.dialect,
-                                   "readonly_session": bool(self.spec.session_sql.readonly)}
+                                   "readonly_session": bool(self.spec.session_sql.readonly) or self.spec.readonly_transaction}
         if version:
             details["version"] = ".".join(str(v) for v in version)
         return ConnectionTest(ok=True, message=f"Connected to {self.spec.label} {target}",

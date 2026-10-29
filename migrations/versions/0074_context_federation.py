@@ -5,16 +5,16 @@ security) is installed here. The source workspace may be in another tenant, so i
 
 Expand-only: two new tables; the previous release ignores them.
 
-Revision ID: 0073_context_federation
-Revises: 0072_platform_ops
+Revision ID: 0074_context_federation
+Revises: 0073_playbook_signature
 """
 from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0073_context_federation"
-down_revision = "0072_platform_ops"
+revision = "0074_context_federation"
+down_revision = "0073_playbook_signature"
 branch_labels = None
 depends_on = None
 

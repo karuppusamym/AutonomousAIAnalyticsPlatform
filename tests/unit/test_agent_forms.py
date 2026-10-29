@@ -5,6 +5,7 @@ a run binds that exact version; a schedule keeps it after a newer version is pub
 from __future__ import annotations
 
 import pytest
+from tests.unit.playbook_signoff import publish_signed
 
 from analystos.capabilities import agent_forms, binding
 from analystos.capabilities import registry as reg
@@ -189,7 +190,7 @@ def test_a_workspace_playbook_uses_only_a_published_agent_and_a_run_binds_that_v
         defs.publish(s, s.merge(owner), draft, draft.revision)
         agent_id = draft.id
         pb = defs.create_draft(s, s.merge(owner), WS, DefinitionDraftIn(kind="playbook", key="playbook.notes", spec=_playbook()))
-        defs.publish(s, s.merge(owner), pb, pb.revision)
+        publish_signed(s, s.merge(owner), pb)
         caps = runs_svc._capabilities(s, WS, playbook=None, definition={"id": pb.id}, pins=None, trigger="api")
     _new_run("run_a", caps)
     bound = _bind("run_a")
@@ -212,7 +213,7 @@ def test_a_scheduled_run_keeps_its_published_agent_version(world):
     v1 = _published_agent(owner)
     with session_scope() as s:
         pb = defs.create_draft(s, s.merge(owner), WS, DefinitionDraftIn(kind="playbook", key="playbook.notes", spec=_playbook()))
-        defs.publish(s, s.merge(owner), pb, pb.revision)
+        publish_signed(s, s.merge(owner), pb)
         caps = runs_svc._capabilities(s, WS, playbook=None, definition={"id": pb.id}, pins=None, trigger="api")
     _new_run("run_base", caps)
     _bind("run_base")

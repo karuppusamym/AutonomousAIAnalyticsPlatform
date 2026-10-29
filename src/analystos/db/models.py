@@ -1786,6 +1786,10 @@ class Definition(Base):
     # ADR-0021 §5: per-environment connection bindings (not content) and the version a promotion copied
     bindings: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     promoted_from: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # S06-T6: a playbook's signing state. While a draft: the approval that will authorize signing (bound to the
+    # content hash); once published: the tenant signature over (key, version, content hash, approval) that the
+    # runtime verifies before the playbook runs (autonomy/playbook_signing.py).
+    signature: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

@@ -16,6 +16,12 @@ Every path is under /api/v2 (the web client's API base):
     POST dashboards/{id}/exports                        {format} -> allowed | approval_required
     GET  dashboards/{id}/exports/{format}?approval_id=  the watermarked file
     POST workspaces/{ws}/publications/reconcile         {repair} (editor): drift report, optional repair
+    GET  runs/{run}/collections                         an investigation's dashboards and collection requests
+    POST runs/{run}/collections/publish-request         {keys, destination} -> approval bound to that selection
+    POST collections/publish                            {approval_id}: verify, then publish only that selection
+    GET  workspaces/{ws}/dashboard-grouping             existing Superset dashboards and their grouped titles
+    POST workspaces/{ws}/dashboard-grouping/request     {dashboard_ids} -> approval bound to the exact renames
+    POST workspaces/{ws}/dashboard-grouping/apply       {approval_id}: re-read titles, verify, rename
 """
 from __future__ import annotations
 
@@ -71,6 +77,23 @@ class DashboardExportIn(BaseModel):
 
 class PublicationReconcileIn(BaseModel):
     repair: bool = False
+
+
+class CollectionRequestIn(BaseModel):
+    keys: list[str] = Field(min_length=1, max_length=50)
+    destination: Literal["superset", "preview"] | None = None
+
+
+class CollectionPublishIn(BaseModel):
+    approval_id: str
+
+
+class GroupingRequestIn(BaseModel):
+    dashboard_ids: list[int] = Field(min_length=1, max_length=200)
+
+
+class GroupingApplyIn(BaseModel):
+    approval_id: str
 
 
 def _base(body_version: int | None, if_match: str | None) -> int | None:
@@ -216,3 +239,70 @@ def reconcile(workspace_id: str, body: PublicationReconcileIn | None = None, use
         return []
     publisher = get_publisher("superset", get_settings())
     return [reconcile_publication(session, p, publisher=publisher, repair=bool(body and body.repair)) for p in pubs]
+
+
+# ------------------------------------------------------------------- collections and grouping (BI-VIEWS-02)
+@router.get("/runs/{run_id}/collections")
+def run_collections(run_id: str, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    from analystos.dashboards import collections
+    from analystos.db.models import AnalysisRun
+    from analystos.governance.policy import load_in_workspace
+
+    load_in_workspace(session, AnalysisRun, run_id, user=user, label="investigation")
+    return collections.overview(session, user, run_id)
+
+
+@router.post("/runs/{run_id}/collections/publish-request", status_code=202)
+def collection_publish_request(run_id: str, body: CollectionRequestIn, user: User = Depends(current_user),
+                               session: Session = Depends(db, scope="function")):
+    from analystos.dashboards import collections
+    from analystos.db.models import AnalysisRun
+    from analystos.governance.policy import load_in_workspace
+
+    load_in_workspace(session, AnalysisRun, run_id, user=user, minimum="editor", label="investigation")
+    approval = collections.request_collection(session, user, run_id, body.keys, destination=body.destination)
+    return {"approval_id": approval.id, "status": approval.status, "risk_tier": approval.risk_tier,
+            "destination": approval.destination, "payload_hash": approval.payload_hash,
+            "collection": list(approval.payload.get("collection") or []), "expires_at": approval.expires_at.isoformat()}
+
+
+@router.post("/collections/publish")
+def collection_publish(body: CollectionPublishIn, user: User = Depends(current_user),
+                       session: Session = Depends(db, scope="function")):
+    from analystos.dashboards import collections
+
+    try:
+        return collections.execute_collection(session, user, body.approval_id)
+    except UpstreamUnavailable:
+        session.commit()  # keep the FAILED publication and the restored approval: a retry reconciles
+        raise
+
+
+@router.get("/workspaces/{workspace_id}/dashboard-grouping")
+def dashboard_grouping(workspace_id: str, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    from analystos.dashboards import collections
+
+    return collections.grouping_plan(session, user, workspace_id)
+
+
+@router.post("/workspaces/{workspace_id}/dashboard-grouping/request", status_code=202)
+def dashboard_grouping_request(workspace_id: str, body: GroupingRequestIn, user: User = Depends(current_user),
+                               session: Session = Depends(db, scope="function")):
+    from analystos.dashboards import collections
+
+    approval = collections.request_grouping(session, user, workspace_id, body.dashboard_ids)
+    return {"approval_id": approval.id, "status": approval.status, "risk_tier": approval.risk_tier,
+            "payload_hash": approval.payload_hash, "changes": list(approval.payload.get("changes") or []),
+            "expires_at": approval.expires_at.isoformat()}
+
+
+@router.post("/workspaces/{workspace_id}/dashboard-grouping/apply")
+def dashboard_grouping_apply(workspace_id: str, body: GroupingApplyIn, user: User = Depends(current_user),
+                             session: Session = Depends(db, scope="function")):
+    from analystos.dashboards import collections
+
+    try:
+        return collections.apply_grouping(session, user, workspace_id, body.approval_id)
+    except UpstreamUnavailable:
+        session.commit()  # keep the audit of what was renamed (and a restored approval when nothing was)
+        raise

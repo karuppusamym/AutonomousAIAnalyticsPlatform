@@ -4,7 +4,8 @@ import { axeViolations, expect, signIn, test } from "./fixtures";
 
 /**
  * P7-19 journey (mocked API): in Work → Workflows an owner creates an agent from the form, publishes it,
- * adds it to a workflow step, publishes the workflow and runs that exact version.
+ * adds it to a workflow step, simulates the workflow, has its signature approved (S06-T6), publishes it and runs
+ * that exact version.
  */
 const OPTIONS = {
   capabilities: [
@@ -26,7 +27,7 @@ async function definitionsStore(page: Page): Promise<{ defs: Row[]; started: Row
   const started: Row[] = [];
   const row = (over: Row): Row => ({ workspace_id: WS, version: 1, revision: 1, status: "draft", content_hash: "h", created_by: USER.id,
     published_by: null, retired_by: null, reason: null, published_at: null, retired_at: null, created_at: null, updated_at: null, ...over });
-  await page.route(new RegExp(`/api/workspaces/${WS}/(agent-form|definitions|analysis)(/[^?]*)?(\\?.*)?$`), async (route) => {
+  await page.route(new RegExp(`/api/workspaces/${WS}/(agent-form|definitions|analysis|playbook-editor)(/[^?]*)?(\\?.*)?$`), async (route) => {
     const req = route.request();
     const path = new URL(req.url()).pathname.replace(`/api/workspaces/${WS}`, "");
     const method = req.method();
@@ -46,10 +47,28 @@ async function definitionsStore(page: Page): Promise<{ defs: Row[]; started: Row
       defs.push(d);
       await route.fulfill({ status: 201, json: d }); return;
     }
+    // S06-T6: a workflow (playbook) is simulated, signed off by someone else, then published
+    const draft = /^\/playbook-editor\/drafts\/([^/]+)(\/simulate|\/request-signature)?$/.exec(path);
+    if (draft) {
+      const d = defs.find((x) => x.id === draft[1])!;
+      if (method === "POST" && draft[2] === "/simulate") {
+        Object.assign(d, { status: "tested", revision: Number(d.revision) + 1, test_evidence: { content_hash: d.content_hash, simulations: [] } });
+        await route.fulfill({ json: d }); return;
+      }
+      if (method === "POST" && draft[2] === "/request-signature") {
+        Object.assign(d, { revision: Number(d.revision) + 1, signature: { state: "requested", approval_id: "apr_sign" } });
+        await route.fulfill({ status: 201, json: { definition: d, approval: { id: "apr_sign", status: "pending" } } }); return;
+      }
+      if (method === "GET" && !draft[2]) {  // the approver has signed off in the inbox meanwhile
+        if (d.status !== "published") Object.assign(d, { signature: { state: "approved", approval_id: "apr_sign" } });
+        await route.fulfill({ json: d }); return;
+      }
+    }
     const pub = /^\/definitions\/([^/]+)\/publish$/.exec(path);
     if (method === "POST" && pub) {
       const d = defs.find((x) => x.id === pub[1])!;
-      Object.assign(d, { status: "published", revision: 2 });
+      Object.assign(d, { status: "published", revision: Number(d.revision) + 1,
+        ...(d.kind === "playbook" ? { signature: { state: "signed" } } : {}) });
       await route.fulfill({ json: d }); return;
     }
     const one = /^\/definitions\/([^/]+)$/.exec(path);
@@ -95,7 +114,11 @@ test("an owner creates an agent from a form, publishes it, adds it to a workflow
   await builder.getByLabel("Title", { exact: true }).nth(1).fill("Write table notes");
   await builder.getByLabel("Agent", { exact: true }).selectOption("agent.table_notes");
   await builder.getByRole("button", { name: "Save draft" }).click();
-  await page.getByRole("button", { name: "Publish version" }).click();
+  await page.getByRole("button", { name: "Simulate draft" }).click();
+  await page.getByRole("button", { name: "Request signature" }).click();
+  await page.getByRole("button", { name: "Check status" }).click();
+  await page.getByRole("button", { name: "Publish and enable" }).click();
+  expect(store.defs[1]).toMatchObject({ kind: "playbook", status: "published", signature: { state: "signed" } });
   const workflows = page.getByRole("list", { name: "Workflows" });
   await workflows.getByRole("button", { name: "Run" }).click();
   const run = page.getByRole("form", { name: "Run workflow" });

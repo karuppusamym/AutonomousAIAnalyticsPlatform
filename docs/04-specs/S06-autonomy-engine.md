@@ -108,5 +108,34 @@ Code: `src/analystos/autonomy/` (`goals.py`, `complexity.py`, `budget.py`, `repl
   limits, approval gates and replan boundaries. They are `tested`, not certified, and off until a workspace
   enables them (like `data_dictionary.v1`): an autonomous goal never runs them. Golden fixtures:
   `tests/fixtures/playbooks/templates.yaml`.
-* **Not built:** §3.6 parallel branches bounded by a source semaphore (`test_parallel_respects_source_semaphore`),
-  T6 (P2).
+* **Not built (at the time of T1–T5):** §3.6 parallel branches bounded by a source semaphore
+  (`test_parallel_respects_source_semaphore`; since built, tracker row S06-PAR), T6 (P2; built below).
+
+## 8. As built (2026-10-29, T6)
+
+Code: `autonomy/playbook_editor.py` (YAML in and out, check, options), `autonomy/simulator.py` +
+`autonomy/simulation_fixtures.yaml`, `autonomy/playbook_signing.py`, `api/routers/playbook_editor.py`,
+hooks in `services/definitions.py` (tester, publish, update, promote, `require_runnable`) and `services/pins.py`,
+generic payload signing in `toolreg/signing.py` (`sign_payload` / `verify_payload`), migration
+`0073_playbook_signature` (`definition.signature`). Web: `web/src/components/PlaybookEditor.tsx` in Work →
+Workflows, shown only with expert tools on. Deviations from §3.7:
+
+* **Editor.** Drafts are the existing workspace `playbook` definitions (ADR-0021 versions, one draft per key,
+  If-Match revisions); the editor adds YAML (`yaml.safe_load`, one mapping, 256 KiB), a check that lists every
+  problem (contract + registry, the same validator a pack load uses), and the diff against the newest published
+  version or the installed manifest of that id. It is a text area, not a schema-aware code editor.
+* **Simulator.** Fixtures are named runs (autonomy level, origin, limits, approver decisions, mock failures,
+  expansion counts, replans, enable/disable overrides), not a seeded workspace: enablement and grants are the real
+  workspace's, layered with the fixture's overrides. Every agent is a deterministic mock (no model rung runs at
+  all, so "deterministic mocks for model rungs" holds trivially); cost is the agents' declared `budget.usd`, an
+  upper bound. Golden test: `test_simulation_golden_investigate_v1` against `tests/fixtures/playbooks/simulation_golden.yaml`.
+* **Signing.** Signing is approval-bound rather than "on publish" alone: publish requires a passing simulation
+  (the playbook tester) and an approved `playbook.sign` approval (separation of duties always); publish verifies
+  it (`verify_for_execution`), signs `(purpose, tenant, key, version, content hash, approval)` with the S10 tenant
+  key, and consumes the approval. Any edit voids the sign-off. Runs, schedule pins and promotion verify the
+  signature. Certification per workspace is unchanged (publishing certifies the composition in its workspace;
+  agents are still checked one by one).
+* **Behaviour change.** A workspace playbook published before T6 is unsigned and no longer runs (refused with the
+  reason); publish a new version through simulation and signing. Drafts still run in a workspace marked
+  `environment: dev` (ADR-0021), unsigned.
+

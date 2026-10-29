@@ -179,7 +179,7 @@ AT-16, AT-17, AT-18 (with S04); `test_context_conflict_blocks`; `test_pinned_bri
     * it is not itself a federated copy. Federation is one hop, so mutual subscriptions cannot echo.
   * **Storage.** `context_subscription` (cursor, status `active|suspended|revoked`, optional `kinds`) and
     `context_federated_entry` (the copies, keyed by the source's `ref_table:ref_id`), both owned by the subscriber
-    workspace with RLS and the fill trigger (migration `0073_context_federation`). The source workspace id has no
+    workspace with RLS and the fill trigger (migration `0074_context_federation`). The source workspace id has no
     foreign key because it may be in another tenant. `context_federated_entry` is a ledger owner table:
     `ledger._federated` projects each live copy into the subscriber's ledger as `approved`, `source=federation`,
     with the source workspace, entry and version in `provenance`. A new source version opens a new ledger version

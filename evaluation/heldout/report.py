@@ -49,7 +49,11 @@ def coverage(corpus: Any) -> str:
             "single domain, so per-domain rates are small-sample; the suite cannot claim capability beyond these tasks.")
 
 
-def render(runs: dict, corpus: Any, *, preset: str | None = None, enabled_models: str = "") -> str:
+def render(runs: dict, corpus: Any, *, preset: str | None = None, enabled_models: str = "",
+           fallbacks: dict[str, list[dict]] | None = None) -> str:
+    """`fallbacks` = per tier, the purposes its runs answered by rules for want of a model route (evaluation.live)."""
+    from evaluation.live import fallback_label, fallback_lines
+
     now = datetime.now(UTC)
     rev = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
     live = any(os.environ.get(k) for k in KEYS)
@@ -66,7 +70,8 @@ def render(runs: dict, corpus: Any, *, preset: str | None = None, enabled_models
              "Proposed thresholds (non-blocking `heldout` gate, owner to confirm): "
              + ", ".join(f"{k} {'≥' if 'min' in v else '≤'} {v.get('min', v.get('max'))}" for k, v in PROPOSED_THRESHOLDS.items()) + ".", ""]
     for tier, r in runs.items():
-        lines += [f"## Tier: {tier}", "", f"Corpus lock: {'matches' if r.lock_ok else 'MISMATCH ' + ', '.join(r.lock_mismatches)}. "
+        found = (fallbacks or {}).get(tier)
+        lines += [f"## Tier: {tier}{fallback_label(found)}", "", *fallback_lines(found), f"Corpus lock: {'matches' if r.lock_ok else 'MISMATCH ' + ', '.join(r.lock_mismatches)}. "
                   f"Wall time {r.seconds} s.", "", "| Measure | Value |", "|---|---|", *_metric_rows(r.summary["overall"]), "",
                   "| Domain | tasks | accepted | accepted-output rate | confident-wrong | abstention correctness | unnecessary abstentions | errors | p50 s | p95 s |",
                   "|---|---|---|---|---|---|---|---|---|---|"]

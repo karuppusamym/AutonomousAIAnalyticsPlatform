@@ -705,6 +705,20 @@ export interface RunDetail extends Run {
   hypotheses: Hypothesis[];
   insights: Insight[];
   approvals: Approval[];
+  /** N-14: purposes answered by rules because no model route was allowed (absent on older servers). */
+  model_fallbacks?: ModelFallback[];
+}
+
+/** One purpose answered by a deterministic rung for want of an allowed model (`model.fallback` events, folded). */
+export interface ModelFallback {
+  purpose: string;
+  cause: string;
+  detail: string;
+  rung: string;
+  code: string;
+  message: string;
+  count: number;
+  tasks: string[];
 }
 
 export interface RunEvent {
@@ -2052,6 +2066,81 @@ export interface DefinitionPage {
   items: DefinitionVersion[];
   next_cursor: string | null;
   builtin?: DefinitionRef[];
+}
+
+/** A playbook's signing state (autonomy/playbook_signing.state): signed versions run; drafts wait for a sign-off. */
+export interface PlaybookSignature {
+  state: "unsigned" | "requested" | "approved" | "rejected" | "invalidated" | "stale" | "signed" | string;
+  approval_id?: string | null;
+  content_hash?: string | null;
+  requested_by?: string | null;
+  requested_at?: string | null;
+  reason?: string | null;
+  key_id?: string | null;
+  signed_at?: string | null;
+}
+
+/** A playbook definition as the editor sees it: the version, its YAML, signing state and diff to the published one. */
+export interface PlaybookDraft extends DefinitionVersion {
+  yaml: string;
+  signature?: PlaybookSignature;
+  test_evidence?: { kind?: string; content_hash?: string; simulations?: { fixture: string; outcome: string; digest: string }[] } | null;
+  diff?: { against: string | null; changes: { path: string; from: unknown; to: unknown }[] };
+}
+
+/** POST .../playbook-editor/validate: every problem at once, or the normalized manifest. */
+export interface PlaybookCheck {
+  ok: boolean;
+  key?: string | null;
+  problems: string[];
+  warnings?: string[];
+  content_hash?: string;
+  manifest?: Dict;
+  steps?: { key: string; use: string; behaviour: string | null; type: string; after: string[]; optional: boolean; when: string | null }[];
+  approval_gates?: string[];
+  diff?: { against: string | null; changes: { path: string; from: unknown; to: unknown }[] };
+}
+
+export interface SimulationEvent {
+  seq: number;
+  key: string;
+  agent: string | null;
+  behaviour: string | null;
+  type: string;
+  status: string;
+  detail: string;
+  plan_version: number;
+  wave?: number;
+  approval?: string;
+  budget: Record<string, number>;
+}
+
+/** autonomy/simulator.simulate: a dry run against a fixture workspace (no SQL, no model call, no side effect). */
+export interface SimulationReport {
+  outcome: "completed" | "completed_with_limitations" | "rejected" | "failed" | "refused" | string;
+  reason: string | null;
+  playbook: { id: string; version: string; ref: string; content_hash: string };
+  fixture: Dict & { name: string };
+  timeline: SimulationEvent[];
+  waves: string[][];
+  approvals: { id: string; gate: string; payload: string; for: string | null; decision: string; status: string; binds: string; plan_version: number }[];
+  approval_gates: { key: string; payload: string | null; approval_for: string | null; type: string }[];
+  replans: Dict[];
+  budget: { limits: Record<string, number>; used: Record<string, number>; remaining: Record<string, number>; stopped_by: string | null };
+  warnings: string[];
+  mocks: Record<string, string>;
+  plan_version: number;
+  plan_hash: string;
+  digest: string;
+}
+
+export interface PlaybookEditorOptions {
+  agents: { id: string; version: string; summary: string; default_entry: boolean; behaviours: string[]; certification: string; enabled: boolean }[];
+  checks: string[];
+  replan_reasons: string[];
+  fixtures: { name: string; description: string }[];
+  schema: Dict;
+  template: string;
 }
 
 /** Governed training result; a refusal remains visible in Work with its reason. */
@@ -3814,6 +3903,33 @@ export interface BuilderSummary {
 }
 export interface BuilderDashboard extends BuilderSummary { document: BuilderDocument }
 export interface EmbedToken { token: string; dashboard_uuid: string; superset_url: string | null; rls_clauses: number }
+
+/** BI-VIEWS-02: an investigation's dashboards that can be published on their own, and the requests made so far. */
+export interface CollectionDashboard {
+  key: string; title: string; kind: "executive" | "operational" | "topic" | "other"; audience: string; charts: number;
+  artifact_id: string; status: string; external_url: string | null;
+}
+export interface CollectionRequest {
+  approval_id: string; status: string; collection: string[]; destination: string | null; payload_hash: string; risk_tier: string;
+  created_at: string | null; expires_at: string | null; reason: string | null;
+  publication: { id: string; status: string; error: string | null } | null;
+}
+export interface RunCollections {
+  run_id: string; workspace_id: string; destination: string | null; destination_note: string | null;
+  dashboards: CollectionDashboard[]; requests: CollectionRequest[];
+}
+export interface CollectionRequested {
+  approval_id: string; status: string; risk_tier: string; destination: string | null; payload_hash: string; collection: string[]; expires_at: string;
+}
+export interface CollectionPublished { status: string; publication_id: string; collection: string[]; destination: string; urls: Record<string, string> }
+/** An existing BI dashboard this workspace published, with the title grouping would give it. */
+export interface GroupingChange { id: number; slug: string | null; from: string; to: string }
+export interface GroupingItem extends GroupingChange { url: string | null; published: boolean; grouped: boolean }
+export interface GroupingPlan {
+  workspace_id: string; group: string; separator: string; available: boolean; reason: string | null;
+  dashboards: GroupingItem[]; to_change: number;
+}
+export interface GroupingRequested { approval_id: string; status: string; risk_tier: string; payload_hash: string; changes: GroupingChange[]; expires_at: string }
 export interface BuilderRefusal { index: number; op: string; reason: string; suggestion?: BuilderOp }
 export interface BuilderTurn {
   status: "applied" | "refused" | "unchanged" | "proposed" | "no_ops";
@@ -4239,6 +4355,29 @@ export const api = {
     get("/api/workspaces/{workspace_id}/definitions/{definition_id}/diff",
       { path: { workspace_id: ws, definition_id: id }, query: { against } }) as Promise<DefinitionDiff>,
 
+  // playbook editor (S06-T6): YAML drafts, dry-run simulation, signing; publishing is publishDefinition
+  playbookEditorOptions: (ws: string) =>
+    get("/api/workspaces/{workspace_id}/playbook-editor", { path: W(ws) }) as Promise<PlaybookEditorOptions>,
+  validatePlaybook: (ws: string, yaml: string) =>
+    post("/api/workspaces/{workspace_id}/playbook-editor/validate", { path: W(ws), body: { yaml } }) as Promise<PlaybookCheck>,
+  simulatePlaybook: (ws: string, body: { yaml?: string; definition_id?: string; fixture?: string | Dict }) =>
+    post("/api/workspaces/{workspace_id}/playbook-editor/simulate", { path: W(ws), body }) as Promise<SimulationReport>,
+  createPlaybookDraft: (ws: string, yaml: string, title?: string) =>
+    post("/api/workspaces/{workspace_id}/playbook-editor/drafts", { path: W(ws), body: { yaml, title: title || null } }) as Promise<PlaybookDraft>,
+  getPlaybookDraft: (ws: string, id: string) =>
+    get("/api/workspaces/{workspace_id}/playbook-editor/drafts/{definition_id}",
+      { path: { workspace_id: ws, definition_id: id } }) as Promise<PlaybookDraft>,
+  updatePlaybookDraft: (ws: string, id: string, revision: number, yaml: string, title?: string) =>
+    request<PlaybookDraft>("PUT", apiPath("put", "/api/workspaces/{workspace_id}/playbook-editor/drafts/{definition_id}",
+      { path: { workspace_id: ws, definition_id: id } }), { yaml, title: title || null }, ifMatch(revision)),
+  simulatePlaybookDraft: (ws: string, id: string, revision: number, fixtures?: string[]) =>
+    request<PlaybookDraft>("POST", apiPath("post", "/api/workspaces/{workspace_id}/playbook-editor/drafts/{definition_id}/simulate",
+      { path: { workspace_id: ws, definition_id: id } }), { fixtures: fixtures?.length ? fixtures : null }, ifMatch(revision)),
+  requestPlaybookSignature: (ws: string, id: string, revision: number) =>
+    request<{ definition: PlaybookDraft; approval: Approval }>("POST", apiPath("post",
+      "/api/workspaces/{workspace_id}/playbook-editor/drafts/{definition_id}/request-signature",
+      { path: { workspace_id: ws, definition_id: id } }), {}, ifMatch(revision)),
+
   // recipes and file ingestion: Work → Prepare data (P6-04..07)
   listRecipes: (ws: string) => get("/api/workspaces/{workspace_id}/recipes", { path: W(ws) }) as Promise<Recipe[]>,
   saveRecipe: (ws: string, spec: Dict) =>
@@ -4424,6 +4563,20 @@ export const api = {
   // dashboards: publishing is proposal-based (returns the pending, hash-bound proposal; decided in the inbox)
   publishDashboard: (artifactId: string) =>
     post("/api/artifacts/{artifact_id}/publish", { path: { artifact_id: artifactId } }) as Promise<Approval>,
+
+  // BI-VIEWS-02: publish a chosen collection of an investigation's dashboards; group existing BI dashboards by workspace
+  runCollections: (runId: string) =>
+    get("/api/v2/runs/{run_id}/collections", { path: { run_id: runId } }) as Promise<RunCollections>,
+  requestCollection: (runId: string, keys: string[]) =>
+    post("/api/v2/runs/{run_id}/collections/publish-request", { path: { run_id: runId }, body: { keys } }) as Promise<CollectionRequested>,
+  publishCollection: (approvalId: string) =>
+    post("/api/v2/collections/publish", { body: { approval_id: approvalId } }) as Promise<CollectionPublished>,
+  dashboardGrouping: (ws: string) =>
+    get("/api/v2/workspaces/{workspace_id}/dashboard-grouping", { path: W(ws) }) as Promise<GroupingPlan>,
+  requestGrouping: (ws: string, dashboardIds: number[]) =>
+    post("/api/v2/workspaces/{workspace_id}/dashboard-grouping/request", { path: W(ws), body: { dashboard_ids: dashboardIds } }) as Promise<GroupingRequested>,
+  applyGrouping: (ws: string, approvalId: string) =>
+    post("/api/v2/workspaces/{workspace_id}/dashboard-grouping/apply", { path: W(ws), body: { approval_id: approvalId } }) as Promise<{ status: string; approval_id: string; renamed: GroupingChange[] }>,
 
   // Dashboard builder (S08): typed ops, conversation, versions, publish lifecycle, exports
   builderDashboards: (ws: string) =>
