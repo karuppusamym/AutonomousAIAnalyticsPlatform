@@ -69,10 +69,11 @@ def main(argv: list[str] | None = None) -> int:
     families = tuple(f.strip() for f in args.families.split(",") if f.strip())
     only = {t.strip() for t in args.only.split(",")} if args.only else None
     tiers = ["component", "platform"] if args.tier == "all" else [args.tier]
-    from evaluation.live import process_preset
+    from evaluation.live import fallbacks, process_preset
 
     with process_preset(args.preset, [m for m in args.enable_models.split(",") if m]):
         runs = {t: R.run(t, families=families, only=only, cpu_usd_per_hour=args.cpu_usd_per_hour, corpus=corpus) for t in tiers}
+    found = {t: fallbacks(run_ids=[x.run_ref for x in r.results if x.run_ref]) for t, r in runs.items() if t == "platform"}
     problems = []
     for tier, r in runs.items():
         o = r.summary["overall"]
@@ -82,6 +83,8 @@ def main(argv: list[str] | None = None) -> int:
         for x in r.results:
             if x.status not in ("accepted", "correct_abstention"):
                 print(f"  {x.id}: {x.status} — {x.reason[:200]}")
+        for f in found.get(tier) or []:
+            print(f"[{tier}] FELL BACK to {f['rung']}: {f['purpose']} ({f['cause']}) x{f['count']}")
         if not r.lock_ok:
             problems.append(f"{tier}: corpus does not match its lock: {', '.join(r.lock_mismatches)}")
         m = R.gate_metrics(r)
@@ -94,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
         path = (ROOT / "docs" / "60-delivery" / "evidence" / f"{now:%Y-%m-%d}-heldout-{'-'.join(runs)}-{args.models}.md"
                 if args.report == "auto" else Path(args.report))
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(render(runs, corpus, preset=args.preset, enabled_models=args.enable_models), encoding="utf-8")
+        path.write_text(render(runs, corpus, preset=args.preset, enabled_models=args.enable_models, fallbacks=found), encoding="utf-8")
         path.with_suffix(".json").write_text(json.dumps({t: R.as_dict(r) for t, r in runs.items()}, indent=1, default=str) + "\n")
         print(f"report: {path}")
     for p in problems:

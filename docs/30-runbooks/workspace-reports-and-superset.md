@@ -44,13 +44,28 @@ Use Outputs → Dashboards or Outputs → Reports in the relevant workspace. Lis
 
 ## Review and publishing
 
-The current Publish control retrieves the investigation's pending publication proposal; publication is for the run's reviewed bundle, not an arbitrary newly added dashboard. A completed historical run without a pending proposal needs a refreshed, reviewed publishing workflow. Do not approve an older bundle assuming it contains a newer draft.
+**Request publication** retrieves the investigation's pending publication proposal for the run's whole reviewed bundle; to publish some of its dashboards on their own, see below. A completed historical run without a pending proposal needs a refreshed, reviewed publishing workflow. Do not approve an older bundle assuming it contains a newer draft.
 
 Before publishing these snapshot-based drafts, refresh the relevant analysis, verify required findings and metric definitions, review the full generated bundle and approve it in the inbox. Nothing was externally published in this change. Existing eight Superset dashboards across four workspaces remain as before.
 
+## Publishing one collection on its own (BI-VIEWS-02, 2026-10-29)
+
+Open a generated dashboard in **Outputs → Dashboards**. Under **Publish → Publish on its own**, tick the dashboards to
+publish together (the open one is ticked) and choose **Ask for approval**. The approver sees "Publish chosen dashboards
+on their own" in the inbox with exactly that selection. Once approved, **Publish now** checks once more that the
+selection, its charts and KPIs, the investigation plan and the policy are unchanged, then publishes only those
+dashboards. Another selection needs its own approval. **Request publication** still opens the investigation's own
+proposal for all of its dashboards.
+
+## Grouping dashboards already in Superset
+
+**Outputs → Dashboards → Group published dashboards under this workspace's name** lists the dashboards AnalystOS
+published to Superset for this workspace and the `Workspace / title` each would get. Tick the ones to rename and ask
+for approval; after an approver says yes, **Rename now** re-reads the titles from Superset and renames only if nobody
+changed them there since. Only titles change. Hand-made dashboards and other workspaces' dashboards are never listed.
+
 ## Highest-value remaining improvements
 
-- Publish one selected topic collection with its own hash-bound bundle, rather than requiring the whole run's publication proposal.
 - Show a shared freshness/reporting-period indicator for saved reports and live Superset dashboards, plus owner and definition versions.
 - Add further business measures through reviewed definitions: retail return rate and net sales; service SLA populations and breach polarity; process cycle time and rework. Available columns alone do not establish exclusions, denominators or revenue policy.
 - Configure scheduled report delivery only after owners select recipients, timing and the reviewed dashboard/report.

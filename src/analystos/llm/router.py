@@ -511,12 +511,13 @@ class ModelRouter:
             return []
         return [m for m in self._large_tier(profile_name, profile, ctx) if m not in first]
 
-    def _large_tier(self, profile_name: str, profile: ProfileConfig, ctx: CallContext) -> list[str]:
+    def _large_tier(self, profile_name: str, profile: ProfileConfig, ctx: CallContext, *,
+                    ignore_disabled: bool = False) -> list[str]:
         models = self.settings.profile_escalation_models.get(profile_name) or profile.escalation_models
-        return self._allowed(list(models), profile, ctx)
+        return self._allowed(list(models), profile, ctx, ignore_disabled=ignore_disabled)
 
     def _resolve(self, profile_name: str, profile: ProfileConfig, ctx: CallContext, *,
-                 residency: bool = True) -> tuple[str, ProfileConfig, list[str]]:
+                 residency: bool = True, ignore_disabled: bool = False) -> tuple[str, ProfileConfig, list[str]]:
         """Admin profile models (narrowed by the tenant/workspace layers), then platform allowlist - disabled
         models, layer and workspace allowlists, family exclusions, residency."""
         llm = self.settings
@@ -527,7 +528,8 @@ class ModelRouter:
             # a layer may reorder or drop the profile's models, never add one
             profile = profile.model_copy(update={"models": [m for m in narrowing.profile_models[profile_name]
                                                             if m in profile.models]})
-        return profile_name, profile, self._allowed(profile.models, profile, ctx, residency=residency)
+        return profile_name, profile, self._allowed(profile.models, profile, ctx, residency=residency,
+                                                    ignore_disabled=ignore_disabled)
 
     def _regions(self, ctx: CallContext) -> set[str] | None:
         """Regions a model may run in for this call: the workspace policy's data_residency and the
@@ -541,9 +543,11 @@ class ModelRouter:
             wanted = layer if wanted is None else wanted & layer
         return wanted
 
-    def _allowed(self, candidates: list[str], profile: ProfileConfig, ctx: CallContext, *, residency: bool = True) -> list[str]:
+    def _allowed(self, candidates: list[str], profile: ProfileConfig, ctx: CallContext, *, residency: bool = True,
+                 ignore_disabled: bool = False) -> list[str]:
+        """`ignore_disabled` = as if the platform settings disabled no model (only to say why a route is empty)."""
         llm = self.settings
-        allowed = set(self.config.allowlist) - set(llm.disabled_models)
+        allowed = set(self.config.allowlist) - (set() if ignore_disabled else set(llm.disabled_models))
         if ctx.allowed_models:
             allowed &= set(ctx.allowed_models)
         narrowing = self._narrowing(ctx)
@@ -585,8 +589,23 @@ class ModelRouter:
                 f"{head}: no model of profile {profile_name} has a known region matching the data_residency "
                 f"'{wanted}' (unknown regions fail closed)",
                 details={**details, "data_residency": ctx.data_residency, "regions": sorted(regions)})
+        disabled = self._disabled_route(purpose, profile_name, profile, ctx)
+        if disabled:
+            # N-14: the platform settings switched these models off; the run says so instead of a bare "no route"
+            return ModelRouteUnavailable(f"{head}: the platform settings disable {', '.join(disabled)}",
+                                         details={**details, "cause": "models_disabled", "disabled_models": disabled})
         return ModelRouteUnavailable(f"{head}: every model is excluded by the platform or workspace model allowlist",
                                      details=details)
+
+    def _disabled_route(self, purpose: str, profile_name: str, profile: ProfileConfig, ctx: CallContext) -> list[str]:
+        """The models the purpose would route to if the platform settings disabled none ([] = something else
+        empties the route): every one of them is disabled, since the real route is empty."""
+        if not self.settings.disabled_models:
+            return []
+        would = self._resolve(profile_name, profile, ctx, ignore_disabled=True)[2]
+        if self.escalation_policy(purpose) != "never":
+            would = would + self._large_tier(profile_name, profile, ctx, ignore_disabled=True)
+        return list(dict.fromkeys(would))
 
     def unavailable(self, purpose: str, ctx: CallContext | None = None) -> ModelRouteUnavailable | None:
         """Why `available()` is False, as the error `complete()` would raise (not raised): mode off,
@@ -639,7 +658,8 @@ class ModelRouter:
                          request_hash=request_hash, error=message[:500], request=request, answered_by="rules",
                          cost_source="none")
         raise ApprovalRequired(message, details={"purpose": purpose, "model": cheapest, "estimated_usd": estimates[cheapest],
-                                                 "limit_usd": limit, "decision": "approval_required"})
+                                                 "limit_usd": limit, "decision": "approval_required",
+                                                 "missing_price": estimates[cheapest] is None})
 
     def available(self, purpose: str, ctx: CallContext | None = None, *, profile: str | None = None) -> bool:
         ctx = ctx or CallContext()

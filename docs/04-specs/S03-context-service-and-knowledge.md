@@ -99,7 +99,7 @@ AT-16, AT-17, AT-18 (with S04); `test_context_conflict_blocks`; `test_pinned_bri
 | S03-T6 | OKF round-trip CI + access-filtered export | 1.5d |
 | S03-T7 | Federation subscription (P2) | 3d |
 
-## 9. As built (2026-10-27, tasks T1–T6; T7 federation not started)
+## 9. As built (2026-10-27, tasks T1–T6; 2026-10-29, task T7)
 * **Table.** `context_ledger_entry` follows the codebase: ids are `String(40)` (`cle_…`) and `tenant_id` is filled by
   the tenancy trigger from the workspace (ADR-009), so the unique key is `(workspace_id, ref_table, ref_id, version)`.
   `embedding` is the platform's 256-dimension local hashing embedding (`context/embeddings.py`; pgvector or `real[]`
@@ -165,3 +165,57 @@ AT-16, AT-17, AT-18 (with S04); `test_context_conflict_blocks`; `test_pinned_bri
   queues each document as a knowledge suggestion (`origin=import:okf`, with the pack digest and path as provenance),
   so it stays `suggested` in the ledger until a person approves it in the review queue. The round trip runs in the
   integration suite (`tests/integration/test_context_service.py::test_at16_…`), not as a separate CI job.
+* **Federation (T7).** Decisions where §6 left a choice:
+  * **Source.** A subscription follows another *workspace's ledger* through its change feed. The source may be in the
+    same tenant or in another tenant the subscribing user belongs to. "Subscribe to a published pack URL" is not
+    built: fetching packs from the network is a new outbound path, and an OKF pack already lands through `POST /import`
+    as suggestions.
+  * **Who decides what is shared.** The subscriber is a person (`subject_id`), not a workspace. The creator must be an
+    owner of both workspaces, and their access to the source is the filter (`retrieval.Access`: scope, denied columns),
+    re-checked on every sync. An entry is shared when:
+    * its trust is certified, approved or workspace (never `personal` or `suggested`);
+    * its classification is `internal`. An entry the source tags confidential or restricted stays home, because the
+      subscriber workspace's readers are not governed by the source's column policy;
+    * it is not itself a federated copy. Federation is one hop, so mutual subscriptions cannot echo.
+  * **Storage.** `context_subscription` (cursor, status `active|suspended|revoked`, optional `kinds`) and
+    `context_federated_entry` (the copies, keyed by the source's `ref_table:ref_id`), both owned by the subscriber
+    workspace with RLS and the fill trigger (migration `0074_context_federation`). The source workspace id has no
+    foreign key because it may be in another tenant. `context_federated_entry` is a ledger owner table:
+    `ledger._federated` projects each live copy into the subscriber's ledger as `approved`, `source=federation`,
+    with the source workspace, entry and version in `provenance`. A new source version opens a new ledger version
+    ("refresh on version change"), and a removed copy retires its entry. Copies are read-only: only the sync writes them.
+  * **Delivery.** `feed()` turns the source's `context_ledger_change` rows after the cursor into `upsert` items (the
+    full entry with its version) and `remove` items (key and version). A version that stops being shareable is sent
+    as a `remove` when its previous version was shared. A sync reads a batch as the source tenant and applies it as
+    the subscriber's tenant in a separate transaction, where the cursor also advances. That gives at-least-once
+    delivery. The apply is idempotent:
+    * an upsert applies only when its version is newer than the copy's;
+    * a remove applies only when its version is not older;
+    * removed copies stay as tombstones, so a replay cannot bring them back.
+
+    After the feed, the sync re-checks every live copy against the source's current state. That catches access lost
+    without a ledger change, and entries `ledger.forget` erased (their change rows go with them). `POST …/resync`
+    replays from cursor 0, for example after the subject gains access.
+  * **Tenancy.** `sync_subscription` is `@owned_by("context_subscription", "subscription_id")`. Each source read
+    enters `system_scope()` only to re-bind to the source workspace's tenant (`as_owner_of`), so the read runs under
+    that tenant's RLS. The subject must be visible there (home tenant or tenant membership) and still be a source
+    owner. Otherwise the subscription is suspended, its copies are retired, and the suspension is audited.
+    `federation.sync_due` is the scheduler housekeeping `@platform_loop`: it selects active subscriptions not synced
+    for 10 minutes, at most 50 per pass. Bounds:
+    * 500 changes per batch, 20 batches per sync;
+    * 5000 live copies per subscriber workspace (the retrieval candidate cap);
+    * 20 subscriptions per workspace.
+  * **Context is data.** Feed items are checked for shape and length (kind, trust, classification, string lists) and
+    never interpreted. A copy's text is screened like any other entry when a compile puts it in front of a model.
+  * **REST.** All under `/api/v2/context`:
+    * `GET subscriptions?workspace=`;
+    * `POST subscriptions` (201, first sync included);
+    * `POST subscriptions/{id}/sync` and `POST subscriptions/{id}/resync`;
+    * `DELETE subscriptions/{id}` (revoke: copies leave the ledger, history kept);
+    * `GET feed?workspace=&since=&kinds=`, the same feed for an external subscriber, with the caller's access and
+      tenant applied.
+
+    Create, resync, revoke and suspend are audited (`context.subscription.*`). Like an export, subscribing moves
+    context within the platform, so it needs no approval.
+  * **Not built.** Pack-URL subscriptions; an MCP tool for the feed; a UI; lineage edges from a copy to its source
+    entry (the ledger `provenance` names it); UI events for sync results.

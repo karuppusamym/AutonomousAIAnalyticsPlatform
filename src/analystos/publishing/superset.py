@@ -710,6 +710,11 @@ class SupersetPublisher(SupersetAccess):
         self.client.put(f"/api/v1/dashboard/{int(external_id)}", {"published": True})
         return self.dashboard_url(external_id)
 
+    def rename_dashboard(self, external_id: ExternalId, title: str) -> str:
+        """Title only (an approved grouping update, BI-VIEWS-02): layout, charts, filters and the provenance stamp stay."""
+        self.client.put(f"/api/v1/dashboard/{int(external_id)}", {"dashboard_title": title})
+        return self.dashboard_url(external_id)
+
     # -- phase 3 --------------------------------------------------------------------------------
     def create_report(self, dashboard_external_id: ExternalId, *, recipients: list[str], name: str = "") -> ExternalId:
         raise NotImplementedError(

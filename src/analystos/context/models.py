@@ -4,13 +4,26 @@ versioned projection of one owner row (plus a few kinds the ledger owns through 
 certified Request Desk playbook).
 
 Both tables carry ``workspace_id`` with a foreign key, so the tenancy trigger fills ``tenant_id`` from the workspace
-and row-level security applies (ADR-009). Summaries never hold result rows."""
+and row-level security applies (ADR-009). Summaries never hold result rows. Federation (S03-T7) adds a subscription
+and the subscriber's read-only copies, both owned by the subscriber workspace."""
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from analystos.db.base import Base
@@ -67,3 +80,53 @@ class ContextLedgerChange(Base):
     op: Mapped[str] = mapped_column(String(10))  # added | changed | retired
     version: Mapped[int] = mapped_column(Integer)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ContextSubscription(Base):
+    """A workspace following another workspace's ledger through its change feed (spec S03 §6 federation, S03-T7).
+
+    The subscriber workspace owns the row (RLS through ``workspace_id``). The source may sit in another tenant, so it
+    has no foreign key; ``subject_id`` is the user whose access to the source decides what is shared, re-checked on
+    every sync. ``cursor`` is the last source ``seq`` applied: delivery is at least once, the apply is idempotent."""
+
+    __tablename__ = "context_subscription"
+    __table_args__ = (UniqueConstraint("workspace_id", "source_workspace_id", name="uq_context_subscription_source"),)
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    source_workspace_id: Mapped[str] = mapped_column(String(40))
+    source_tenant_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    subject_id: Mapped[str] = mapped_column(String(40))  # the subscribing owner; their access to the source applies
+    kinds: Mapped[list[str]] = mapped_column(JSON, default=list)  # empty: every kind
+    status: Mapped[str] = mapped_column(String(12), default="active")  # active | suspended | revoked
+    cursor: Mapped[int] = mapped_column(BigInteger, default=0)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ContextFederatedEntry(Base):
+    """The subscriber's read-only copy of one source entry, keyed by the source's ``ref_table:ref_id``. It is a ledger
+    owner table: the projection turns each live row into an ``approved`` entry of the subscriber's ledger, and a new
+    ``source_version`` opens a new ledger version. ``retired`` rows are tombstones that keep a replay idempotent."""
+
+    __tablename__ = "context_federated_entry"
+    __table_args__ = (UniqueConstraint("subscription_id", "source_key", name="uq_context_federated_key"),
+                      Index("ix_context_federated_ws_live", "workspace_id", "retired"))
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    subscription_id: Mapped[str] = mapped_column(ForeignKey("context_subscription.id", ondelete="CASCADE"), index=True)
+    source_key: Mapped[str] = mapped_column(String(270))
+    source_entry_id: Mapped[str] = mapped_column(String(40))
+    source_version: Mapped[int] = mapped_column(Integer)
+    source_trust: Mapped[str] = mapped_column(String(12))
+    kind: Mapped[str] = mapped_column(String(30))
+    title: Mapped[str] = mapped_column(String(300))
+    summary: Mapped[str] = mapped_column(Text, default="")
+    classification: Mapped[str] = mapped_column(String(20), default="internal")
+    fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    aliases: Mapped[list[str]] = mapped_column(JSON, default=list)
+    refs: Mapped[list[str]] = mapped_column(JSON, default=list)
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retired: Mapped[bool] = mapped_column(Boolean, default=False)
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

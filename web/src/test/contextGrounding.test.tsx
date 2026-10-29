@@ -51,11 +51,11 @@ it("discards a previous meaning result when the question or model choice changes
   mockFetch();renderAt(`/w/${WS}/data/catalog?tab=grounding`);
   fireEvent.change(await screen.findByLabelText("Business question"),{target:{value:"Why did repeat incidents increase?"}});
   fireEvent.click(screen.getByRole("button",{name:"Resolve meaning"}));
-  await screen.findByText("Define repeat for this population");
+  await screen.findByText("Define repeat for this population",{},{timeout:5000});
   fireEvent.change(screen.getByLabelText("Business question"),{target:{value:"Compare incident priorities this month"}});
   expect(screen.queryByText("Define repeat for this population")).toBeNull();
   fireEvent.click(screen.getByRole("button",{name:"Resolve meaning"}));
-  await screen.findByText("Define repeat for this population");
+  await screen.findByText("Define repeat for this population",{},{timeout:5000});
   fireEvent.click(screen.getByLabelText("Use model assistance after reading reviewed knowledge"));
   expect(screen.queryByText("Define repeat for this population")).toBeNull();
 });

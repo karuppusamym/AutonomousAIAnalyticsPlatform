@@ -7,8 +7,9 @@ Everything here builds sqlglot expression trees, never string-concatenated SQL:
 * literal values (filter values, `equals` values, bucket labels) go through sqlglot literal
   nodes, so quotes are escaped by the generator.
 
-Supported dialects: ``postgres``, ``tsql`` (SQL Server) and ``duckdb``. For each dialect every
-`Derivation` type is implemented with functions that exist in that engine:
+Supported dialects: ``postgres``, ``tsql`` (SQL Server), ``duckdb`` and ``trino``. For each dialect every
+`Derivation` type is implemented with functions that exist in that engine (trino follows the postgres column
+except where noted below the table):
 
 =============== ================================== ===================================================
 derivation      postgres / duckdb                  tsql
@@ -30,6 +31,11 @@ bucket          CASE on edges -> string-sortable   same
                 have more digits) + numeric order
 equals/is_true  CASE -> 1 / 0 / NULL                same (no boolean type needed)
 =============== ================================== ===================================================
+
+trino: EXTRACT(EPOCH ..) is written TO_UNIXTIME(..) by the generator; the day of week is EXTRACT(DOW ..) % 7
+(Trino's DOW is ISO, 1 = Monday ... 7 = Sunday); md5 is LOWER(TO_HEX(MD5(TO_UTF8(..)))) so samples and row
+partitions hash the same text to the same digits as postgres; there is no exact percentile (sqlglot would write
+APPROX_PERCENTILE), so a median aggregate is refused and medians come from the row sample, as on tsql.
 
 A derivation or filter with `via` reads a related table: the spec's `joins` compile to
 ``LEFT JOIN <asset> AS "j_<from_column>" ON "t"."<from_column>" = "j_<from_column>"."<to_column>"`` with the
@@ -65,7 +71,8 @@ from sqlglot import exp
 from analystos.contracts.analysis import AnalysisSpec, Derivation, Filter, Partition
 from analystos.core.errors import InvalidInput
 
-DIALECTS = ("postgres", "tsql", "duckdb")
+DIALECTS = ("postgres", "tsql", "duckdb", "trino")
+NO_EXACT_PERCENTILE = frozenset({"trino"})  # PERCENTILE_CONT would become APPROX_PERCENTILE
 BOOLEAN_DERIVATIONS = frozenset({"after_hours", "equals", "is_true", "later_than"})
 TIME_DERIVATIONS = frozenset({"duration_hours", "later_than", "after_hours", "date_trunc", "hour_of_day", "day_of_week"})
 BASE_ALIAS = "t"  # the spec's own table when the query joins related ones
@@ -150,9 +157,11 @@ def lit(value: Any, dialect: str = "duckdb") -> exp.Expression:
             raise InvalidInput("NaN is not a valid SQL literal")
         return exp.Literal.number(value)
     if isinstance(value, _dt.datetime):
-        return exp.Literal.string(value.isoformat(sep=" "))
+        text = exp.Literal.string(value.isoformat(sep=" "))
+        return cast(text, "timestamp", dialect) if dialect == "trino" else text  # trino never coerces varchar
     if isinstance(value, _dt.date):
-        return exp.Literal.string(value.isoformat())
+        text = exp.Literal.string(value.isoformat())
+        return cast(text, "date", dialect) if dialect == "trino" else text
     if isinstance(value, str):
         return exp.Literal.string(value)
     raise InvalidInput(f"unsupported literal type {type(value).__name__}")
@@ -251,6 +260,8 @@ def dow_expr(ts: exp.Expression, dialect: str) -> exp.Expression:
         # DATEFIRST-independent: days since a known Sunday, mod 7.
         return paren(exp.Mod(this=fn("DATEDIFF", exp.var("DAY"), cast(lit(_TSQL_SUNDAY), "timestamp", dialect), ts),
                              expression=num(7)))
+    if dialect == "trino":  # ISO day of week (7 = Sunday) -> 0 = Sunday
+        return paren(exp.Mod(this=exp.Extract(this=exp.var("DOW"), expression=ts), expression=num(7)))
     return exp.Extract(this=exp.var("DOW"), expression=ts)
 
 
@@ -512,7 +523,7 @@ def render_filter(f: Filter, dialect: str, *, table_alias: str | None = None) ->
 # discovery / held-out partition (P8-15)
 # --------------------------------------------------------------------------------------------
 PARTITION_BUCKETS = 65536  # 16 bits of md5: the fraction is honoured to 1/65536
-PARTITION_DIALECTS = ("postgres", "duckdb", "tsql")  # dialects with a stable md5 the compiler can emit
+PARTITION_DIALECTS = ("postgres", "duckdb", "tsql", "trino")  # dialects with a stable md5 the compiler can emit
 _HEX = "0123456789abcdef"
 _ACTIVE_PARTITION: ContextVar[Partition | None] = ContextVar("analystos_partition", default=None)
 
@@ -637,13 +648,16 @@ def as_double(e: exp.Expression, dialect: str) -> exp.Expression:
 def percentile_cont(e: exp.Expression, q: float, dialect: str) -> exp.Expression:
     """PERCENTILE_CONT(q) WITHIN GROUP (ORDER BY e). An aggregate on postgres/duckdb; on tsql it is
     window-only, so callers wrap it in OVER () there. NULL ordering is set to each engine's default
-    so no extra sort key is generated (PERCENTILE_CONT accepts exactly one)."""
+    so no extra sort key is generated (PERCENTILE_CONT accepts exactly one). Refused on dialects without an
+    exact percentile (trino): an approximate median would be a different number."""
+    if dialect in NO_EXACT_PERCENTILE:
+        raise InvalidInput(f"{dialect} has no exact percentile; medians come from the row sample")
     return exp.WithinGroup(this=exp.PercentileCont(this=num(q)),
                            expression=exp.Order(expressions=[exp.Ordered(this=e, nulls_first=dialect == "tsql")]))
 
 
-def median(e: exp.Expression) -> exp.Expression:
-    return percentile_cont(e, 0.5, "postgres")
+def median(e: exp.Expression, dialect: str = "postgres") -> exp.Expression:
+    return percentile_cont(e, 0.5, dialect)
 
 
 AGGREGATES = ("count", "sum", "avg", "median")

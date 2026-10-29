@@ -8,6 +8,7 @@ import { GoalRunPanel, PlanVersions } from "../components/Autonomy";
 import { ChangesPanel } from "../components/ChangesPanel";
 import { InvestigationBoard } from "../components/InvestigationBoard";
 import { InvestigationActions } from "../components/InvestigationActions";
+import { ModelFallbacks } from "../components/ModelFallbacks";
 import { RunGrounding } from "../components/ContextGrounding";
 import { findingStanding, InvestigationOverview } from "../components/InvestigationOverview";
 import { isSavedRunAnswer, SavedEvidenceAnswer } from "../components/SavedEvidenceAnswer";
@@ -130,6 +131,7 @@ export function RunViewPage() {
         <p className="small muted">Reviewed business facts were pinned at start; later edits apply to future investigations.</p></Card>}
       <InvestigationActions wsId={wsId} run={r} />
       <div id="run-grounding" tabIndex={-1}><RunGrounding wsId={wsId} runId={runId} refreshKey={r.tasks.map(t=>`${t.key}:${t.status}`).join("|")} onRecheck={() => void run.reload()} /></div>
+      <ModelFallbacks fallbacks={r.model_fallbacks} />
       {pending.length > 0 && <Notice tone="warning">{pending.length} approval{pending.length > 1 ? "s" : ""} waiting — see the Approvals panel.</Notice>}
       {pinnedContext && <Card title={`Analysis context · ${pinnedContext.definition?.key ?? "saved"} v${pinnedContext.definition?.version ?? "?"}`}>
         <p><strong>Purpose:</strong> {pinnedContext.spec?.purpose}</p>

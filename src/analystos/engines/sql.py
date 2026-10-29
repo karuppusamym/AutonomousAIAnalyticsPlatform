@@ -9,6 +9,7 @@ the connection first and passes the driver query timeout in the URL.
 from __future__ import annotations
 
 import contextlib
+import re
 import threading
 import time
 from typing import Any
@@ -67,7 +68,7 @@ def cancel_running(query_id: str) -> bool:
     statement starts) and the request is re-sent until the statement has ended (about 10 s at most)."""
     with _running_lock:
         conn = _running.get(query_id)
-        cancel = getattr(conn, "cancel_safe", None) or getattr(conn, "cancel", None)  # psycopg >= 3.2: cancel_safe
+        cancel = _canceller(conn)
         if conn is None or not callable(cancel):
             return False
         _cancelled.add(query_id)
@@ -86,6 +87,15 @@ def cancel_running(query_id: str) -> bool:
 
     threading.Thread(target=keep_cancelling, daemon=True, name=f"cancel-{query_id[:20]}").start()
     return True
+
+
+def _canceller(conn: Any) -> Any:
+    """The driver's cancel call: psycopg >= 3.2 ``cancel_safe`` / ``cancel``; pymssql keeps it on the inner
+    ``_mssql`` connection (FreeTDS ``dbcancel``, which may be called while another thread waits on the batch)."""
+    if conn is None:
+        return None
+    return (getattr(conn, "cancel_safe", None) or getattr(conn, "cancel", None)
+            or getattr(getattr(conn, "_conn", None), "cancel", None))
 
 
 def _raise_if_cancelled(query_id: str | None) -> None:
@@ -202,10 +212,39 @@ def run_postgres(url: str, sql: str, max_rows: int, timeout: int, role: str | No
     return columns, rows
 
 
+# SQL Server message numbers (sys.messages) and DB-Library client codes pymssql reports as ``args[0]``. pymssql
+# raises OperationalError for most server errors, so the class name alone would call a refusal an outage.
+MSSQL_DENIED = {229, 230, 262, 297, 300, 916, 15247}
+MSSQL_TIMEOUT = {20003}
+MSSQL_UNAVAILABLE = {20002, 20004, 20006, 20009, 20047, 4060, 18456}
+
+
+_DBLIB = re.compile(r"DB-Lib error message (\d+), severity \d+:")
+
+
+def _driver_error(exc: BaseException) -> tuple[set[int], str]:
+    """(SQL Server / DB-Library error numbers, first line of the server's message) for a driver error,
+    secret-free. pymssql puts the last code in ``args[0]`` and every DB-Library code in the message (a timeout is
+    20003 followed by 20047 "DBPROCESS is dead")."""
+    orig = getattr(exc, "orig", None) or exc
+    args = getattr(orig, "args", ())
+    if type(orig).__module__.startswith("pymssql") and len(args) >= 2 and isinstance(args[0], int):
+        msg = args[1].decode("utf-8", "replace") if isinstance(args[1], (bytes, bytearray)) else str(args[1])
+        numbers = {args[0], *(int(n) for n in _DBLIB.findall(msg))}
+        lines = [ln.strip() for ln in _DBLIB.sub("\n", msg).splitlines()
+                 if ln.strip() and not ln.strip().startswith("General SQL Server error")]
+        return numbers, (lines[0] if lines else msg.strip())[:500]
+    return set(), first_line(orig)
+
+
 def run_session_sql(url: str, sql: str, max_rows: int, session_sql: list[str] | tuple[str, ...] = (), *,
                     sink: Any | None = None, identity_sql: IdentitySQL = (), query_id: str | None = None) -> Rows:
     """Non-postgres pushdown: the catalog's read-only/timeout session statements (if the kind
-    has any) run on the same connection first; the driver URL carries the query timeout."""
+    has any) run on the same connection first; the driver URL carries the query timeout.
+
+    A connection is closed instead of pooled when it carried session identity (SQL Server's read-only
+    SESSION_CONTEXT keys last for the session and cannot be reset, so the next user would inherit or fail on
+    them) or when the statement failed or was cancelled (the TDS connection may be dead or mid-batch)."""
     engine = get_engine(url)
     cancelled = False
     try:
@@ -213,6 +252,7 @@ def run_session_sql(url: str, sql: str, max_rows: int, session_sql: list[str] | 
             dbapi = conn.connection
             cur = dbapi.cursor()
             _track(query_id, _driver(dbapi))
+            discard = bool(identity_sql)
             try:
                 for stmt in session_sql:
                     cur.execute(stmt)
@@ -222,21 +262,34 @@ def run_session_sql(url: str, sql: str, max_rows: int, session_sql: list[str] | 
                 cur.execute(sql)
                 columns = [d[0] for d in (cur.description or [])]
                 raw_rows = _fetch(cur, max_rows, sink)
+            except BaseException:
+                discard = True
+                raise
             finally:
                 cancelled = _untrack(query_id)
-                try:
-                    dbapi.rollback()
-                finally:
-                    cur.close()
+                if discard or cancelled:
+                    with contextlib.suppress(Exception):
+                        cur.close()
+                    conn.invalidate()
+                else:
+                    try:
+                        dbapi.rollback()
+                    finally:
+                        cur.close()
     except AnalystOSError:
         raise
     except Exception as exc:  # noqa: BLE001 - driver specific
         if cancelled:
             raise RunCancelled("The query was cancelled.") from None
-        text_ = first_line(getattr(exc, "orig", None) or exc)
-        if "timeout" in text_.lower() or "timed out" in text_.lower():
+        numbers, text_ = _driver_error(exc)
+        if numbers & MSSQL_TIMEOUT or "timeout" in text_.lower() or "timed out" in text_.lower():
             raise QueryTimeout("The query exceeded the timeout. Aggregate more or filter the data.") from None
-        if exc.__class__.__name__ in ("OperationalError", "InterfaceError"):
+        if numbers & MSSQL_DENIED:
+            raise Forbidden(f"The source refused the query: {text_}") from None
+        if numbers & MSSQL_UNAVAILABLE or (not numbers and exc.__class__.__name__ in ("OperationalError",
+                                                                                      "InterfaceError")):
             raise UpstreamUnavailable(f"The source database is unavailable: {text_}") from None
         raise InvalidInput(f"The query failed in the source: {text_}") from None
+    if cancelled:  # the cancel landed and the driver ended the batch without an error
+        raise RunCancelled("The query was cancelled.")
     return columns, [[json_safe(v) for v in r] for r in raw_rows]

@@ -16,11 +16,16 @@ execute():
        pushdown tsql   -> connector URL with the driver query timeout, plus the source-kind
                           catalog's session statements (connectors/kinds.py);
        pushdown duckdb -> the DuckDB engine on the file: read_only, external access off;
+       pushdown trino  -> the Trino engine: a READ ONLY transaction the driver opens, the timeout as a
+                          session property, cancel through the cursor (engines/trino.py);
        federated       -> (cross-source runs, P4-E03) validated against every source's scope in the
                           duckdb dialect; each source's leg (the referenced columns of a referenced
                           table) is itself run through execute() with that source's own bound scope,
                           identity and audit row; the statement then runs on the sandboxed in-memory
-                          DuckDB federation engine over those legs only;
+                          DuckDB federation engine over those legs only. When every source is a Trino
+                          catalog of one cluster and identity (TRN-004), the statement is validated in
+                          the trino dialect instead, each table is prefixed with its source's catalog
+                          and it runs once on Trino, read-only (no legs leave Trino);
      each path is an `Engine` (engines/, P4-E01); a connector whose catalog kind cannot be pushed
      down is refused (staged kinds only ever run in the analytics DB);
   6. JSON-safe values, result hash, audit row (QueryExecution) for every attempt in its own short
@@ -61,11 +66,12 @@ from analystos.core.logging import get_logger
 from analystos.db.models import QueryExecution, Source, SourceAsset, User, Workspace
 from analystos.engines.base import Limits, ReaderIdentity
 from analystos.engines.sql import run_postgres, run_session_sql
+from analystos.engines.trino import cluster_of, qualify_catalogs, run_trino
 from analystos.gateway.cache import QueryCache
-from analystos.gateway.cost import EXPLAINERS, over_budget, row_cap_estimate
+from analystos.gateway.cost import EXPLAINERS, over_budget, row_cap_estimate, trino_estimate
 from analystos.gateway.handles import ResultSink, uri_for
 from analystos.gateway.types import CostEstimate, QueryResult, ValidatedSQL
-from analystos.gateway.validator import FEDERATION_DIALECT, validate_federated_sql, validate_sql
+from analystos.gateway.validator import federation_dialect, validate_federated_sql, validate_sql
 from analystos.gateway.values import json_safe
 
 __all__ = ["PREVIEW_ROWS", "QueryGateway", "json_safe", "result_hash"]
@@ -109,7 +115,7 @@ class _Runner:
         self._task_id = task_id
         self.source_id = source_id
         self.federated = federated
-        self.dialect = FEDERATION_DIALECT if federated else scope.source_dialects.get(source_id or "", "postgres")
+        self.dialect = federation_dialect(scope) if federated else scope.source_dialects.get(source_id or "", "postgres")
 
     def __call__(self, sql: str, *, purpose: str = "analysis", max_rows: int | None = None,
                  retain_rows: bool = True, use_cache: bool = True) -> QueryResult:
@@ -158,7 +164,8 @@ class QueryGateway:
     def run_sql_for(self, scope: DataScope, *, actor: str, run_id: str | None = None, task_id: str | None = None,
                     source_id: str | None = None, federated: bool = False) -> _Runner:
         """A runner bound to one source of the scope, or (``federated=True``, cross-source runs) to the
-        whole scope: its statements are duckdb-dialect SQL over assets of any of the scope's sources."""
+        whole scope: its statements are `federation_dialect(scope)` SQL (duckdb, or trino when every source is a
+        Trino catalog) over assets of any of the scope's sources."""
         sources = sorted(set(scope.source_ids) | set(scope.asset_sources.values()))
         if federated:
             if source_id is not None:
@@ -370,6 +377,9 @@ class QueryGateway:
         """Per dialect (gateway/cost.py): staged sources and PostgreSQL pushdown run EXPLAIN on the same
         read-only path as the query; a dialect without an explainer is row-cap only."""
         dialect = "postgres" if source["execution_mode"] == "staged" else validated.dialect
+        if dialect == "trino":
+            _, rows = self._run(source, validated, 1, timeout, sql="EXPLAIN (FORMAT JSON) " + validated.executable_sql)
+            return trino_estimate(rows[0][0] if rows and rows[0] else None)
         explainer = EXPLAINERS.get(dialect)
         if explainer is None or dialect != "postgres":
             return row_cap_estimate(max_rows)
@@ -523,6 +533,8 @@ class QueryGateway:
             url = connector.query_url(timeout) if hasattr(connector, "query_url") else connector.sqlalchemy_url()
             session_sql = connector.session_statements(timeout) if hasattr(connector, "session_statements") else []
             return self._run_generic(url, statement, max_rows, session_sql, identity_sql=identity, **stream)
+        if dialect == "trino":
+            return run_trino(connector.sqlalchemy_url(), statement, max_rows, timeout, **stream)
         if dialect == "duckdb":
             path = str((getattr(connector, "config", None) or {}).get("path") or "")
             columns, rows = engine_for_kind(source["kind"], dialect).execute_read(
@@ -575,6 +587,10 @@ class QueryGateway:
             if hit is not None and isinstance(hit.get("columns"), list) and isinstance(hit.get("rows"), list):
                 return self._finish(audit, validated, hit["columns"], hit["rows"], bool(hit.get("truncated")), started,
                                     cache_hit=True, hash_=hit.get("result_hash"))
+        if validated.dialect == "trino":
+            return self._federate_on_trino(scope, validated, sources, audit, started, eff_rows=eff_rows,
+                                           eff_timeout=eff_timeout, retain_rows=retain_rows,
+                                           max_scan_bytes=max_scan_bytes, cache_key=key)
         leg_cap = min(x for x in (scope.max_rows, self.settings.query_max_rows) if x is not None and x > 0)
         try:
             tables: dict[str, Any] = {}
@@ -624,6 +640,72 @@ class QueryGateway:
             self.cache.set(key, {"columns": result.columns, "rows": result.rows, "truncated": result.truncated,
                                  "result_hash": result.result_hash})
         return result
+
+    def _federate_on_trino(self, scope: DataScope, validated: ValidatedSQL, sources: dict[str, dict[str, Any]],
+                           audit: dict[str, Any], started: float, *, eff_rows: int, eff_timeout: int, retain_rows: bool,
+                           max_scan_bytes: int | None, cache_key: str | None) -> QueryResult:
+        """TRN-004: every source is a Trino catalog queried in place. The statement was validated in the trino
+        dialect against each source's scope; it runs once on Trino with every table prefixed by its source's
+        catalog, so the sources must share one cluster and one identity (otherwise each would need its own)."""
+        try:
+            for sid, src in sources.items():
+                if src["kind"] != "trino" or src["execution_mode"] != "pushdown":
+                    raise InvalidInput(f"Source {sid} is not a Trino catalog queried in place; it cannot join a "
+                                       "federated Trino statement")
+                if not (src["config"] or {}).get("catalog"):
+                    raise InvalidInput(f"Source {sid} names no Trino catalog (config.catalog)")
+            clusters = {cluster_of(src["config"], src.get("secret_ref")) for src in sources.values()}
+            if len(clusters) != 1:
+                raise InvalidInput("These Trino sources are on different clusters or use different identities, so one "
+                                   "statement cannot read them all; query each source separately.")
+            catalogs = {asset.lower(): sources[sid]["config"]["catalog"] for asset, sid in validated.asset_sources.items()}
+            statement = validated.model_copy(update={"executable_sql": qualify_catalogs(validated.executable_sql,
+                                                                                         catalogs)})
+        except AnalystOSError as exc:
+            self._reject(audit, exc, started)
+            raise
+        audit["executed_sql"] = statement.executable_sql
+        first = sources[sorted(sources)[0]]
+        estimate = self._check_budget(scope, first, statement, audit, started, eff_timeout, max_scan_bytes)
+        try:
+            connector = self.connector_factory(_SourceView(first), self.settings)
+            columns, rows = run_trino(connector.sqlalchemy_url(), statement.executable_sql, eff_rows, eff_timeout,
+                                      query_id=audit["id"])
+        except QueryTimeout as exc:
+            self._fail(audit, "timeout", exc, started)
+            raise
+        except AnalystOSError as exc:
+            self._fail(audit, "error", exc, started)
+            raise
+        except Exception as exc:  # noqa: BLE001 - unexpected; audit then surface as upstream failure
+            err = UpstreamUnavailable(f"Federated query failed: {exc.__class__.__name__}")
+            self._fail(audit, "error", err, started)
+            raise err from exc
+        truncated = len(rows) > eff_rows
+        result = self._finish(audit, statement, columns, rows[:eff_rows], truncated, started, cache_hit=False,
+                              retain_rows=retain_rows, estimate=estimate)
+        self._link_sources(scope, audit, validated)
+        if cache_key is not None and self.cache is not None:
+            self.cache.set(cache_key, {"columns": result.columns, "rows": result.rows, "truncated": result.truncated,
+                                       "result_hash": result.result_hash})
+        return result
+
+    def _link_sources(self, scope: DataScope, audit: dict[str, Any], validated: ValidatedSQL) -> None:
+        """Lineage of an in-place federated result: the query read each table, from its own source."""
+        from analystos.artifacts.registry import link
+
+        session = self.session_factory()
+        try:
+            for asset, source_id in validated.asset_sources.items():
+                link(session, scope.workspace_id, ("query", audit["id"]), "reads", ("table", asset), run_id=audit["run_id"])
+                link(session, scope.workspace_id, ("query", audit["id"]), "from_source", ("source", source_id),
+                     run_id=audit["run_id"])
+            session.commit()
+        except Exception as exc:  # noqa: BLE001 - lineage never withholds a result already audited
+            session.rollback()
+            _log.warning("could not record federated lineage for %s: %s", audit["id"], exc.__class__.__name__)
+        finally:
+            session.close()
 
     def _link_legs(self, scope: DataScope, audit: dict[str, Any], legs: list[tuple[str, str, str]]) -> None:
         """Lineage of a multi-source result: the joined query derives from every leg handle, and each leg

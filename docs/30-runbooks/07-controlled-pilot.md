@@ -66,8 +66,10 @@ wins; a group removed at the IdP revokes, at the next sign-in, exactly the membe
 
 Only kinds with real-engine tests in this repository can be certified here (PostgreSQL, SQLite, DuckDB, file
 sources; MySQL with Docker). ServiceNow has only the Table-API mock and is never certified by this script;
-Snowflake, Databricks, SQL Server and the other warehouses need a live instance and a live test before a pilot
-relies on them.
+Snowflake, Databricks and the other warehouses need a live instance and a live test before a pilot relies on them.
+SQL Server is certified with the S02-T6 kit against the compose `mssql` profile (`scripts/mssql_cert_seed.py`, then
+`analystos certify-connector --kind sqlserver --dsn-ref env:ANALYSTOS_CERT_MSSQL_DSN --schemas cert`); re-run it
+against the pilot's own server and login before relying on it.
 
 ## Recovery
 

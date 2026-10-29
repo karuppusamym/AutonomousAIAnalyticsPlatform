@@ -61,6 +61,7 @@ def test_migration_0072_applies_reverts_and_passes_the_rls_check(migrated_db):
     url, cfg = migrated_db
     engine = create_engine(url)
     try:
+        command.downgrade(cfg, "0072_platform_ops")  # later migrations step back first; this one is checked on its own
         with engine.connect() as c:
             assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0072_platform_ops"
             cols = {r[0] for r in c.execute(text("SELECT column_name FROM information_schema.columns "
@@ -69,15 +70,16 @@ def test_migration_0072_applies_reverts_and_passes_the_rls_check(migrated_db):
             assert c.execute(text("SELECT reloptions FROM pg_class WHERE relname = 'cost_ledger'")).scalar() == \
                 ["security_invoker=true"]
             assert c.execute(text("SELECT count(*) FROM model_matrix_result")).scalar() == 0
-            result = rls_check(c)
-        assert result["ok"], result["problems"]
-        command.downgrade(cfg, "-1")
+        command.downgrade(cfg, "0071_triggers")
         with engine.connect() as c:
             assert c.execute(text("SELECT to_regclass('cost_ledger')")).scalar() is None
             assert c.execute(text("SELECT to_regclass('model_matrix_result')")).scalar() is None
         command.upgrade(cfg, "head")
         with engine.connect() as c:
             assert c.execute(text("SELECT to_regclass('cost_ledger')")).scalar() == "cost_ledger"
+            # The RLS check compares the models with the database, so it runs at head: later migrations add tables.
+            result = rls_check(c)
+        assert result["ok"], result["problems"]
     finally:
         engine.dispose()
 

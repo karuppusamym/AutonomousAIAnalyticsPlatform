@@ -10,6 +10,7 @@
 #   graph     Neo4j projection (+ ANALYSTOS_GRAPH_ENABLED=true)
 #   demo      the ServiceNow mock source (its own small image)
 #   sandbox   the container sandbox image (build only)
+#   federation Trino over a demo Postgres + TPC-H (TRN-004; docs/30-runbooks/10-trino-federation.md)
 #   pooled    PgBouncer (+ ANALYSTOS_PG_POOLER=pgbouncer:5432 ANALYSTOS_DB_TRANSACTION_POOLER=true)
 #   isolated  the credential-free compute-py / compute-ml pools on an internal network (deploy/compose/isolated.env)
 #
@@ -309,6 +310,24 @@ services:
     profiles: ["demo"]
     ports: ["8090:8090"]
 
+  # SQL Server 2022 Developer edition for the live connector certification and the session-identity test
+  # (docs/evidence/connectors/mssql-*.md). The SA password comes from the environment, never this file:
+  #   docker compose --env-file ~/.analystos/mssql.env --profile mssql up -d mssql
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: analystos-mssql
+    profiles: ["mssql"]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${ANALYSTOS_MSSQL_SA_PASSWORD:-}
+    ports: ["${ANALYSTOS_MSSQL_PORT:-14330}:1433"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 10s
+      retries: 30
+      start_period: 20s
+
   # Transaction-mode pooler (spec v3 §8), off by default: `--profile pooled`. Clients may open up to
   # MAX_CLIENT_CONN; Postgres sees at most DEFAULT_POOL_SIZE per (database, user) and
   # MAX_DB_CONNECTIONS per database. Logins are checked against pg_shadow through auth_query, so the
@@ -343,6 +362,47 @@ services:
       interval: 5s
       retries: 20
 
+  # Trino federation (TRN-004), off by default: `--profile federation`. Trino reads a demo Postgres (catalog pg,
+  # SELECT-only login) and generated TPC-H data (catalog tpch); `memory` is writable so the certification can
+  # prove the gateway's READ ONLY transaction refuses a write. Register one source of kind trino per catalog
+  # (execution_mode pushdown); a federated query over them runs on Trino (gateway/service.py). Bound to
+  # loopback: no authentication is configured (dev only, docs/30-runbooks/10-trino-federation.md).
+  trino-source-pg:
+    image: pgvector/pgvector:pg16
+    container_name: analystos-trino-source-pg
+    profiles: ["federation"]
+    environment:
+      POSTGRES_USER: analystos
+      POSTGRES_PASSWORD: analystos
+      POSTGRES_DB: analystos
+    ports: ["127.0.0.1:${ANALYSTOS_TRINO_PG_PORT:-15434}:5432"]
+    volumes:
+      - ./deploy/trino/source-pg:/docker-entrypoint-initdb.d:ro
+      - trinopgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U analystos -d trino_demo || exit 1"]
+      interval: 5s
+      retries: 30
+
+  trino:
+    image: trinodb/trino:476
+    container_name: analystos-trino
+    profiles: ["federation"]
+    depends_on:
+      trino-source-pg: {condition: service_healthy}
+    environment:
+      TRINO_PG_HOST: ${ANALYSTOS_TRINO_PG_HOST:-trino-source-pg}
+      TRINO_PG_PORT: ${ANALYSTOS_TRINO_PG_INNER_PORT:-5432}
+      TRINO_PG_DATABASE: trino_demo
+      TRINO_PG_USER: trino_ro
+      TRINO_PG_PASSWORD: ${ANALYSTOS_TRINO_PG_PASSWORD:-trino_ro}
+    ports: ["127.0.0.1:${ANALYSTOS_TRINO_PORT:-8086}:8080"]
+    volumes: [./deploy/trino/catalog:/etc/trino/catalog:ro]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/v1/info | grep -q '\"starting\":false' || exit 1"]
+      interval: 5s
+      retries: 60
+
   # Image for ANALYSTOS_SANDBOX_ISOLATION=container (P4-02): build it with
   #   docker compose --profile sandbox build sandbox
   # A worker next to Docker then runs each sandboxed execution as `docker run --network none --read-only`
@@ -367,3 +427,4 @@ volumes:
   pgdata:
   superset-home:
   neo4jdata:
+  trinopgdata:
