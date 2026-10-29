@@ -974,7 +974,7 @@ export interface AskDecisionSummary {
 }
 
 export interface AskPromotion {
-  target: "verified_query" | "metric" | "monitor" | "dashboard" | "investigate" | "report" | "schedule" | string;
+  target: "verified_query" | "metric" | "monitor" | "dashboard" | "draft" | "investigate" | "report" | "schedule" | string;
   id: string;
   status: string;
   name?: string;
@@ -3886,7 +3886,9 @@ export interface BuilderChart {
   dataset_ref: { kind: string; name?: string; version?: number; handle_id?: string };
   encoding: { x?: string | null; y: string[]; series?: string | null; color?: string | null; aggregation?: string };
   query?: { version: number; compare: string };
-  preview?: { columns?: string[]; rows?: unknown[][] };
+  preview?: { columns?: string[]; rows?: unknown[][]; truncated?: boolean; row_count?: number };
+  description?: string;
+  provenance?: { sources: string[]; query_ids?: string[]; created_by: string; created_via?: string; turn_id?: string | null };
 }
 export interface BuilderDocument {
   schema_version?: "dashboard.v2"; id: string; title: string; description?: string; audience?: string; sensitivity?: string;
@@ -3930,15 +3932,32 @@ export interface GroupingPlan {
   dashboards: GroupingItem[]; to_change: number;
 }
 export interface GroupingRequested { approval_id: string; status: string; risk_tier: string; payload_hash: string; changes: GroupingChange[]; expires_at: string }
-export interface BuilderRefusal { index: number; op: string; reason: string; suggestion?: BuilderOp }
+/** A question the platform could not ground: the clarifying reply and questions it can answer instead (CONV-01). */
+export interface BuilderClarify { clarify: string; kind?: string; examples?: string[] }
+export interface BuilderRefusal { index: number; op: string; reason: string; suggestion?: BuilderOp | BuilderClarify }
 export interface BuilderTurn {
   status: "applied" | "refused" | "unchanged" | "proposed" | "no_ops";
   dashboard: BuilderDashboard;
   proposal?: { ops: BuilderOp[]; answered_by: string; notes: string[]; model: string | null };
   refused?: BuilderRefusal[];
   deferred?: BuilderOp[];
+  /** The applied ops; a chart from a question carries what answered it in `result`. */
+  applied?: (BuilderOp & { result?: Partial<DraftTile> })[];
   forked_from?: string;
   approval?: { id: string; status: string; risk_tier: string };
+  clarify?: BuilderClarify;
+}
+/** One planned tile of a draft (CONV-02): built, or listed with the reason it could not be. */
+export interface DraftTile { tile: string; kind: "kpi" | "chart"; title: string; question?: string; reason?: string; clarify?: string;
+  answered_by?: string | null; governance?: string; query_id?: string | null; chart_type?: string; rationale?: string; element?: string }
+export interface BuilderDraft {
+  status: "created" | "clarify";
+  dashboard?: BuilderDashboard;
+  clarify?: string;
+  examples?: string[];
+  plan: { title: string; audience: string; grounded_on: string; ranked_by: string; topic: string[] };
+  built: DraftTile[];
+  failed: DraftTile[];
 }
 export interface BuilderVersion { version: number; diff: BuilderOp[]; content_hash: string; created_by: string | null; created_at: string | null }
 
@@ -4583,6 +4602,8 @@ export const api = {
     get("/api/v2/workspaces/{workspace_id}/dashboards", { path: W(ws) }) as Promise<BuilderSummary[]>,
   createBuilderDashboard: (ws: string, document: BuilderDocument) =>
     post("/api/v2/workspaces/{workspace_id}/dashboards", { path: W(ws), body: { document: document as unknown as Dict } }) as Promise<BuilderDashboard>,
+  builderDraft: (ws: string, body: { prompt: string; title?: string | null }) =>
+    post("/api/v2/workspaces/{workspace_id}/dashboards/draft", { path: W(ws), body }) as Promise<BuilderDraft>,
   builderDashboard: (id: string) =>
     get("/api/v2/dashboards/{dashboard_id}", { path: { dashboard_id: id } }) as Promise<BuilderDashboard>,
   builderMessage: (id: string, body: { text: string; focus?: string | null; base_version?: number | null; apply?: boolean }) =>

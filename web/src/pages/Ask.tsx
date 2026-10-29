@@ -5,6 +5,7 @@ import {
   type ChartHint, type ConversationDetail, type Dict, type QueryResult, type SqlExplanation,
 } from "../api";
 import { ConversationBar } from "../components/ConversationBar";
+import { AddAnswerToDashboard } from "../components/DashboardDraft";
 import { AnalystAnswer } from "../components/AnalystAnswer";
 import { ChartView } from "../components/Chart";
 import { CitationsPanel } from "../components/Citations";
@@ -208,6 +209,7 @@ function PromoteBar({ turn, role, onRecorded }: { turn: AskTurn; role: string | 
   const act = useAction();
   const [monitorOpen, setMonitorOpen] = useState(false);
   const [investigationOpen, setInvestigationOpen] = useState(false);
+  const [dashboardOpen, setDashboardOpen] = useState(false);
   const [objective, setObjective] = useState(turn.question);
   const [kind, setKind] = useState<MonitorKind>("metric_drift");
   const [op, setOp] = useState(">");
@@ -237,11 +239,15 @@ function PromoteBar({ turn, role, onRecorded }: { turn: AskTurn; role: string | 
         {can("verified_query") && <button type="button" className="btn btn-sm" disabled={act.busy} onClick={() => void promote({ target: "verified_query" })}>{PROMOTE_LABELS.verified_query}</button>}
         {can("metric") && <button type="button" className="btn btn-sm" disabled={act.busy} onClick={() => void promote({ target: "metric" })}>{PROMOTE_LABELS.metric}</button>}
         {can("monitor") && <button type="button" className="btn btn-sm" disabled={act.busy} aria-expanded={monitorOpen} onClick={() => setMonitorOpen((o) => !o)}>{PROMOTE_LABELS.monitor}</button>}
-        {can("dashboard") && <button type="button" className="btn btn-sm" disabled={act.busy} onClick={() => void promote({ target: "dashboard" })}>{PROMOTE_LABELS.dashboard}</button>}
+        {can("dashboard") && <button type="button" className="btn btn-sm" disabled={act.busy} aria-expanded={dashboardOpen} onClick={() => setDashboardOpen((o) => !o)}>{PROMOTE_LABELS.dashboard}</button>}
         {can("report") && <button type="button" className="btn btn-sm" disabled={act.busy} onClick={() => void promote({ target: "report" })}>{PROMOTE_LABELS.report}</button>}
         {can("investigate") && <button type="button" className="btn btn-sm btn-primary" disabled={act.busy} aria-expanded={investigationOpen} onClick={() => setInvestigationOpen((open) => !open)}>{PROMOTE_LABELS.investigate}</button>}
       </div>
       {hint && <p className="small muted" role="note">{hint}</p>}
+      {dashboardOpen && (
+        <AddAnswerToDashboard turn={turn} wsId={wsId} onRecorded={onRecorded} onClose={() => setDashboardOpen(false)}
+          onPublish={() => void promote({ target: "dashboard" })} />
+      )}
       {investigationOpen && (
         <form className="form" aria-label="Plan an investigation" onSubmit={(e) => {
           e.preventDefault();
@@ -295,6 +301,7 @@ function PromoteBar({ turn, role, onRecorded }: { turn: AskTurn; role: string | 
               {p.note && <span className="muted"> {p.note}</span>}
               {p.target === "monitor" && <Link to={to.monitoring(wsId)}>Open monitors</Link>}
               {p.target === "report" && <Link to={to.reports(wsId, p.id)}>Open the report</Link>}
+              {p.target === "draft" && <Link to={to.outputs(wsId, { type: "dashboard", dashboard: p.id })}>Open the draft</Link>}
               {p.target === "dashboard" && p.status === "published" && (
                 p.url && /^https?:\/\//.test(p.url) ? <a href={p.url} target="_blank" rel="noopener noreferrer">Open the dashboard</a>
                   : <Link to={to.studio(wsId, p.id)}>Open the chart</Link>)}

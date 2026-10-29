@@ -231,6 +231,9 @@ describe("Ask page (P4-U02)", () => {
     expect(JSON.parse(String(init.body))).toEqual({ target: "monitor", kind: "metric_threshold", op: ">", value: 150, grain: "week" });
 
     fireEvent.click(within(promote).getByRole("button", { name: "Add to dashboard" }));
+    const where = within(promote).getByRole("form", { name: "Add to dashboard" });
+    fireEvent.click(within(where).getByLabelText("Straight to the BI tool (needs approval)"));
+    fireEvent.click(within(where).getByRole("button", { name: "Request approval" }));
     expect(await within(promote).findByText(/Waiting for approval/)).toBeTruthy();
     fireEvent.click(within(promote).getByRole("button", { name: "Investigate why" }));
     const investigation = within(promote).getByRole("form", { name: "Plan an investigation" });

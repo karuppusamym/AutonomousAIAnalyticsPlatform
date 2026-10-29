@@ -13,6 +13,7 @@ published | failed | rolled_back. Publishing is a side effect bound to an approv
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -77,7 +78,8 @@ def view(art: Artifact) -> dict[str, Any]:
             "updated_at": art.updated_at.isoformat() if art.updated_at else None}
 
 
-def create(session: Session, user: User, workspace_id: str, raw: dict[str, Any]) -> Artifact:
+def create(session: Session, user: User, workspace_id: str, raw: dict[str, Any], *,
+           diff: list[dict[str, Any]] | None = None) -> Artifact:
     from analystos.governance.audit import audit
     from analystos.governance.policy import require_role
 
@@ -95,8 +97,9 @@ def create(session: Session, user: User, workspace_id: str, raw: dict[str, Any])
     session.add(art)
     session.flush()
     session.add(ArtifactVersion(artifact_id=art.id, version=1, content=content, content_hash=art.content_hash,
-                                created_by=f"user:{user.id}", diff=[{"op": "create"}]))
-    _event(session, art, "dashboard.created", {"builder": True}, user)
+                                created_by=f"user:{user.id}", diff=diff or [{"op": "create"}]))
+    origin = ((diff or [{}])[0].get("origin") or {}).get("kind")
+    _event(session, art, "dashboard.created", {"builder": True, **({"origin": origin} if origin else {})}, user)
     audit(f"user:{user.id}", "dashboard.created", workspace_id=workspace_id, target=art.id, session=session)
     return art
 
@@ -148,7 +151,7 @@ def _editable(session: Session, user: User, art: Artifact, base_version: int | N
 
 
 def apply(session: Session, user: User, artifact_id: str, raw_ops: list[dict[str, Any]], *, base_version: int | None = None,
-          origin: dict[str, Any] | None = None) -> dict[str, Any]:
+          origin: dict[str, Any] | None = None, ask_fn: Any = None) -> dict[str, Any]:
     """Validate and apply an op batch; returns {status: applied|refused|unchanged, dashboard, refused, deferred}."""
     from analystos.dashboards.env import op_env
     from analystos.governance.audit import audit
@@ -162,7 +165,7 @@ def apply(session: Session, user: User, artifact_id: str, raw_ops: list[dict[str
         raise Conflict(f"dashboard is at version {art.version}, not {base_version}; reload and retry",
                        details={"version": art.version})
     doc = document(art)
-    result: OpResult = apply_ops(doc, ops, op_env(session, user, art.workspace_id, doc))
+    result: OpResult = apply_ops(doc, ops, op_env(session, user, art.workspace_id, doc, ask_fn=ask_fn))
     out: dict[str, Any] = {"refused": [r.as_dict() for r in result.refused],
                            "deferred": [d.model_dump(mode="json") for d in result.deferred]}
     if not result.ok:
@@ -178,7 +181,7 @@ def apply(session: Session, user: User, artifact_id: str, raw_ops: list[dict[str
               details={"version": target.version, "ops": [o["op"] for o in result.applied],
                        **({"forked_from": art.id} if target is not art else {})}, session=session)
     session.flush()
-    out.update(status="applied" if result.changed else "unchanged", dashboard=view(target),
+    out.update(status="applied" if result.changed else "unchanged", dashboard=view(target), applied=result.applied,
                **({"forked_from": art.id} if target is not art else {}))
     if result.deferred:
         req = result.deferred[0]
@@ -387,14 +390,14 @@ def execute_publish(session: Session, user: User, artifact_id: str, approval_id:
 
 
 # ------------------------------------------------------------------------------------------- conversation
-def _call_ctx(session: Session, workspace_id: str, artifact_id: str) -> Any:
+def _call_ctx(session: Session, workspace_id: str, artifact_id: str, prompt_version: str = "dashboard_design.v1") -> Any:
     from analystos.governance.policy import get_workspace, load_policy
     from analystos.llm.router import CallContext
 
     workspace = get_workspace(session, workspace_id)
     policy = load_policy(session, workspace)
     return CallContext.for_policy(policy, workspace_id=workspace_id, task_id=artifact_id, agent_id="dashboard_builder",
-                                  prompt_version="dashboard_design.v1", tenant_id=workspace.tenant_id,
+                                  prompt_version=prompt_version, tenant_id=workspace.tenant_id,
                                   policy_version=workspace.policy_version)
 
 
@@ -405,7 +408,7 @@ def _router() -> Any:
 
 
 def converse(session: Session, user: User, artifact_id: str, utterance: str, *, focus: str | None = None,
-             base_version: int | None = None, apply_now: bool = True, router: Any = None) -> dict[str, Any]:
+             base_version: int | None = None, apply_now: bool = True, router: Any = None, ask_fn: Any = None) -> dict[str, Any]:
     """One builder chat turn: the `dashboard_design` ladder proposes ops, the engine decides."""
     from analystos.dashboards.design import design
     from analystos.dashboards.env import latest_metrics
@@ -421,5 +424,108 @@ def converse(session: Session, user: User, artifact_id: str, utterance: str, *, 
     if not proposal.ops or not apply_now:
         return {**out, "status": "proposed" if proposal.ops else "no_ops", "dashboard": view(art)}
     applied = apply(session, user, artifact_id, proposal.as_dict()["ops"], base_version=base_version,
-                    origin={"utterance": utterance[:500], "answered_by": proposal.answered_by})
-    return {**out, **applied}
+                    origin={"utterance": utterance[:500], "answered_by": proposal.answered_by}, ask_fn=ask_fn)
+    clarify = next((r["suggestion"] for r in applied.get("refused") or [] if (r.get("suggestion") or {}).get("clarify")), None)
+    return {**out, **applied, **({"clarify": clarify} if clarify else {})}
+
+
+# ------------------------------------------------------------------------------------------- drafts (CONV-02/03)
+def _free_doc_id(session: Session, workspace_id: str, title: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")[:50] or "dashboard"
+    base = base if base[0].isalpha() else f"d_{base}"
+    taken = set(session.scalars(select(Artifact.name).where(Artifact.workspace_id == workspace_id, Artifact.type == "dashboard",
+                                                            Artifact.name.like(f"dashboard:{base}%"))))
+    out, n = base, 2
+    while f"dashboard:{out}" in taken:
+        out, n = f"{base}_{n}", n + 1
+    return out
+
+
+def create_draft(session: Session, user: User, workspace_id: str, prompt: str, *, title: str | None = None,
+                 router: Any = None, ask_fn: Any = None) -> dict[str, Any]:
+    """CONV-02: a draft dashboard (version 1) from one prompt. Every tile is a governed question; failed tiles
+    are listed with their reason. Nothing grounded -> a clarifying reply and no dashboard."""
+    from analystos.dashboards import drafts
+    from analystos.dashboards.env import op_env
+    from analystos.governance.policy import require_role
+
+    require_role(session, user, workspace_id, "editor")
+    prompt = (prompt or "").strip()
+    if not prompt:
+        raise InvalidInput("describe the dashboard you want")
+    ctx = drafts.gather(session, user, workspace_id)
+    plan = drafts.plan_draft(prompt, ctx)
+    if plan.clarify:
+        return {"status": "clarify", "clarify": plan.clarify, "examples": plan.examples, "plan": plan.as_dict(),
+                "built": [], "failed": []}
+    router = router if router is not None else _router()
+    order = drafts.rank(prompt, plan, router=router,
+                        call_ctx=_call_ctx(session, workspace_id, f"draft:{workspace_id}", drafts.PROMPT_VERSION))
+    if order:
+        plan = drafts.plan_draft(prompt, ctx, order=order)
+        plan.ranked_by = "llm_small"
+    doc = DashboardDoc(id=_free_doc_id(session, workspace_id, plan.title), title=(title or plan.title)[:300],
+                       description=f"Draft built from the request: {prompt}"[:2000], audience=plan.audience)  # type: ignore[arg-type]
+    doc, built, failed = drafts.build(doc, plan, op_env(session, user, workspace_id, doc, ask_fn=ask_fn))
+    if not built:
+        first = (failed[0].get("clarify") or failed[0]["reason"]) if failed else ""
+        return {"status": "clarify", "plan": plan.as_dict(), "built": [], "failed": failed,
+                "clarify": "None of the planned charts could be answered from governed data, so no dashboard was "
+                           f"created. {first}".strip()}
+    origin = {"kind": "prompt", "prompt": prompt[:500], "grounded_on": plan.grounded_on, "ranked_by": plan.ranked_by,
+              "built": [b["tile"] for b in built], "failed": [{"tile": f["tile"], "reason": f["reason"][:200]} for f in failed]}
+    art = create(session, user, workspace_id, doc.model_dump(mode="json"), diff=[{"op": "create", "origin": origin}])
+    session.flush()
+    return {"status": "created", "dashboard": view(art), "plan": plan.as_dict(), "built": built, "failed": failed}
+
+
+def answer_of_turn(turn: Any) -> dict[str, Any]:
+    """An Ask turn's stored answer in the shape `dashboards.questions` reads (no re-query)."""
+    prov = turn.provenance or {}
+    return {"status": "answered", "answered_by": turn.answered_by, "result": turn.result, "chart": turn.chart,
+            "semantic": prov.get("semantic"), "verified_query": turn.verified_query, "explanation": turn.explanation,
+            "governance": prov.get("governance")}
+
+
+def add_answer(session: Session, user: User, turn: Any, *, dashboard_id: str | None = None,
+               title: str | None = None) -> dict[str, Any]:
+    """CONV-03: an answered Ask turn as a recommended chart in a draft builder dashboard (a new one, or an existing
+    one by id; a published one forks a draft). Built from the stored answer and bound to its gateway execution."""
+    from analystos.dashboards.env import op_env
+    from analystos.dashboards.ops import NotGrounded, unique_id
+    from analystos.dashboards.questions import element_from_answer, sensitivity_lookup
+    from analystos.governance.policy import require_role
+
+    require_role(session, user, turn.workspace_id, "editor")
+    answer = answer_of_turn(turn)
+    assets = list((turn.result or {}).get("referenced_assets") or [])
+    try:
+        built = element_from_answer(answer, question=turn.question, actor=f"user:{user.id}", turn_id=turn.id,
+                                    sensitivity_of=sensitivity_lookup(session, turn.workspace_id, assets), kpi_doc=False)
+    except NotGrounded as exc:
+        raise InvalidInput(f"this answer cannot become a chart: {exc.reason}") from None
+    chart = built.element
+    origin = {"kind": "ask_turn", "turn_id": turn.id, "question": turn.question[:300], **built.summary}
+    if dashboard_id:
+        art = load(session, user, dashboard_id, minimum="editor")
+        if art.workspace_id != turn.workspace_id:
+            raise InvalidInput("the dashboard is in another workspace")
+        chart = chart.model_copy(update={"id": unique_id(document(art), chart.id)})
+        out = apply(session, user, dashboard_id, [{"op": "chart.add", "chart": chart.model_dump(mode="json")}], origin=origin)
+        if out["status"] == "refused":
+            raise InvalidInput("the chart could not be added: " + "; ".join(r["reason"] for r in out["refused"]))
+        target, status = out["dashboard"], "added"
+    else:
+        name = (title or turn.question).strip()[:200] or "Ask answers"
+        doc = DashboardDoc(id=_free_doc_id(session, turn.workspace_id, name), title=name,
+                           description=f"Started from the Ask answer: {turn.question}"[:2000])
+        result = apply_ops(doc, parse_ops([{"op": "chart.add", "chart": chart.model_dump(mode="json")}]),
+                           op_env(session, user, turn.workspace_id, doc))
+        if not result.ok:
+            raise InvalidInput("the chart could not be added: " + "; ".join(r.reason for r in result.refused))
+        art = create(session, user, turn.workspace_id, result.doc.model_dump(mode="json"),
+                     diff=[{"op": "create", "origin": origin}])
+        session.flush()
+        target, status = view(art), "created"
+    return {"target": "draft", "id": target["id"], "status": status, "dashboard": (target.get("document") or {}).get("title"),
+            "version": target["version"], "chart_id": chart.id, "chart_type": chart.type}

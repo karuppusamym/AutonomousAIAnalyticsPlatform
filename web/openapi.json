@@ -607,6 +607,17 @@
             ],
             "title": "Dashboard"
           },
+          "dashboard_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dashboard Id"
+          },
           "destination": {
             "anyOf": [
               {
@@ -739,11 +750,23 @@
               "metric",
               "monitor",
               "dashboard",
+              "draft",
               "investigate",
               "report"
             ],
             "title": "Target",
             "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           },
           "value": {
             "anyOf": [
@@ -2324,6 +2347,33 @@
           "document"
         ],
         "title": "DashboardCreateIn",
+        "type": "object"
+      },
+      "DashboardDraftIn": {
+        "properties": {
+          "prompt": {
+            "maxLength": 2000,
+            "minLength": 3,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "DashboardDraftIn",
         "type": "object"
       },
       "DashboardExportIn": {
@@ -13933,7 +13983,7 @@
     },
     "/api/ask/turns/{turn_id}/promote": {
       "post": {
-        "description": "Promote an answer: verified query, metric, monitor, \"Investigate why\" (starts a run), a report (an\nHTML document of the stored answer, listed in Outputs), or a dashboard chart (202 with an approval\nrequest first; again with the approved `approval_id` publishes it to the approved destination).",
+        "description": "Promote an answer: verified query, metric, monitor, \"Investigate why\" (starts a run), a report (an\nHTML document of the stored answer, listed in Outputs), a dashboard chart (202 with an approval\nrequest first; again with the approved `approval_id` publishes it to the approved destination), or a\nrecommended chart in a draft builder dashboard (`draft`: new, or `dashboard_id`; no publication).",
         "operationId": "promote_turn_api_ask_turns__turn_id__promote_post",
         "parameters": [
           {
@@ -23936,6 +23986,89 @@
           }
         },
         "summary": "Create Dashboard",
+        "tags": [
+          "dashboards-v2"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/dashboards/draft": {
+      "post": {
+        "description": "KPIs, charts and filter controls planned from the workspace's reviewed semantics, each built through the\ngoverned question path; 201 with the draft, or 200 with a clarifying reply when nothing could be grounded.",
+        "operationId": "draft_dashboard_api_v2_workspaces__workspace_id__dashboards_draft_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardDraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Draft Dashboard",
         "tags": [
           "dashboards-v2"
         ]

@@ -878,8 +878,9 @@ export interface paths {
         /**
          * Promote Turn
          * @description Promote an answer: verified query, metric, monitor, "Investigate why" (starts a run), a report (an
-         *     HTML document of the stored answer, listed in Outputs), or a dashboard chart (202 with an approval
-         *     request first; again with the approved `approval_id` publishes it to the approved destination).
+         *     HTML document of the stored answer, listed in Outputs), a dashboard chart (202 with an approval
+         *     request first; again with the approved `approval_id` publishes it to the approved destination), or a
+         *     recommended chart in a draft builder dashboard (`draft`: new, or `dashboard_id`; no publication).
          */
         post: operations["promote_turn_api_ask_turns__turn_id__promote_post"];
         delete?: never;
@@ -2969,6 +2970,27 @@ export interface paths {
         put?: never;
         /** Create Dashboard */
         post: operations["create_dashboard_api_v2_workspaces__workspace_id__dashboards_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/workspaces/{workspace_id}/dashboards/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft Dashboard
+         * @description KPIs, charts and filter controls planned from the workspace's reviewed semantics, each built through the
+         *     governed question path; 201 with the draft, or 200 with a clarifying reply when nothing could be grounded.
+         */
+        post: operations["draft_dashboard_api_v2_workspaces__workspace_id__dashboards_draft_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8563,6 +8585,8 @@ export interface components {
             } | null;
             /** Dashboard */
             dashboard?: string | null;
+            /** Dashboard Id */
+            dashboard_id?: string | null;
             /** Destination */
             destination?: string | null;
             /** Display Name */
@@ -8591,7 +8615,9 @@ export interface components {
              * Target
              * @enum {string}
              */
-            target: "verified_query" | "metric" | "monitor" | "dashboard" | "investigate" | "report";
+            target: "verified_query" | "metric" | "monitor" | "dashboard" | "draft" | "investigate" | "report";
+            /** Title */
+            title?: string | null;
             /** Value */
             value?: number | null;
         };
@@ -9130,6 +9156,13 @@ export interface components {
             document: {
                 [key: string]: unknown;
             };
+        };
+        /** DashboardDraftIn */
+        DashboardDraftIn: {
+            /** Prompt */
+            prompt: string;
+            /** Title */
+            title?: string | null;
         };
         /** DashboardExportIn */
         DashboardExportIn: {
@@ -18019,6 +18052,44 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_dashboard_api_v2_workspaces__workspace_id__dashboards_draft_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardDraftIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

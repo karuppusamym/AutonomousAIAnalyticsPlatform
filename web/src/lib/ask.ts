@@ -118,13 +118,14 @@ export const PROMOTE_LABELS: Record<string, string> = {
   metric: "Propose as metric",
   monitor: "Monitor this",
   dashboard: "Add to dashboard",
+  draft: "Add to a draft dashboard",
   investigate: "Investigate why",
   report: "Save as report",
 };
 
 /** The workspace role each promotion needs (the server checks it again; services/ask.py, saved_analysis.py). */
 export const PROMOTE_MIN_ROLE: Record<string, "analyst" | "editor"> = {
-  verified_query: "analyst", metric: "editor", monitor: "editor", dashboard: "editor", investigate: "analyst", report: "analyst",
+  verified_query: "analyst", metric: "editor", monitor: "editor", dashboard: "editor", draft: "editor", investigate: "analyst", report: "analyst",
   schedule: "editor",
 };
 
@@ -156,6 +157,9 @@ export function promotionText(p: AskPromotion): string {
           : `Published to ${dashboard || "the dashboard"} in ${String(p.destination ?? "the BI tool")}.`;
       }
       return `Added to the dashboard ${dashboard}.`.trim();
+    case "draft": return p.status === "created"
+      ? `Started the draft dashboard "${dashboard || "Ask answers"}" with this chart.`
+      : `Added the chart to the draft dashboard "${dashboard || "the dashboard"}"${p.version ? ` (now version ${String(p.version)})` : ""}.`;
     case "investigate": return "Investigation started.";
     case "report": return "Saved as a report: find it in Dashboards & reports, filtered to reports.";
     case "schedule": return p.status === "created" ? "Calculation scheduled."

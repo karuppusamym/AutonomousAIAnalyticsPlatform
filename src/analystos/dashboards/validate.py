@@ -177,6 +177,8 @@ def _filter_problems(doc: DashboardDoc) -> list[Problem]:
             out.append(Problem(f"{path}.field", "filter_field_missing",
                                f"filter {flt.id}: {flt.field!r} is not a field of {', '.join(lacking)}; scope the filter "
                                "to the charts that have it"))
+        if flt.value is None and flt.op in ("eq", "in"):
+            continue  # a control without a preset value
         if flt.op in ("in", "not_in") and not isinstance(flt.value, list):
             out.append(Problem(f"{path}.value", "invalid_value", f"filter {flt.id}: {flt.op} needs a list"))
         if flt.op == "between" and not (isinstance(flt.value, list) and len(flt.value) == 2):

@@ -124,6 +124,8 @@ ladders:
   insight_narrative: [cache, rules, llm_small]
   semantic_modeling: [cache, rules, llm_large]
   dashboard_design: [cache, rules, llm_small]
+  # CONV-02: rules plan a draft dashboard from the reviewed semantics; the model may only reorder the candidate tiles.
+  dashboard_plan: [cache, rules, llm_small]
   feedback_interpretation: [cache, rules, llm_large]
   summarization: [cache, rules, llm_small]
   agent_actions: [cache, rules, llm_small]
@@ -171,6 +173,7 @@ routing:
   insight_narrative: low_cost
   semantic_modeling: coding
   dashboard_design: low_cost
+  dashboard_plan: low_cost
   feedback_interpretation: coding
   summarization: low_cost
   pipeline_proposal: low_cost  # P6-08 engineer agent; the IR validator decides
@@ -212,6 +215,7 @@ escalation:
     pipeline_proposal: never     # the engineer agent has default_actions (rules)
     ml_spec_proposal: never      # the ml_practitioner has default_actions (the rule path)
     dashboard_design: never
+    dashboard_plan: never       # an invalid order falls back to the rules order
     summarization: never
     health_probe: never
     semantic_query: never       # a refused or invalid choice falls through to the labelled ad-hoc path

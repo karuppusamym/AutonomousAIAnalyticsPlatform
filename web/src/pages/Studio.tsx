@@ -9,6 +9,7 @@ import { useExpertView } from "../lib/expert";
 import { PublishedOutputs } from "../components/PublishedOutputs";
 import { DashboardPreview } from "../components/DashboardPreview";
 import { DashboardBuilder, NewBuilderDashboard } from "../components/DashboardBuilder";
+import { DraftFromPrompt } from "../components/DashboardDraft";
 import { ExistingDashboards } from "../components/ExistingDashboards";
 import { DashboardGrouping } from "../components/DashboardGrouping";
 import { LineageGraph } from "../components/LineageGraph";
@@ -185,8 +186,13 @@ export function OutputsPage() {
         <details className="card generate-report">
           <summary>Build a dashboard</summary>
           <div className="card-body">
-            <p className="small muted">Start empty, then change it by asking: every change is a typed, versioned operation.</p>
-            <NewBuilderDashboard wsId={wsId} onCreated={(id) => { void artifacts.reload(); set({ artifact: id }); }} />
+            <p className="small muted">Describe it and a draft is built from your data, or start empty. Then change it by asking:
+              every change is a new version you can undo.</p>
+            <DraftFromPrompt wsId={wsId} onCreated={(id) => { void artifacts.reload(); set({ artifact: id }); }} />
+            <details>
+              <summary className="small">Start an empty dashboard instead</summary>
+              <NewBuilderDashboard wsId={wsId} onCreated={(id) => { void artifacts.reload(); set({ artifact: id }); }} />
+            </details>
           </div>
         </details>
       )}

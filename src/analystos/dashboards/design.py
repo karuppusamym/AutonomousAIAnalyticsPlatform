@@ -51,6 +51,14 @@ _METRIC = re.compile(r"\b(?:add|show|bind|plot)\s+(?:the\s+)?(?:kpi|metric)\s+(?
                      r"(?:\s+(?:as\s+an?\s+(?P<viz>\w+)))?(?:\s+by\s+(?P<dims>[\w, ]+?))?\s*$", _I)
 _PUBLISH = re.compile(r"\bpublish\b(?:\s+(?:it|this|the dashboard))?(?:\s+to\s+(?P<dest>superset|preview))?"
                       r"(?:\s+(?:for|to)\s+(?P<aud>[\w ]+?))?\s*$", _I)
+# CONV-01: "add resolution time by priority", "plot incidents per month as a line chart", "show me open incidents by
+# category". The rest of the sentence is a question for the governed Ask path, never a field name the rules guess.
+_ADD_Q = re.compile(rf"^\s*(?:please\s+)?(?:add|include|insert|put|create|plot|graph|chart|visuali[sz]e|draw)\s+"
+                    rf"(?:(?:a|an|the|another|one|new)\s+)?(?:(?P<type>{_TYPE_WORDS})\s+)?(?:(?:chart|graph|visual|tile|panel)\s+)?"
+                    rf"(?:(?:of|showing|for|with|on|that shows|about)\s+)?(?P<q>.+?)"
+                    rf"(?:\s+as\s+(?:an?\s+)?(?P<type2>{_TYPE_WORDS})(?:\s+chart)?)?"
+                    rf"(?:\s+(?:to|on|in)\s+(?:the|this|my)\s+dashboard)?\s*[?.!]*$", _I)
+_SHOW_Q = re.compile(r"^\s*(?:please\s+)?(?:show(?:\s+me)?|what(?:'s| is| are)|how many|which|give me)\b.+$", _I)
 _AUDIENCES = {"everyone": ["role:viewer"], "viewers": ["role:viewer"], "the workspace": ["role:viewer"],
               "editors": ["role:editor"], "executives": ["role:viewer"], "the team": ["role:viewer"]}
 
@@ -123,6 +131,9 @@ def rule_ops(doc: DashboardDoc, text: str, *, focus: str | None = None,
         if not targets:
             return [], ["no chart over time to compare"]
         return [{"op": "query.extend_period", "chart_ids": targets, "compare": "yoy" if m["yoy"] else "pop"}], notes
+    if (m := _ADD_Q.match(text)) is not None and len(m["q"].split()) >= 1 and m["q"].lower() not in ("it", "this", "that"):
+        kind = _TYPES.get((m["type"] or m["type2"] or "").lower())
+        return [{"op": "chart.from_question", "question": m["q"].strip()[:500], **({"type": kind} if kind else {})}], notes
     if m := _MOVE.search(text):
         ref = find_ref(doc, m["what"], focus)
         if ref is None:
@@ -174,6 +185,8 @@ def rule_ops(doc: DashboardDoc, text: str, *, focus: str | None = None,
         if ref is None:
             return [], ["which chart?"]
         return [{"op": "chart.set_encoding", "chart_id": ref, "aggregation": _AGGS[m["agg"].lower()]}], notes
+    if _SHOW_Q.match(text):  # no edit rule read it: a question for a new chart
+        return [{"op": "chart.from_question", "question": text.strip().rstrip("?.! ")[:500]}], notes
     return [], notes
 
 
@@ -186,7 +199,9 @@ _SYSTEM = (
     "metric.bind.metric is \"<name>@<version>\" taken from the `metrics` map ({name: version}); metric.bind adds a new "
     "element: omit chart_id unless it names a chart already in the dashboard JSON. A new text block "
     "needs its own block_id (a short lower_snake_case name). Every op object carries its kind in \"op\", e.g. "
-    "{\"ops\": [{\"op\": \"metric.bind\", \"metric\": \"incident_count@1\", \"viz\": \"kpi\"}]}."
+    "{\"ops\": [{\"op\": \"metric.bind\", \"metric\": \"incident_count@1\", \"viz\": \"kpi\"}]}. A request for a new "
+    "chart about data not on the dashboard is chart.from_question with the business question in plain words (the "
+    "platform answers it through its governed query path; never write SQL or numbers)."
 )
 
 
@@ -240,5 +255,6 @@ def design(doc: DashboardDoc, text: str, *, router: Any = None, call_ctx: Any = 
             log.info("dashboard_design model rung unavailable: %s", exc)
     if raw:
         return DesignResult(parse_ops(raw), "rules", notes)
-    return DesignResult([], "none", notes or ["I could not map that to a dashboard change; try e.g. 'make it a bar "
-                                               "chart', 'filter region = EMEA' or 'compare year over year'."])
+    return DesignResult([], "none", notes or ["I could not map that to a dashboard change; try e.g. 'add incidents by "
+                                               "priority', 'make it a bar chart', 'filter region = EMEA' or 'compare year "
+                                               "over year'."])

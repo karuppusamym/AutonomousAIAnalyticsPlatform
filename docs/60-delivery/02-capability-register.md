@@ -1,5 +1,37 @@
 # Capability register (evidence)
 
+## 2026-10-29 — Conversational dashboards: a chart from a question, a draft from a prompt, an Ask answer into a draft (CONV-01…03)
+
+From the [conversational analyst gap review](../70-reviews/2026-10-29-conversational-analyst-gap-review.md), wave 1a.
+Spec: [S08 §9](../04-specs/S08-dashboards-publishing.md).
+
+* **CONV-01.** Builder chat "add resolution time by priority" → op `chart.from_question` (rules rung, no model) →
+  `dashboards/questions.py` runs the question through `agents/sql_agent.ask` unchanged (semantic compiler, verified
+  query, Ask rules, else model SQL; gateway validator + `QueryGateway.execute`) → a `ChartDoc` with the chart type
+  from `skills/viz.recommend_chart`, `dataset_ref` `metric@v` + dimensions (else the gateway execution), a bounded
+  preview and provenance. Each applied batch is a new `ArtifactVersion`; the diff carries how the chart was answered.
+  An ungrounded question is a refused op with a clarifying reply and answerable examples; nothing changes.
+* **CONV-02.** `POST /api/v2/workspaces/{ws}/dashboards/draft {prompt}` → `dashboards/drafts.py`: rules plan from the
+  caller-visible approved metrics, trusted glossary synonyms and the effective brief (catalog Ask-rules questions
+  without a metric layer): 2–4 KPIs, 3–6 charts, 1–2 filter controls; purpose `dashboard_plan` ([cache, rules,
+  llm_small]) may only reorder known tile ids. Every tile goes through CONV-01 on its own; failures are listed. No
+  match → clarifying reply, no dashboard.
+* **CONV-03.** Ask promote target `draft` → `dashboards/service.add_answer`: the stored answer (no re-query) as the
+  recommended chart in a new draft or an existing builder dashboard (a published one forks). The approval-bound
+  direct publish is unchanged and offered beside it ("Add to dashboard" asks where).
+* **UI.** Outputs › Dashboards › Build a dashboard ("What should the dashboard show?"), builder chat answers ("Added
+  a bar … from an approved metric", clarifying reply with questions to try), Ask "Add to dashboard" chooser. Query
+  ids, metric versions and planning detail only with expert tools on.
+
+Tests: `tests/unit/test_dashboard_conversation.py` (rules phrasings, answer → chart for semantic / rules / model
+answers, KPI, time grain, stacked and top-N, named type only when it fits, bounded preview, refusals, the op, id
+clash, filter controls in ops and bundle, plan / glossary / catalog fallback / clarify, ranking rung off-auto-always
+with unknown ids dropped, build with partial failures); `web/src/test/dashboardDraft.test.tsx` (7);
+`web/e2e/dashboard-draft.spec.ts` (prompt → draft → clarifying reply → refine → request publication, axe clean);
+`tests/integration/test_dashboard_conversation.py` (compose Postgres, seeded users, approved semantic model; the
+numbers equal pandas over the same file; publish request is a hash-bound approval).
+Live 2026-10-29 against the compose Postgres, no model called: a 2-KPI, 6-chart, 2-filter draft from "Build an incident operations dashboard" (numbers equal pandas over the same file), a metric-bound chart from "add resolution time by priority", a clarifying reply for "add weather by city", an Ask answer into a new and an existing draft, and a hash-bound publish request — [evidence](evidence/conv-01-03-conversational-dashboards-20261029.md).
+
 ## 2026-10-29 — SQL Server live: connector certification (S02-T6), session identity (S02-T5), META-002
 
 SQL Server 2022 Developer runs locally as compose profile `mssql` (container `analystos-mssql`, host port 14330; SA

@@ -1,11 +1,14 @@
 import { useState, type FormEvent } from "react";
 import {
-  api, errorMessage, saveBlob, type BuilderDashboard, type BuilderDocument, type BuilderOp, type BuilderTurn, type BuilderVersion,
+  api, errorMessage, saveBlob, type BuilderClarify, type BuilderDashboard, type BuilderDocument, type BuilderOp, type BuilderTurn,
+  type BuilderVersion,
 } from "../api";
 import type { Preview } from "../lib/charts";
+import { useExpertView } from "../lib/expert";
 import { fmtDate } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import { ChartView } from "./Chart";
+import { answeredByText } from "./DashboardDraft";
 import { cellStyle, ROW_PX } from "./DashboardPreview";
 import { EmbeddedDashboard } from "./EmbeddedDashboard";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -23,13 +26,19 @@ export function describeOp(op: BuilderOp): string {
     case "query.extend_period": return `compare ${String(o.compare).toUpperCase()} on ${(o.chart_ids as string[]).join(", ")}`;
     case "metric.bind": return `bind ${o.metric} as ${o.viz ?? "kpi"}`;
     case "chart.add": return `add chart ${(o.chart as { id?: string })?.id ?? ""}`;
+    case "chart.from_question": return `add a chart: “${String(o.question ?? "")}”${o.type ? ` as ${String(o.type)}` : ""}`;
     case "chart.remove": return `remove ${o.chart_id}`;
     case "layout.move": return `move ${o.ref} to row ${Number(o.y) + 1}, column ${Number(o.x) + 1}`;
     case "text.set": return `text ${o.block_id}`;
     case "publish.request": return `request publication (${(o.audience as string[] | undefined)?.join(", ") ?? "viewers"})`;
     case "revert": return `revert to v${o.to_version}`;
     case "fork": return `draft copied from the published dashboard`;
-    case "create": return "created";
+    case "create": {
+      const origin = o.origin as { kind?: string; prompt?: string; question?: string } | undefined;
+      if (origin?.kind === "prompt") return `drafted from “${origin.prompt ?? ""}”`;
+      if (origin?.kind === "ask_turn") return `started from the Ask answer “${origin.question ?? ""}”`;
+      return "created";
+    }
     default: return op.op;
   }
 }
@@ -57,8 +66,9 @@ export function diffDocuments(before: BuilderDocument, after: BuilderDocument): 
 }
 
 function BuilderGrid({ doc, focus, onFocus }: { doc: BuilderDocument; focus: string | null; onFocus: (id: string) => void }) {
+  const expert = useExpertView();
   if (!doc.layout.items.length) {
-    return <EmptyState title="Empty dashboard">Ask for a change below, e.g. “add the metric open_incidents”.</EmptyState>;
+    return <EmptyState title="Empty dashboard">Ask for a chart below, e.g. “add incidents by priority”.</EmptyState>;
   }
   const charts = new Map(doc.charts.map((c) => [c.id, c]));
   const kpis = new Map(doc.kpis.map((k) => [k.id, k]));
@@ -75,6 +85,7 @@ function BuilderGrid({ doc, focus, onFocus }: { doc: BuilderDocument; focus: str
             {chart && (
               <>
                 <div className="dash-cell-title">{chart.title} {chart.labels?.includes("experimental") && <Tag tone="warning">experimental</Tag>}
+                  {chart.labels?.includes("ad_hoc") && <Tag tone="warning">new calculation</Tag>}
                   {chart.query?.compare && chart.query.compare !== "none" && <Tag tone="info">{chart.query.compare.toUpperCase()}</Tag>}</div>
                 {chart.preview?.rows?.length ? (
                   <ErrorBoundary label={`Chart ${chart.id}`}>
@@ -82,12 +93,15 @@ function BuilderGrid({ doc, focus, onFocus }: { doc: BuilderDocument; focus: str
                       height={Math.max(100, item.h * ROW_PX - 50)} showTable={false} />
                   </ErrorBoundary>
                 ) : <span className="muted small">{chart.type} · {chart.encoding.x ?? "—"} × {chart.encoding.y.join(", ")} (no preview yet)</span>}
+                {expert && <span className="muted small">{chart.dataset_ref.kind === "metric" ? `metric ${chart.dataset_ref.name}@${chart.dataset_ref.version}`
+                  : chart.dataset_ref.kind === "verified_query" ? `verified query ${chart.dataset_ref.name}` : `query ${chart.dataset_ref.handle_id}`}
+                  {chart.provenance?.sources?.length ? ` · ${chart.provenance.sources.join(", ")}` : ""}</span>}
               </>
             )}
             {kpi && (
               <div className="kpi">
                 <div className="kpi-value">{kpi.value ?? "—"}{kpi.unit ? ` ${kpi.unit}` : ""}</div>
-                <div className="kpi-label">{kpi.title} <span className="muted small">{kpi.metric.name}@{kpi.metric.version}</span></div>
+                <div className="kpi-label">{kpi.title} {expert && <span className="muted small">{kpi.metric.name}@{kpi.metric.version}</span>}</div>
               </div>
             )}
             {text && <Markdown text={text.markdown || "_Empty text block_"} />}
@@ -132,6 +146,10 @@ export function BuilderChatPanel({ dashboard, focus, onUpdated }: {
   };
   const applySuggestion = (op: BuilderOp) =>
     turn(`apply: ${describeOp(op)}`, () => api.builderOps(dashboard.id, [op], dashboard.version));
+  const askFor = (question: string) => {
+    const said = `add ${question}`;
+    return turn(said, () => api.builderMessage(dashboard.id, { text: said, focus, base_version: dashboard.version }));
+  };
 
   return (
     <Card title="Change it by asking" label="Dashboard builder chat">
@@ -140,14 +158,14 @@ export function BuilderChatPanel({ dashboard, focus, onUpdated }: {
           <li key={i} className="chat-msg">
             <p><strong>You:</strong> {t.text}</p>
             {t.error && <p className="warn-text small">{t.error}</p>}
-            {t.result && <TurnResult turn={t.result} onSuggestion={(op) => void applySuggestion(op)} busy={busy} />}
+            {t.result && <TurnResult turn={t.result} onSuggestion={(op) => void applySuggestion(op)} onAsk={(q) => void askFor(q)} busy={busy} />}
           </li>
         ))}
       </ol>
       <form className="row" onSubmit={(e) => void send(e)}>
         <label htmlFor="builder-say" className="sr-only">Describe a change</label>
         <input id="builder-say" className="grow" value={text} onChange={(e) => setText(e.target.value)} maxLength={4000}
-          placeholder={focus ? `Change ${focus}: e.g. “make it a bar chart”` : "e.g. “filter region = EMEA”, “compare year over year”"} />
+          placeholder={focus ? `Change ${focus}: e.g. “make it a bar chart”` : "e.g. “add resolution time by priority”, “filter region = EMEA”"} />
         <button type="submit" className="btn btn-primary" disabled={busy || !text.trim()}>{busy ? "Working…" : "Send"}</button>
       </form>
       {focus && <p className="muted small">Requests about “it” refer to <code>{focus}</code>.</p>}
@@ -155,22 +173,44 @@ export function BuilderChatPanel({ dashboard, focus, onUpdated }: {
   );
 }
 
-function TurnResult({ turn, onSuggestion, busy }: { turn: BuilderTurn; onSuggestion: (op: BuilderOp) => void; busy: boolean }) {
+function isClarify(s: BuilderOp | BuilderClarify | undefined): s is BuilderClarify {
+  return !!s && typeof (s as BuilderClarify).clarify === "string";
+}
+
+function TurnResult({ turn, onSuggestion, onAsk, busy }: {
+  turn: BuilderTurn; onSuggestion: (op: BuilderOp) => void; onAsk: (question: string) => void; busy: boolean;
+}) {
   const ops = turn.proposal?.ops ?? [];
+  const added = (turn.applied ?? []).filter((o) => o.op === "chart.from_question" && o.result);
   return (
     <div className="stack small">
       {ops.length > 0 && (
         <p>Ops ({turn.proposal?.answered_by === "rules" ? "rules" : "model, validated"}): {ops.map((o, i) => <Tag key={i}>{describeOp(o)}</Tag>)}</p>
       )}
       {turn.status === "applied" && <p className="ok-text">Applied: now version {turn.dashboard.version}.</p>}
+      {added.map((o, i) => (
+        <p key={i}>Added a {o.result?.chart_type ?? "chart"} for “{String(o.question)}”, {answeredByText(o.result ?? {})}.</p>
+      ))}
       {turn.status === "unchanged" && <p className="muted">Nothing changed.</p>}
       {turn.forked_from && <Notice tone="info">The dashboard is published, so this edit went to a draft copy; viewers still see the approved version.</Notice>}
       {turn.approval && <Notice tone="info">Publication requested: approval {turn.approval.id} waits in the approval inbox.</Notice>}
-      {(turn.refused ?? []).map((r, i) => (
+      {(turn.refused ?? []).map((r, i) => isClarify(r.suggestion) ? (
+        <div key={i} className="stack" role="status" aria-label="Clarifying question">
+          <p>I could not chart that from governed data: {r.reason}. {r.suggestion.clarify}</p>
+          {(r.suggestion.examples ?? []).length > 0 && (
+            <div className="row wrap">
+              <span className="muted">Try:</span>
+              {r.suggestion.examples!.map((q) => (
+                <button key={q} type="button" className="btn btn-sm" disabled={busy} onClick={() => onAsk(q)}>{q}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
         <div key={i} className="warn-text">
           Not applied — {r.reason}
           {r.suggestion && <> <button type="button" className="btn btn-sm" disabled={busy} onClick={() => onSuggestion(r.suggestion as BuilderOp)}>
-            Apply instead: {describeOp(r.suggestion)}</button></>}
+            Apply instead: {describeOp(r.suggestion as BuilderOp)}</button></>}
         </div>
       ))}
       {(turn.proposal?.notes ?? []).map((n, i) => <p key={i} className="muted">{n}</p>)}
@@ -296,7 +336,7 @@ export function DashboardBuilder({ artifactId, role, onSwitch }: {
     <div className="stack dashboard-builder">
       <Card title={<>{d.document.title} <span className="muted small">· v{d.version}</span></>} actions={<>
         {d.document.sensitivity && <Tag tone={d.document.sensitivity === "internal" || d.document.sensitivity === "public" ? "neutral" : "warning"}>{d.document.sensitivity}</Tag>}
-        {d.document.filters.map((f) => <Tag key={f.id} tone="info">{f.field} {f.op} {JSON.stringify(f.value)}</Tag>)}
+        {d.document.filters.map((f) => <Tag key={f.id} tone="info">{f.value == null ? `${f.field.split(".").pop()}: any` : `${f.field} ${f.op} ${JSON.stringify(f.value)}`}</Tag>)}
       </>}>
         <BuilderGrid doc={d.document} focus={focus} onFocus={(id) => setFocus(focus === id ? null : id)} />
       </Card>

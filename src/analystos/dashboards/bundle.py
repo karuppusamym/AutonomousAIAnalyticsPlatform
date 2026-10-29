@@ -167,7 +167,9 @@ def to_publish_bundle(doc: DashboardDoc, resolver: Resolver, destination: str, w
     charts: list[ChartSpec] = []
     for chart in [*doc.charts, *(_kpi_chart(k) for k in doc.kpis)]:
         sql, dialect, assets = resolver.sql(chart.dataset_ref)
-        scoped = [f for f in doc.filters if (not f.scope or chart.id in f.scope) and chart.field(f.field) is not None]
+        # a filter without a value is a control the viewer sets (a native filter), not a restriction of the dataset
+        scoped = [f for f in doc.filters if (not f.scope or chart.id in f.scope) and chart.field(f.field) is not None
+                  and f.value is not None]
         sql = _wrap_compare(_wrap_filters(sql, scoped, dialect), chart, dialect)
         x = chart.field(chart.encoding.x)
         time_column = x.name if x is not None and x.type == "temporal" else None
