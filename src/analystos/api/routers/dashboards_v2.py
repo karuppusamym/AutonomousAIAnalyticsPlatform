@@ -10,6 +10,9 @@ Every path is under /api/v2 (the web client's API base):
     POST dashboards/{id}/messages                       {text, focus, base_version, apply}: dashboard_design ladder
     POST dashboards/{id}/revert                         {to_version, base_version}: undo = new version N+1
     GET  dashboards/{id}/versions[/{n}]                 history with each version's op diff
+    GET  dashboards/{id}/explore                        what a click on each chart filters by or drills into (CONV-06)
+    POST dashboards/{id}/view                           {filters}: a cross-filtered view, every tile re-queried governed
+    POST dashboards/{id}/drill                          {chart_id, path, filters, detail}: one drill level, member rows
     POST dashboards/{id}/preview | validate             lifecycle steps
     POST dashboards/{id}/publish-request                {destination, audience} -> hash-bound approval
     POST dashboards/{id}/publish                        {approval_id}: verify, then publish (single use)
@@ -39,6 +42,7 @@ from analystos.api.deps import current_user, db
 from analystos.contracts.dashboard_dsl import chart_json_schema, dashboard_json_schema
 from analystos.core.errors import InvalidInput, UpstreamUnavailable
 from analystos.dashboards import service as dashboard_svc
+from analystos.dashboards.interact import MAX_DRILL_DEPTH, MAX_VIEW_FILTERS, DrillStepIn, ViewFilterIn
 from analystos.db.models import Artifact, User
 
 router = APIRouter(prefix="/api/v2", tags=["dashboards-v2"])
@@ -81,6 +85,21 @@ class DashboardPublishIn(BaseModel):
 
 class DashboardExportIn(BaseModel):
     format: Literal["csv", "xlsx", "pdf"]
+
+
+class DashboardViewIn(BaseModel):
+    filters: list[ViewFilterIn] = Field(default_factory=list, max_length=MAX_VIEW_FILTERS)
+    base_version: int | None = None
+    refresh_saved: bool = False  # also re-query tiles the document's own value filters restrict
+
+
+class DashboardDrillIn(BaseModel):
+    chart_id: str = Field(min_length=1, max_length=64)
+    path: list[DrillStepIn] = Field(default_factory=list, max_length=MAX_DRILL_DEPTH + 1)
+    filters: list[ViewFilterIn] = Field(default_factory=list, max_length=MAX_VIEW_FILTERS)
+    base_version: int | None = None
+    detail: bool = False  # also list the rows behind the path (only columns the viewer may read)
+    preview: bool = True  # re-query the chart one level down (off when only the rows are wanted)
 
 
 class PublicationReconcileIn(BaseModel):
@@ -181,6 +200,34 @@ def versions(dashboard_id: str, user: User = Depends(current_user), session: Ses
 def version(dashboard_id: str, n: int, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
     dashboard_svc.load(session, user, dashboard_id)
     return dashboard_svc.version(session, user, dashboard_id, n)
+
+
+@router.get("/dashboards/{dashboard_id}/explore")
+def explore(dashboard_id: str, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    from analystos.dashboards.interact import explorer
+
+    dashboard_svc.load(session, user, dashboard_id)
+    return explorer(session, user, dashboard_id).explore()
+
+
+@router.post("/dashboards/{dashboard_id}/view")
+def view(dashboard_id: str, body: DashboardViewIn, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    """A cross-filtered view for this viewer: not a new version. Each affected tile is re-queried through its governed
+    path and the gateway under the viewer's scope; tiles without the field are returned as not filtered."""
+    from analystos.dashboards.interact import explorer
+
+    dashboard_svc.load(session, user, dashboard_id)
+    return explorer(session, user, dashboard_id, base_version=body.base_version).view(body.filters,
+                                                                                       refresh_saved=body.refresh_saved)
+
+
+@router.post("/dashboards/{dashboard_id}/drill")
+def drill(dashboard_id: str, body: DashboardDrillIn, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    from analystos.dashboards.interact import explorer
+
+    dashboard_svc.load(session, user, dashboard_id)
+    return explorer(session, user, dashboard_id, base_version=body.base_version).drill(body.chart_id, body.path, body.filters,
+                                                                                        detail=body.detail, preview=body.preview)
 
 
 @router.post("/dashboards/{dashboard_id}/preview")

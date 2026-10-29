@@ -4,6 +4,7 @@
  * `api/routers/dashboards_v2.py`; state is reset per test (`resetDrafts`).
  */
 import type { ArtifactDetail, BuilderChart, BuilderDashboard, BuilderDocument, BuilderOp, BuilderVersion } from "../api";
+import { exploreRoute } from "./mockExplore";
 
 const T = "2026-10-29T09:00:00Z";
 type Reply = { status: number; body: unknown } | null;
@@ -155,5 +156,7 @@ export function draftsRoute(m: string, p: string, body: string | null | undefine
     d.dash = { ...d.dash, status: "approval_required" };
     return ok({ approval_id: "apr_draft_pub", status: "pending", risk_tier: "medium", payload_hash: "ph1" }, 202);
   }
-  return null;
+  const explored = exploreRoute(m, action, json, d.dash, (document, diff) => save(d, document, diff));  // CONV-06
+  if (explored && action === "/ops") (explored.body as { dashboard?: BuilderDashboard }).dashboard = d.dash;
+  return explored;
 }

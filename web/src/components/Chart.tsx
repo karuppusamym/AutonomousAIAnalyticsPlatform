@@ -23,9 +23,16 @@ export function canvasSupported(): boolean {
   return canvasOk;
 }
 
-export function EChart({ option, height, label }: { option: object; height: number | string; label: string }) {
+/** A click on a bar, point or slice, or on a legend item (CONV-06 cross-filter and drill). */
+export interface ChartSelection { name: string; seriesName?: string; from: "point" | "legend" }
+
+export function EChart({ option, height, label, onSelect }: {
+  option: object; height: number | string; label: string; onSelect?: (s: ChartSelection) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const inst = useRef<echarts.ECharts | null>(null);
+  const select = useRef(onSelect);
+  select.current = onSelect;
 
   useEffect(() => {
     if (!ref.current) return;
@@ -36,6 +43,15 @@ export function EChart({ option, height, label }: { option: object; height: numb
       return; // no canvas (e.g. test environment)
     }
     inst.current = chart;
+    chart.on("click", (p: { name?: unknown; seriesName?: unknown }) => {
+      select.current?.({ name: String(p.name ?? ""), seriesName: p.seriesName != null ? String(p.seriesName) : undefined, from: "point" });
+    });
+    chart.on("legendselectchanged", (e: unknown) => {
+      const p = e as { name?: unknown };
+      if (!select.current) return; // without a handler the legend keeps toggling series as usual
+      chart.dispatchAction({ type: "legendAllSelect" });
+      select.current({ name: String(p.name ?? ""), from: "legend" });
+    });
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => chart.resize()) : null;
     ro?.observe(ref.current);
     return () => {
@@ -62,10 +78,11 @@ export interface ChartViewProps {
   title?: string;
   height?: number | string;
   showTable?: boolean;
+  onSelect?: (s: ChartSelection) => void;
 }
 
 /** Renders a chart artifact preview: KPI tile, HTML table, or an ECharts chart (with a table view toggle). */
-export function ChartView({ type, preview, title, height = 280, showTable = true }: ChartViewProps) {
+export function ChartView({ type, preview, title, height = 280, showTable = true, onSelect }: ChartViewProps) {
   const dark = usePrefersDark();
   const option = useMemo(() => buildOption(type, preview, dark ? DARK : LIGHT), [type, preview, dark]);
   if (!preview || !Array.isArray(preview.rows)) return <EmptyState title="No preview data" />;
@@ -82,7 +99,7 @@ export function ChartView({ type, preview, title, height = 280, showTable = true
   }
   return (
     <div className="chart-box">
-      <EChart option={option} height={height} label={`${type} chart${title ? `: ${title}` : ""}`} />
+      <EChart option={option} height={height} label={`${type} chart${title ? `: ${title}` : ""}`} onSelect={onSelect} />
       {showTable && (
         <details className="chart-table">
           <summary>Table view</summary>

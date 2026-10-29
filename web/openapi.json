@@ -2376,6 +2376,58 @@
         "title": "DashboardDraftIn",
         "type": "object"
       },
+      "DashboardDrillIn": {
+        "properties": {
+          "base_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version"
+          },
+          "chart_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Chart Id",
+            "type": "string"
+          },
+          "detail": {
+            "default": false,
+            "title": "Detail",
+            "type": "boolean"
+          },
+          "filters": {
+            "items": {
+              "$ref": "#/components/schemas/ViewFilterIn"
+            },
+            "maxItems": 5,
+            "title": "Filters",
+            "type": "array"
+          },
+          "path": {
+            "items": {
+              "$ref": "#/components/schemas/DrillStepIn"
+            },
+            "maxItems": 5,
+            "title": "Path",
+            "type": "array"
+          },
+          "preview": {
+            "default": true,
+            "title": "Preview",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "chart_id"
+        ],
+        "title": "DashboardDrillIn",
+        "type": "object"
+      },
       "DashboardExportIn": {
         "properties": {
           "format": {
@@ -2524,6 +2576,36 @@
           "to_version"
         ],
         "title": "DashboardRevertIn",
+        "type": "object"
+      },
+      "DashboardViewIn": {
+        "properties": {
+          "base_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version"
+          },
+          "filters": {
+            "items": {
+              "$ref": "#/components/schemas/ViewFilterIn"
+            },
+            "maxItems": 5,
+            "title": "Filters",
+            "type": "array"
+          },
+          "refresh_saved": {
+            "default": false,
+            "title": "Refresh Saved",
+            "type": "boolean"
+          }
+        },
+        "title": "DashboardViewIn",
         "type": "object"
       },
       "DataScope": {
@@ -3058,6 +3140,42 @@
           "frontmatter"
         ],
         "title": "DocumentSaveIn",
+        "type": "object"
+      },
+      "DrillStepIn": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Field",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "DrillStepIn",
         "type": "object"
       },
       "DryRunIn": {
@@ -9853,6 +9971,83 @@
           }
         },
         "title": "VerifiedQueryPatch",
+        "type": "object"
+      },
+      "ViewFilterIn": {
+        "additionalProperties": false,
+        "description": "One click or chip: a field of the dashboard and the member(s) chosen. `source` is the chart it came from\n(that chart is not filtered by its own selection).",
+        "properties": {
+          "field": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Field",
+            "type": "string"
+          },
+          "op": {
+            "default": "eq",
+            "enum": [
+              "eq",
+              "in"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "ViewFilterIn",
         "type": "object"
       },
       "WorkBudget": {
@@ -21566,6 +21761,88 @@
         ]
       }
     },
+    "/api/v2/dashboards/{dashboard_id}/drill": {
+      "post": {
+        "operationId": "drill_api_v2_dashboards__dashboard_id__drill_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dashboard_id",
+            "required": true,
+            "schema": {
+              "title": "Dashboard Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardDrillIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drill",
+        "tags": [
+          "dashboards-v2"
+        ]
+      }
+    },
     "/api/v2/dashboards/{dashboard_id}/embed-token": {
       "post": {
         "operationId": "embed_token_api_v2_dashboards__dashboard_id__embed_token_post",
@@ -21633,6 +21910,78 @@
           }
         },
         "summary": "Embed Token",
+        "tags": [
+          "dashboards-v2"
+        ]
+      }
+    },
+    "/api/v2/dashboards/{dashboard_id}/explore": {
+      "get": {
+        "operationId": "explore_api_v2_dashboards__dashboard_id__explore_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dashboard_id",
+            "required": true,
+            "schema": {
+              "title": "Dashboard Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Explore",
         "tags": [
           "dashboards-v2"
         ]
@@ -22726,6 +23075,89 @@
           }
         },
         "summary": "Version",
+        "tags": [
+          "dashboards-v2"
+        ]
+      }
+    },
+    "/api/v2/dashboards/{dashboard_id}/view": {
+      "post": {
+        "description": "A cross-filtered view for this viewer: not a new version. Each affected tile is re-queried through its governed\npath and the gateway under the viewer's scope; tiles without the field are returned as not filtered.",
+        "operationId": "view_api_v2_dashboards__dashboard_id__view_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dashboard_id",
+            "required": true,
+            "schema": {
+              "title": "Dashboard Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardViewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "View",
         "tags": [
           "dashboards-v2"
         ]

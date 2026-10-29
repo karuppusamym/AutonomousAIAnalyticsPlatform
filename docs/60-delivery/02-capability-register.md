@@ -1,5 +1,25 @@
 # Capability register (evidence)
 
+## 2026-10-29 — Drill-down and cross-filtering in the dashboard preview, every re-query governed (CONV-06)
+
+From the [conversational analyst gap review](../70-reviews/2026-10-29-conversational-analyst-gap-review.md), wave 2.
+Spec: [S08 §10](../04-specs/S08-dashboards-publishing.md).
+
+| Capability | Code path | Evidence |
+|---|---|---|
+| Cross-filter as a session view | `dashboards/interact.py::Explorer.view`, `POST /api/v2/dashboards/{id}/view`: field bound by a chart and categorical, value through `dashboards/env.py`; affected tiles re-queried as the viewer; unbound tiles `not_filtered` with the reason; the clicked chart `source`; no version | `tests/unit/test_dashboard_interact.py`; integration below |
+| Governed re-query | Metric charts and KPIs: `SemanticQuery` + `SemanticFilter` → `semantic/compiler.compile_query` under the viewer's scope; other charts: `bundle.Resolver.sql` (verified query / gateway execution) wrapped with sqlglot nodes and `skills/sqlbuild` literals; every statement through `QueryGateway.execute` (purposes `dashboard.cross_filter`, `dashboard.drill`, `dashboard.detail`) | Unit tests run every statement through `gateway/validator.validate_sql` (denied columns, row filters) and then DuckDB; the integration test checks every `QueryExecution` row (actor, purpose, status) |
+| Drill-down | A time axis grouped by `DATE_TRUNC`: `regrain` year → quarter → month → day within the clicked member; metric charts: the metric's approved dimensions in order; breadcrumbs back | Unit (month → day, year → quarter → month, metric dimension path); integration (a month's days sum to the month; priority → category equals pandas) |
+| Rows behind a selection | `detail_sql`: the dataset's FROM and WHERE plus the member predicates, only readable columns (denied columns counted, never named), ≤100 rows; joins and set operations refused | Unit + integration (a viewer with row filter `region IN {{user.regions}}` sees only EMEA rows and no PII column) |
+| Bounds (ADR-014) | ≤24 statements per request, identical statements once, ≤4 concurrent per dashboard (`gate_for`, a bounded map), `busy` after 15 s; previews ≤200 inline rows; gateway result cache; client debounce 250 ms, aborts the older request, LRU of 20 views | `test_concurrent_tile_queries_are_capped_and_identical_statements_run_once`, `test_a_dashboard_at_its_concurrency_limit_reports_busy`, `test_gates_are_per_dashboard_and_bounded`, `dashboardExplore.test.tsx` |
+| Apply as dashboard filter | The server returns the typed `dashboard.add_filter` op (scope = charts with the exact field); the client posts it to `/ops` (editor, new version); `refresh_saved` re-queries tiles a saved value filter restricts | Unit (the op applies through the ops engine), integration (viewer 403, editor → version + 1), Playwright |
+| UI | `components/DashboardExplore.tsx`: "Filtered by Priority = 1 - Critical ×" chips, per tile Filtered / Not filtered / Your selection / Dashboard filter, keyboard lists for filter and drill, breadcrumbs, rows panel that takes focus; query ids only in expert view. Builder cells are labelled groups with a Select toggle (a chart with controls cannot sit inside a button) | `web/src/test/dashboardExplore.test.tsx`, `web/e2e/dashboard-explore.spec.ts` (axe clean with a filter, a drill and the rows panel open) |
+| Live run | `tests/integration/test_dashboard_interact.py` on compose Postgres 16, strict tenancy | [evidence/conv-06-drill-crossfilter-20261029.md](evidence/conv-06-drill-crossfilter-20261029.md) |
+
+Not built: embedded Superset dashboards keep Superset's native filters (unchanged); time members are drilled, not
+cross-filtered; a SQL Server time axis (DATEADD/DATEDIFF) is not re-grained (its rows can still be listed); rows behind a
+chart whose dataset joins tables are refused.
+
 ## 2026-10-29 — Conversational dashboards: a chart from a question, a draft from a prompt, an Ask answer into a draft (CONV-01…03)
 
 From the [conversational analyst gap review](../70-reviews/2026-10-29-conversational-analyst-gap-review.md), wave 1a.

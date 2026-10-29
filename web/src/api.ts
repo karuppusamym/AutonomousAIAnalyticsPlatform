@@ -3904,6 +3904,32 @@ export interface BuilderSummary {
   platform: string | null; external_url: string | null; content_hash: string; updated_at: string | null;
 }
 export interface BuilderDashboard extends BuilderSummary { document: BuilderDocument }
+/** CONV-06: a session view filter (a click or a chip). The server validates the field and value; never a predicate. */
+export interface ViewFilter { field: string; op: "eq" | "in"; value: unknown; source?: string | null; label?: string; via?: string; note?: string }
+export type ViewTileStatus = "filtered" | "not_filtered" | "source" | "saved_filter" | "refused" | "busy" | "error" | "skipped";
+export interface ViewTile {
+  id: string; kind: "chart" | "kpi"; status: ViewTileStatus; reason?: string; filtered_by?: string[];
+  preview?: { columns: string[]; rows: unknown[][]; truncated?: boolean; row_count?: number }; value?: number | null;
+  query_id?: string; cache_hit?: boolean;
+}
+export interface DashboardView {
+  version: number; filters: ViewFilter[]; tiles: ViewTile[]; apply: BuilderOp[];
+  limits: { max_concurrent: number; max_queries: number };
+}
+export interface DrillLevel { field: string; label: string; grain?: string }
+export interface DrillPlan { kind: "time" | "dimension" | "none"; field?: string; levels?: DrillLevel[]; reason?: string }
+export interface DashboardExplore {
+  version: number;
+  charts: { id: string; filter_fields: string[]; drill: DrillPlan }[];
+  kpis: { id: string; dimensions: string[] }[];
+  limits: { max_filters: number; max_concurrent: number; detail_rows: number };
+}
+export interface DrillStep { field: string; value: unknown; label?: string; grain?: string }
+export interface DrillResult {
+  chart_id: string; kind: DrillPlan["kind"]; depth: number; levels: DrillLevel[]; path: DrillStep[]; level: DrillLevel | null;
+  filtered_by: string[]; preview?: ViewTile["preview"]; query_id?: string; status?: ViewTileStatus; reason?: string;
+  detail?: { columns?: string[]; rows?: unknown[][]; hidden_columns?: number; truncated?: boolean; unavailable?: string; query_id?: string };
+}
 export interface EmbedToken { token: string; dashboard_uuid: string; superset_url: string | null; rls_clauses: number }
 
 /** BI-VIEWS-02: an investigation's dashboards that can be published on their own, and the requests made so far. */
@@ -4667,6 +4693,20 @@ export const api = {
     post("/api/v2/dashboards/{dashboard_id}/exports", { path: { dashboard_id: id }, body: { format } }) as Promise<{ status: "allowed" | "approval_required"; sensitivity: string; approval?: { id: string; status: string } }>,
   builderExport: (id: string, format: "csv" | "xlsx" | "pdf", approvalId?: string) =>
     downloadFile(apiPath("get", "/api/v2/dashboards/{dashboard_id}/exports/{fmt}", { path: { dashboard_id: id, fmt: format }, query: { approval_id: approvalId } }), `dashboard.${format}`),
+  /** CONV-06: what a click on each chart filters by or drills into (no query runs). */
+  dashboardExplore: (id: string) =>
+    get("/api/v2/dashboards/{dashboard_id}/explore", { path: { dashboard_id: id } }) as Promise<DashboardExplore>,
+  /** A cross-filtered view (not a new version): each affected tile re-queried through its governed path as this viewer. */
+  dashboardView: (id: string, body: { filters: ViewFilter[]; base_version?: number | null; refresh_saved?: boolean }, signal?: AbortSignal) =>
+    request<DashboardView>("POST", apiPath("post", "/api/v2/dashboards/{dashboard_id}/view", { path: { dashboard_id: id } }),
+      { ...body, filters: body.filters.map(({ field, op, value, source }) => ({ field, op, value, source: source ?? null })) }, { signal }),
+  /** One drill level for a chart, and optionally the rows behind the chosen member (only columns the viewer may see). */
+  dashboardDrill: (id: string, body: { chart_id: string; path: DrillStep[]; filters: ViewFilter[]; base_version?: number | null; detail?: boolean; preview?: boolean },
+    signal?: AbortSignal) =>
+    request<DrillResult>("POST", apiPath("post", "/api/v2/dashboards/{dashboard_id}/drill", { path: { dashboard_id: id } }), {
+      ...body, path: body.path.map(({ field, value }) => ({ field, value })),
+      filters: body.filters.map(({ field, op, value, source }) => ({ field, op, value, source: source ?? null })),
+    }, { signal }),
   /** CONV-05: what a builder dashboard shows, its notable facts and what changed since the previous version. */
   dashboardStory: (id: string) =>
     get("/api/v2/dashboards/{dashboard_id}/story", { path: { dashboard_id: id } }) as Promise<DashboardStory>,
