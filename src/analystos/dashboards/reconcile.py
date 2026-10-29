@@ -116,14 +116,17 @@ def reconcile_publication(session: Session, pub: Publication, *, publisher: Any,
 
 
 def latest_publications(session: Session, workspace_id: str) -> list[Publication]:
-    """The newest succeeded Superset publication per artifact (builder) or per run."""
+    """The newest succeeded Superset publication per artifact (builder), per run and dashboard selection
+    (a collection published on its own), or per run."""
+    from analystos.dashboards.collections import selection_of
+
     rows = session.scalars(select(Publication).where(Publication.workspace_id == workspace_id,
                                                      Publication.destination == "superset",
                                                      Publication.status.in_(["succeeded", "partial"]))
                            .order_by(Publication.created_at.desc()).limit(500))
     seen, out = set(), []
     for pub in rows:
-        key = pub.artifact_id or pub.run_id or pub.id
+        key = pub.artifact_id or selection_of(pub) or pub.run_id or pub.id
         if key not in seen:
             seen.add(key)
             out.append(pub)

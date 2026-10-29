@@ -7,6 +7,8 @@ import { EmptyState, ErrorBox, KeyValue, StatusBadge, Tag, TechnicalDetails } fr
 
 export const ACTION_LABEL: Record<string, string> = {
   publish_dashboard: "Publish dashboards",
+  "dashboard.collection_publish": "Publish chosen dashboards on their own",
+  "dashboard.grouping_update": "Rename published dashboards under the workspace name",
   execute_plan: "Run an investigation plan",
   mcp_tool_call: "Call an external MCP tool",
   elt_build: "Build with dbt (write to a target schema)",

@@ -3814,6 +3814,33 @@ export interface BuilderSummary {
 }
 export interface BuilderDashboard extends BuilderSummary { document: BuilderDocument }
 export interface EmbedToken { token: string; dashboard_uuid: string; superset_url: string | null; rls_clauses: number }
+
+/** BI-VIEWS-02: an investigation's dashboards that can be published on their own, and the requests made so far. */
+export interface CollectionDashboard {
+  key: string; title: string; kind: "executive" | "operational" | "topic" | "other"; audience: string; charts: number;
+  artifact_id: string; status: string; external_url: string | null;
+}
+export interface CollectionRequest {
+  approval_id: string; status: string; collection: string[]; destination: string | null; payload_hash: string; risk_tier: string;
+  created_at: string | null; expires_at: string | null; reason: string | null;
+  publication: { id: string; status: string; error: string | null } | null;
+}
+export interface RunCollections {
+  run_id: string; workspace_id: string; destination: string | null; destination_note: string | null;
+  dashboards: CollectionDashboard[]; requests: CollectionRequest[];
+}
+export interface CollectionRequested {
+  approval_id: string; status: string; risk_tier: string; destination: string | null; payload_hash: string; collection: string[]; expires_at: string;
+}
+export interface CollectionPublished { status: string; publication_id: string; collection: string[]; destination: string; urls: Record<string, string> }
+/** An existing BI dashboard this workspace published, with the title grouping would give it. */
+export interface GroupingChange { id: number; slug: string | null; from: string; to: string }
+export interface GroupingItem extends GroupingChange { url: string | null; published: boolean; grouped: boolean }
+export interface GroupingPlan {
+  workspace_id: string; group: string; separator: string; available: boolean; reason: string | null;
+  dashboards: GroupingItem[]; to_change: number;
+}
+export interface GroupingRequested { approval_id: string; status: string; risk_tier: string; payload_hash: string; changes: GroupingChange[]; expires_at: string }
 export interface BuilderRefusal { index: number; op: string; reason: string; suggestion?: BuilderOp }
 export interface BuilderTurn {
   status: "applied" | "refused" | "unchanged" | "proposed" | "no_ops";
@@ -4424,6 +4451,20 @@ export const api = {
   // dashboards: publishing is proposal-based (returns the pending, hash-bound proposal; decided in the inbox)
   publishDashboard: (artifactId: string) =>
     post("/api/artifacts/{artifact_id}/publish", { path: { artifact_id: artifactId } }) as Promise<Approval>,
+
+  // BI-VIEWS-02: publish a chosen collection of an investigation's dashboards; group existing BI dashboards by workspace
+  runCollections: (runId: string) =>
+    get("/api/v2/runs/{run_id}/collections", { path: { run_id: runId } }) as Promise<RunCollections>,
+  requestCollection: (runId: string, keys: string[]) =>
+    post("/api/v2/runs/{run_id}/collections/publish-request", { path: { run_id: runId }, body: { keys } }) as Promise<CollectionRequested>,
+  publishCollection: (approvalId: string) =>
+    post("/api/v2/collections/publish", { body: { approval_id: approvalId } }) as Promise<CollectionPublished>,
+  dashboardGrouping: (ws: string) =>
+    get("/api/v2/workspaces/{workspace_id}/dashboard-grouping", { path: W(ws) }) as Promise<GroupingPlan>,
+  requestGrouping: (ws: string, dashboardIds: number[]) =>
+    post("/api/v2/workspaces/{workspace_id}/dashboard-grouping/request", { path: W(ws), body: { dashboard_ids: dashboardIds } }) as Promise<GroupingRequested>,
+  applyGrouping: (ws: string, approvalId: string) =>
+    post("/api/v2/workspaces/{workspace_id}/dashboard-grouping/apply", { path: W(ws), body: { approval_id: approvalId } }) as Promise<{ status: string; approval_id: string; renamed: GroupingChange[] }>,
 
   // Dashboard builder (S08): typed ops, conversation, versions, publish lifecycle, exports
   builderDashboards: (ws: string) =>

@@ -954,6 +954,27 @@ Compose now shares persistent `runtime-data:/app/var` across the API and trusted
 
 Workspace display names now prefix generated dashboards; topic collections reuse available descriptive measures and validated chart specs. Eleven local dashboard drafts and eight historical-run HTML/Markdown reports were prepared with snapshot caveats. 114 unit tests, three local full-flow integrations and a real-API browser preview pass. Existing eight Superset dashboards remain unchanged pending refreshed bundles and approval. Independent per-collection publishing remains open. See [evidence](evidence/workspace-bi-20261025.md) and [usage guide](../30-runbooks/workspace-reports-and-superset.md).
 
+## 2026-10-29 — Collections published on their own; grouping of existing Superset dashboards (BI-VIEWS-02)
+
+`dashboards/collections.py`. A person chooses some of an investigation's dashboards (by default the one open) and asks
+for approval `dashboard.collection_publish`; the payload binds the run, its plan hash, the sorted dashboard keys and a
+bundle holding only those dashboards, their charts (previews stripped) and the KPIs those charts use, so another
+selection, an edited chart or a replan is a different hash. The request runs the run publication's governance review
+(bundle structure, dataset SQL against the requester's current scope, destination policy, VOID-finding gate, KPI
+stamping; unapproved KPIs are approved with the publication by its approver). `POST /api/v2/collections/publish`
+re-derives the payload from the stored artifacts, calls `verify_for_execution` and the Superset switch check, consumes
+the approval, then publishes; a failed BI call restores it for a retry. Idempotency key `collection:<run>:<selection>:<hash>`
+keeps reconcile's "newest per run" apart per selection; a collection rollback removes its dashboards and only the
+charts/datasets no other live publication uses. Grouping: `GET/POST /api/v2/workspaces/{ws}/dashboard-grouping[/request|/apply]`
+lists dashboards this workspace published (slug prefix and provenance stamp both checked) with `Workspace / title`;
+`dashboard.grouping_update` binds the exact {id, slug, from, to} list, and apply re-reads the titles from Superset so a
+title changed there since invalidates the approval instead of being overwritten. `SupersetPublisher.rename_dashboard` PUTs
+the title only. Web: Outputs › Dashboards › Publish chooser and a "Group published dashboards" panel, business wording;
+approval inbox labels. 20 unit tests (`tests/unit/test_dashboard_collection_publish.py`) and 4 UI tests
+(`web/src/test/collections.test.tsx`). Limits: not exercised against live Superset (compose stack down on 2026-10-29),
+so the existing dashboards are unchanged until an editor requests and an approver approves the rename; a later
+republish of an older approved bundle carries that bundle's own titles.
+
 ## 2026-10-25 — Single-reviewer publishing (PUBLISH-SELF-01)
 
 Per the user's explicit request, KPI review now respects workspace separation-of-duties configuration through both API routes. Existing role/hash/policy/expiry/definition checks remain; structural model, relationship and destination reviews retain independent-review rules. The user's already-approved, unchanged retail bundle was reverified and retried successfully: four published Superset dashboards and 12 working chart data requests. Twenty integration, 44 unit and 36 UI tests pass. See [evidence](evidence/single-reviewer-publishing-20261025.md).

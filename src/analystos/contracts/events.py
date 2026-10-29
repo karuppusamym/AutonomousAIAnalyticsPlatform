@@ -107,6 +107,8 @@ EVENT_TYPES |= {"tool.published", "tool.quarantined", "tool.deprecated", "tool.s
 # Dashboards and publishing (S08): op versions, forks of published dashboards, publish requests, reconcile drift, exports
 EVENT_TYPES |= {"dashboard.version_created", "dashboard.forked", "dashboard.publish_requested",
                 "publication.drift_detected", "export.created"}
+# BI-VIEWS-02: grouping existing BI dashboards under the workspace name (an approved title update)
+EVENT_TYPES |= {"dashboard.grouping_requested", "dashboard.grouping_applied"}
 # Proactive monitoring, triggers and recurring work (S09): ingress, anti-noise outcomes, alert groups, channels, packs
 EVENT_TYPES |= {"trigger.received", "trigger.processed", "alert.deferred", "alert.released", "alert_group.opened",
                 "alert_group.merged", "alert_group.resolved", "monitor.rule_approved", "channel.request_created",
