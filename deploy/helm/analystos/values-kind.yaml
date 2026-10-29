@@ -1,0 +1,81 @@
+# Proof install on a local kind cluster (FND-004, S07-T1): deploy/kind/README.md. Development only: env dev,
+# images loaded into the node (`kind load docker-image`, pullPolicy Never), Postgres/Redis/Temporal from
+# deploy/kind/infra.yaml in the same namespace, the Secret created by deploy/kind/proof.sh. The compute roles run
+# under gVisor (deploy/kind/install-gvisor.sh puts runsc into the node's containerd); the chart creates the class.
+#   helm upgrade --install aos deploy/helm/analystos -n analystos -f deploy/helm/analystos/values-kind.yaml
+
+env: dev
+
+image:
+  repository: analystos/app
+  tag: 0.1.0-kind
+  pullPolicy: Never                  # loaded into the node; nothing is pulled
+webImage:
+  repository: analystos/web
+  tag: 0.1.0-kind
+
+config:
+  temporalAddress: temporal:7233     # deploy/kind/infra.yaml
+  supersetUrl: ""                    # preview publishing
+  webUrl: http://localhost:8080
+  corsOrigins: http://localhost:8080
+  sandboxIsolation: auto
+  extra:
+    ANALYSTOS_PROFILE: standard
+    ANALYSTOS_INPROCESS_SCHEDULER: "true"
+
+gvisor:
+  enabled: true
+  createRuntimeClass: true           # kind has no RuntimeClass of its own
+  handler: runsc                     # the runtime name install-gvisor.sh adds to containerd
+
+keda: {enabled: false}
+
+api:
+  replicas: 1
+  uvicornWorkers: 1
+  resources:
+    requests: {cpu: 100m, memory: 512Mi}
+    limits: {cpu: "1", memory: 1536Mi}
+  pdb: {enabled: false}
+
+workers:
+  analysis:
+    replicas: 1
+    keda: {enabled: false}
+    resources:
+      requests: {cpu: 100m, memory: 512Mi}
+      limits: {cpu: "1", memory: 1536Mi}
+    pdb: {enabled: false}
+  compute:                           # gvisor: true in values.yaml
+    replicas: 1
+    keda: {enabled: false}
+    resources:
+      requests: {cpu: 100m, memory: 512Mi}
+      limits: {cpu: "2", memory: 2Gi}
+    autoscaling: {enabled: false}
+    pdb: {enabled: false}
+  compute-py:                        # isolated + gvisor: gets ANALYSTOS_WORKER_REQUIRE_RUNTIME=gvisor
+    replicas: 1
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {cpu: "1", memory: 1Gi}
+  query: {replicas: 0, pdb: {enabled: false}}
+  publish: {replicas: 0}
+  crawl: {replicas: 0}
+  elt: {replicas: 0}
+
+isolatedPools:
+  temporalEgress:                    # the Temporal pod of deploy/kind/infra.yaml (kindnet enforces NetworkPolicy)
+    - podSelector: {matchLabels: {app.kubernetes.io/name: temporal}}
+
+scheduler:
+  replicas: 0                        # in-process (ANALYSTOS_INPROCESS_SCHEDULER)
+
+web:
+  replicas: 1
+  pdb: {enabled: false}
+
+ops:
+  auditVerify: {enabled: false}
+  rlsCheck: {enabled: false}

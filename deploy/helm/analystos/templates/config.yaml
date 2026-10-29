@@ -5,65 +5,7 @@ metadata:
   labels:
     {{- include "analystos.labels" . | nindent 4 }}
 data:
-  ANALYSTOS_ENV: {{ .Values.env | quote }}
-  ANALYSTOS_ORCHESTRATOR: {{ .Values.config.orchestrator | quote }}
-  ANALYSTOS_TEMPORAL_ADDRESS: {{ .Values.config.temporalAddress | quote }}
-  ANALYSTOS_TEMPORAL_NAMESPACE: {{ .Values.config.temporalNamespace | quote }}
-  ANALYSTOS_TEMPORAL_QUEUE_PREFIX: {{ .Values.config.temporalQueuePrefix | quote }}
-  ANALYSTOS_SUPERSET_URL: {{ .Values.config.supersetUrl | quote }}
-  ANALYSTOS_WEB_URL: {{ .Values.config.webUrl | quote }}
-  ANALYSTOS_CORS_ORIGINS: {{ .Values.config.corsOrigins | quote }}
-  ANALYSTOS_GRAPH_ENABLED: {{ .Values.config.graphEnabled | quote }}
-  ANALYSTOS_VECTOR_BACKEND: {{ .Values.config.vectorBackend | default "pgvector" | quote }}
-  ANALYSTOS_SANDBOX_ISOLATION: {{ .Values.config.sandboxIsolation | quote }}
-  ANALYSTOS_AIR_GAPPED: {{ .Values.airGapped.enabled | quote }}
-  # Observability (S12 §2): workers/scheduler serve /metrics on this port; a pod's processes merge in the dir.
-  ANALYSTOS_METRICS_PORT: {{ .Values.monitoring.metricsPort | quote }}
-  ANALYSTOS_METRICS_DIR: /tmp/analystos-metrics
-  ANALYSTOS_OTEL_ENABLED: {{ .Values.monitoring.otel.enabled | quote }}
-  {{- if .Values.monitoring.otel.endpoint }}
-  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.monitoring.otel.endpoint | quote }}
-  {{- end }}
-  # Isolated compute pools (ADR-0022, P7-06): the API dispatches to those this release deploys.
-  ANALYSTOS_ISOLATED_POOLS: {{ include "analystos.isolatedPools" . | quote }}
-  ANALYSTOS_WORKER_ARTIFACT_URL: {{ include "analystos.artifactUrl" . | quote }}
-  {{- with .Values.database.pools }}
-  ANALYSTOS_DB_POOL_MODE: {{ .mode | quote }}
-  ANALYSTOS_DB_POOL_RECYCLE: {{ .recycleSeconds | quote }}
-  ANALYSTOS_DB_POOL_SIZE: {{ .control.size | quote }}
-  ANALYSTOS_DB_MAX_OVERFLOW: {{ .control.maxOverflow | quote }}
-  ANALYSTOS_DB_POOL_TIMEOUT: {{ .control.timeoutSeconds | quote }}
-  ANALYSTOS_ANALYTICS_POOL_SIZE: {{ .analytics.size | quote }}
-  ANALYSTOS_ANALYTICS_MAX_OVERFLOW: {{ .analytics.maxOverflow | quote }}
-  ANALYSTOS_ANALYTICS_POOL_TIMEOUT: {{ .analytics.timeoutSeconds | quote }}
-  ANALYSTOS_LOADER_POOL_SIZE: {{ .loader.size | quote }}
-  ANALYSTOS_LOADER_MAX_OVERFLOW: {{ .loader.maxOverflow | quote }}
-  ANALYSTOS_LOADER_POOL_TIMEOUT: {{ .loader.timeoutSeconds | quote }}
-  {{- end }}
-  ANALYSTOS_DB_TRANSACTION_POOLER: {{ or .Values.database.transactionPooler .Values.pgbouncer.enabled | quote }}
-  {{- if .Values.models.customConfig }}
-  ANALYSTOS_MODELS_CONFIG: /etc/analystos/models.yaml
-  {{- else if .Values.models.modelsConfig }}
-  ANALYSTOS_MODELS_CONFIG: {{ printf "/app/config/%s" .Values.models.modelsConfig | quote }}
-  {{- else if .Values.airGapped.enabled }}
-  ANALYSTOS_MODELS_CONFIG: /app/config/models.airgapped.yaml
-  {{- end }}
-  {{- if .Values.airGapped.localModel.url }}
-  ANALYSTOS_LOCAL_LLM_URL: {{ .Values.airGapped.localModel.url | quote }}
-  {{- end }}
-  ANALYSTOS_PASSWORD_LOGIN: {{ .Values.oidc.passwordLogin | quote }}
-  {{- if .Values.oidc.enabled }}
-  ANALYSTOS_OIDC_ISSUER: {{ required "oidc.issuer is required when oidc.enabled" .Values.oidc.issuer | quote }}
-  ANALYSTOS_OIDC_CLIENT_ID: {{ required "oidc.clientId is required when oidc.enabled" .Values.oidc.clientId | quote }}
-  ANALYSTOS_OIDC_REDIRECT_URI: {{ required "oidc.redirectUri is required when oidc.enabled" .Values.oidc.redirectUri | quote }}
-  ANALYSTOS_OIDC_SCOPES: {{ .Values.oidc.scopes | quote }}
-  ANALYSTOS_OIDC_GROUPS_CLAIM: {{ .Values.oidc.groupsClaim | quote }}
-  ANALYSTOS_OIDC_PROVIDER_NAME: {{ .Values.oidc.providerName | quote }}
-  ANALYSTOS_OIDC_MAPPING_FILE: /etc/analystos/oidc.yaml
-  {{- end }}
-  {{- range $k, $v := .Values.config.extra }}
-  {{ $k }}: {{ $v | quote }}
-  {{- end }}
+  {{- include "analystos.configData" . | nindent 2 }}
 {{- if .Values.models.customConfig }}
 ---
 apiVersion: v1

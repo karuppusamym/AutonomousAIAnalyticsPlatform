@@ -6,6 +6,7 @@
 {{- if or (not $pool.isolated) (gt (int $pool.replicas) 0) }}
 {{- $component := printf "worker-%s" $name }}
 {{- $runtime := include "analystos.poolRuntimeClass" (dict "root" $ "pool" $pool) }}
+{{- $requireRuntime := include "analystos.poolRequiredRuntime" (dict "root" $ "pool" $pool "runtime" $runtime) }}
 {{- $keda := include "analystos.kedaActive" (dict "root" $ "pool" $pool) }}
 {{- $ctx := dict "root" $ "component" $component "podSecurityContext" $pool.podSecurityContext "runtimeClassName" $runtime }}
 ---
@@ -64,6 +65,9 @@ spec:
             - {name: ANALYSTOS_ENV, value: {{ $.Values.env | quote }}}
             - {name: ANALYSTOS_METRICS_PORT, value: {{ $.Values.monitoring.metricsPort | quote }}}
             - {name: ANALYSTOS_METRICS_DIR, value: /tmp/analystos-metrics}
+            {{- with $requireRuntime }}
+            - {name: ANALYSTOS_WORKER_REQUIRE_RUNTIME, value: {{ . | quote }}}
+            {{- end }}
           volumeMounts:
             - {name: tmp, mountPath: /tmp}
           securityContext:

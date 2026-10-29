@@ -1,0 +1,203 @@
+# Release (FND-004, spec S12 §1/§5): on a version tag `vX.Y.Z` (or a manual run with a version), build the five
+# images, gate them on the same SBOM + Grype check as supply-chain.yml, push them to GHCR tagged with the version
+# and the commit, sign each by digest (cosign keyless, GitHub OIDC) with the SBOM attested, package the Helm chart
+# with that version and push it to GHCR as an OCI artifact (signed too), then deploy to `staging` through the
+# reusable deploy workflow. The `staging` GitHub Environment carries the required reviewers and the cluster
+# credentials; production runs only when the owner has set it up (docs/30-runbooks/14-release-and-deploy.md).
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, semver without the v (e.g. 0.2.0 or 0.2.0-rc.1)"
+        required: true
+        type: string
+      deploy:
+        description: "Deploy to staging after publishing"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false   # never cancel a half-pushed release
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      owner: ${{ steps.v.outputs.owner }}
+    steps:
+      - name: Version from the tag or the input (semver)
+        id: v
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then version="${GITHUB_REF_NAME#v}"; else version="$INPUT_VERSION"; fi
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::not a semver version: '$version'"; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"   # GHCR names are lowercase
+
+  images:
+    runs-on: ubuntu-latest
+    needs: [prepare]
+    permissions:
+      contents: read
+      packages: write          # push to GHCR
+      id-token: write          # cosign keyless signing
+    strategy:
+      fail-fast: true          # one failed image stops the release
+      matrix:
+        include:
+          - {name: app, context: ., file: deploy/docker/Dockerfile, args: "EXTRAS=standard,otel"}
+          - {name: web, context: web, file: web/Dockerfile, args: ""}
+          - {name: mock, context: ., file: deploy/docker/Dockerfile.mock, args: ""}
+          - {name: sandbox, context: deploy/sandbox, file: deploy/sandbox/Dockerfile, args: ""}
+          - {name: superset, context: deploy/superset, file: deploy/superset/Dockerfile, args: ""}
+    env:
+      IMAGE: ghcr.io/${{ needs.prepare.outputs.owner }}/analystos-${{ matrix.name }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          build-args: ${{ matrix.args }}
+          load: true
+          tags: |
+            ${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+          provenance: false
+      - name: SBOM (Syft, SPDX JSON)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE }}:${{ env.VERSION }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.name }}.spdx.json
+          upload-artifact: true
+      # The same gate as supply-chain.yml: a fixable high/critical vulnerability stops the release before any push.
+      - name: Vulnerability scan (Grype; fixable high/critical fail)
+        uses: anchore/scan-action@v6
+        with:
+          sbom: sbom-${{ matrix.name }}.spdx.json
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table
+      - name: Push the version and commit tags
+        id: push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:$VERSION"
+          docker push "$IMAGE:sha-$GITHUB_SHA"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$VERSION" | cut -d@ -f2)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          printf '%s@%s\n' "$IMAGE" "$digest" > "digest-${{ matrix.name }}.txt"
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign by digest and attest the SBOM (cosign keyless, OIDC)
+        run: |
+          ref="$IMAGE@${{ steps.push.outputs.digest }}"
+          cosign sign --yes "$ref"
+          cosign attest --yes --type spdxjson --predicate "sbom-${{ matrix.name }}.spdx.json" "$ref"
+          cosign verify "$ref" \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+      - uses: actions/upload-artifact@v4
+        with: {name: "digest-${{ matrix.name }}", path: "digest-${{ matrix.name }}.txt"}
+
+  chart:
+    runs-on: ubuntu-latest
+    needs: [prepare, images]
+    permissions:
+      contents: read
+      packages: write          # push the chart to GHCR
+      id-token: write          # cosign keyless signing
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      CHART_REPO: oci://ghcr.io/${{ needs.prepare.outputs.owner }}/charts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with: {version: v3.16.4}
+      - name: Lint and render (default, small, HA)
+        run: |
+          helm lint deploy/helm/analystos
+          helm lint deploy/helm/analystos -f deploy/helm/analystos/values-small.yaml
+          helm lint deploy/helm/analystos -f deploy/helm/analystos/values-ha.yaml
+          helm template t deploy/helm/analystos -f deploy/helm/analystos/values-ha.yaml > /dev/null
+      - name: Package (chart version = app version = release) and push to GHCR
+        id: push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          helm package deploy/helm/analystos --version "$VERSION" --app-version "$VERSION" --destination dist
+          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          helm push "dist/analystos-$VERSION.tgz" "$CHART_REPO" 2>&1 | tee push.log
+          digest=$(grep -Eo 'sha256:[0-9a-f]{64}' push.log | head -1)
+          test -n "$digest"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign the chart by digest (cosign keyless, OIDC)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GH_TOKEN" | cosign login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          cosign sign --yes "${CHART_REPO#oci://}/analystos@${{ steps.push.outputs.digest }}"
+      - uses: actions/download-artifact@v4
+        with: {pattern: "digest-*", merge-multiple: true, path: digests}
+      - name: Release manifest (every image and the chart, by digest)
+        run: |
+          {
+            echo "version: $VERSION"
+            echo "commit: $GITHUB_SHA"
+            echo "chart: ${CHART_REPO#oci://}/analystos@${{ steps.push.outputs.digest }}"
+            echo "images:"
+            for f in digests/digest-*.txt; do n=$(basename "$f" .txt); echo "  ${n#digest-}: $(cat "$f")"; done
+          } > release-manifest.yaml
+          { echo '### Release manifest'; echo '```yaml'; cat release-manifest.yaml; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with: {name: release-manifest, path: "release-manifest.yaml"}
+
+  staging:
+    needs: [prepare, chart]
+    if: github.event_name == 'push' || inputs.deploy
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+      version: ${{ needs.prepare.outputs.version }}
+    secrets: inherit
+
+  # Off until the owner creates the `production` Environment (required reviewers, its own KUBECONFIG secret) and
+  # sets the repository variable PRODUCTION_DEPLOY=true. Only tagged releases go on, after staging succeeded.
+  production:
+    needs: [prepare, staging]
+    if: github.event_name == 'push' && vars.PRODUCTION_DEPLOY == 'true'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+      version: ${{ needs.prepare.outputs.version }}
+    secrets: inherit
