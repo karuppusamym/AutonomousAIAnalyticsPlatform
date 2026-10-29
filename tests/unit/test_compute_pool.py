@@ -26,7 +26,7 @@ def test_recycling_children_keeps_the_pool_serving():
         assert not pending, "queued tasks never ran: the pool lost its processes"
         pids = {f.result() for f in done}
         assert pool.generations >= 3  # 12 tasks / (2 x 2) per generation
-        assert len(pids) >= 4  # children really were recycled
+        assert len(pids) >= 3  # new children per generation (the stdlib spawns lazily: one child may serve a quota)
 
 
 def test_a_dead_child_fails_its_attempt_and_the_pool_recovers():

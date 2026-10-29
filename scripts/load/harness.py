@@ -146,7 +146,8 @@ def start_api(plane: Plane, *, workers: int = 1) -> tuple[subprocess.Popen, str]
     base = f"http://127.0.0.1:{port}"
     for _ in range(300):
         try:
-            if httpx.get(f"{base}/api/health", timeout=2).status_code < 500:
+            # 10 s: /api/health probes each dependency (an absent Superset alone takes its 2 s timeout)
+            if httpx.get(f"{base}/api/health", timeout=10).status_code < 500:
                 return proc, base
         except httpx.HTTPError:
             pass
