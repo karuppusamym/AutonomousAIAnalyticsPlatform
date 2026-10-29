@@ -1,0 +1,563 @@
+{
+  "$defs": {
+    "ChartBlock": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "chart",
+          "default": "chart",
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "ref": {
+          "$ref": "#/$defs/ContentRef"
+        },
+        "title": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "chart_type": {
+          "default": "table",
+          "title": "Chart Type",
+          "type": "string"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 60,
+          "title": "Columns",
+          "type": "array"
+        },
+        "rows": {
+          "items": {
+            "items": {},
+            "type": "array"
+          },
+          "maxItems": 200,
+          "title": "Rows",
+          "type": "array"
+        },
+        "caption": {
+          "default": "",
+          "maxLength": 1000,
+          "title": "Caption",
+          "type": "string"
+        },
+        "sensitivity": {
+          "default": "internal",
+          "enum": [
+            "public",
+            "internal",
+            "confidential",
+            "restricted"
+          ],
+          "title": "Sensitivity",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceInfo"
+        }
+      },
+      "required": [
+        "id",
+        "ref",
+        "title",
+        "source"
+      ],
+      "title": "ChartBlock",
+      "type": "object"
+    },
+    "ContentRef": {
+      "additionalProperties": false,
+      "description": "Where a block's content lives. Exactly the identifiers its kind needs (checked by the engine).",
+      "properties": {
+        "kind": {
+          "enum": [
+            "dashboard_chart",
+            "dashboard_kpi",
+            "finding",
+            "run_chart",
+            "run_metric",
+            "ask_answer"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "artifact_id": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Artifact Id"
+        },
+        "element_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Element Id"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run Id"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Id"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ContentRef",
+      "type": "object"
+    },
+    "FindingBlock": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "finding",
+          "default": "finding",
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "ref": {
+          "$ref": "#/$defs/ContentRef"
+        },
+        "title": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "maxLength": 8000,
+          "title": "Text",
+          "type": "string"
+        },
+        "confidence": {
+          "default": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "verified": {
+          "default": true,
+          "title": "Verified",
+          "type": "boolean"
+        },
+        "caveats": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Caveats",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "sensitivity": {
+          "default": "internal",
+          "enum": [
+            "public",
+            "internal",
+            "confidential",
+            "restricted"
+          ],
+          "title": "Sensitivity",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceInfo"
+        }
+      },
+      "required": [
+        "id",
+        "ref",
+        "title",
+        "source"
+      ],
+      "title": "FindingBlock",
+      "type": "object"
+    },
+    "KpiBlock": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "kpi",
+          "default": "kpi",
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "ref": {
+          "$ref": "#/$defs/ContentRef"
+        },
+        "title": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "previous_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Previous Value"
+        },
+        "format": {
+          "default": "number",
+          "enum": [
+            "number",
+            "percent",
+            "hours",
+            "currency"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "title": "Unit",
+          "type": "string"
+        },
+        "sensitivity": {
+          "default": "internal",
+          "enum": [
+            "public",
+            "internal",
+            "confidential",
+            "restricted"
+          ],
+          "title": "Sensitivity",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceInfo"
+        }
+      },
+      "required": [
+        "id",
+        "ref",
+        "title",
+        "source"
+      ],
+      "title": "KpiBlock",
+      "type": "object"
+    },
+    "Section": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "blocks": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "chart": "#/$defs/ChartBlock",
+                "finding": "#/$defs/FindingBlock",
+                "kpi": "#/$defs/KpiBlock",
+                "text": "#/$defs/TextBlock"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/TextBlock"
+              },
+              {
+                "$ref": "#/$defs/ChartBlock"
+              },
+              {
+                "$ref": "#/$defs/KpiBlock"
+              },
+              {
+                "$ref": "#/$defs/FindingBlock"
+              }
+            ]
+          },
+          "maxItems": 60,
+          "title": "Blocks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "title": "Section",
+      "type": "object"
+    },
+    "SourceInfo": {
+      "additionalProperties": false,
+      "description": "What a block was read from, as of when it was added or last refreshed.",
+      "properties": {
+        "label": {
+          "maxLength": 400,
+          "title": "Label",
+          "type": "string"
+        },
+        "assets": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Assets",
+          "type": "array"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        },
+        "content_hash": {
+          "default": "",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "labels": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Labels",
+          "type": "array"
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "title": "SourceInfo",
+      "type": "object"
+    },
+    "TextBlock": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "text",
+          "default": "text",
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "markdown": {
+          "default": "",
+          "maxLength": 20000,
+          "title": "Markdown",
+          "type": "string"
+        },
+        "held": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Held"
+        },
+        "generated": {
+          "anyOf": [
+            {
+              "const": "story",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generated"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "TextBlock",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "report_doc.v1",
+      "default": "report_doc.v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-z][a-z0-9_]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "objective": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Objective",
+      "type": "string"
+    },
+    "sections": {
+      "items": {
+        "$ref": "#/$defs/Section"
+      },
+      "maxItems": 40,
+      "title": "Sections",
+      "type": "array"
+    },
+    "sensitivity": {
+      "default": "internal",
+      "enum": [
+        "public",
+        "internal",
+        "confidential",
+        "restricted"
+      ],
+      "title": "Sensitivity",
+      "type": "string"
+    },
+    "schedule_id": {
+      "anyOf": [
+        {
+          "maxLength": 40,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Schedule Id"
+    },
+    "derived": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "maxItems": 200,
+      "title": "Derived",
+      "type": "array"
+    },
+    "origin": {
+      "additionalProperties": true,
+      "title": "Origin",
+      "type": "object"
+    }
+  },
+  "required": [
+    "id",
+    "title"
+  ],
+  "title": "ReportDoc",
+  "type": "object"
+}

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from analystos.contracts.reports import ReportChart, ReportData, ReportInsight, ReportMetric
+from analystos.contracts.reports import ReportChart, ReportData, ReportInsight, ReportMetric, ReportSection
 
 CAUSATION_NOTE = (
     "Findings are associations in historical data, verified by re-running evidence queries; "
@@ -26,6 +26,7 @@ SECTION_ORDER: dict[str, list[str]] = {
     "statistical": ["summary", "hypotheses", "findings", "evidence", "kpis", "quality"],
     "exception": ["alerts", "summary", "kpis", "findings", "changes"],
     "weekly_summary": ["changes", "kpis", "summary", "findings", "alerts"],
+    "document": [],  # CONV-04: a report document renders its own sections (ReportData.sections), in its order
 }
 
 SECTION_TITLES: dict[str, str] = {
@@ -47,6 +48,7 @@ KIND_LABELS: dict[str, str] = {
     "statistical": "Statistical report",
     "exception": "Exception report",
     "weekly_summary": "Weekly summary",
+    "document": "Report",
 }
 
 EXEC_TOP_FINDINGS = 5
@@ -56,6 +58,42 @@ SEVERITY_RANK = {"critical": 0, "error": 0, "high": 0, "warning": 1, "medium": 1
 
 def sections_for(kind: str) -> list[str]:
     return SECTION_ORDER.get(kind, SECTION_ORDER["executive"])
+
+
+def origin_line(data: ReportData) -> tuple[str, str]:
+    """(label, value) for the provenance block: the run a report was built from, or the report document."""
+    return ("Report document", data.origin) if data.origin else ("Run", data.run_id)
+
+
+def section_items(section: ReportSection) -> list[tuple[str, Any]]:
+    """A document section as render items, in order: ("text", markdown), ("note", text), ("chart", (chart,
+    source)), ("finding", (insight, source)) and ("kpis", [(metric, source)]) with consecutive KPI blocks
+    grouped into one table."""
+    out: list[tuple[str, Any]] = []
+    for b in section.blocks:
+        if b.kind == "kpi" and b.metric is not None:
+            if out and out[-1][0] == "kpis":
+                out[-1][1].append((b.metric, b.source))
+            else:
+                out.append(("kpis", [(b.metric, b.source)]))
+        elif b.kind == "chart" and b.chart is not None:
+            out.append(("chart", (b.chart, b.source)))
+        elif b.kind == "finding" and b.insight is not None:
+            out.append(("finding", (b.insight, b.source)))
+        elif b.kind == "note":
+            out.append(("note", b.markdown))
+        elif b.kind == "text" and b.markdown.strip():
+            out.append(("text", b.markdown))
+    return out
+
+
+def kpi_row(m: ReportMetric) -> list[str]:
+    ch = metric_change(m)
+    return [m.display_name, format_value(m.value, m.format), format_value(m.previous_value, m.format),
+            f"{ch.arrow} {ch.text}".strip()]
+
+
+DOC_KPI_HEADERS = ["Metric", "Value", "Previous", "Change"]
 
 
 def section_title(key: str, kind: str) -> str:

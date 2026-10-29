@@ -3961,6 +3961,44 @@ export interface BuilderDraft {
 }
 export interface BuilderVersion { version: number; diff: BuilderOp[]; content_hash: string; created_by: string | null; created_at: string | null }
 
+// ----------------------------------------------------------------------------------- report documents (CONV-04) and stories (CONV-05)
+export type ReportOp = { op: string } & Dict;
+export interface ReportSource { label: string; assets?: string[]; version?: number | null; content_hash?: string; labels?: string[] }
+export type ReportDocBlock =
+  | { kind: "text"; id: string; markdown: string; held?: string | null; generated?: string | null }
+  | { kind: "chart"; id: string; title: string; chart_type: string; columns: string[]; rows: unknown[][]; caption?: string; sensitivity?: string; source: ReportSource; ref: Dict }
+  | { kind: "kpi"; id: string; title: string; value: number | null; previous_value?: number | null; format?: string; unit?: string; sensitivity?: string; source: ReportSource; ref: Dict }
+  | { kind: "finding"; id: string; title: string; text: string; confidence: number; verified: boolean; caveats?: string[]; sensitivity?: string; source: ReportSource; ref: Dict };
+export interface ReportDocSection { id: string; title: string; blocks: ReportDocBlock[] }
+export interface ReportDocDocument {
+  schema_version?: "report_doc.v1"; id: string; title: string; objective?: string; sections: ReportDocSection[];
+  sensitivity?: string; schedule_id?: string | null; origin?: Dict; derived?: Dict[];
+}
+export interface ReportDocSummary { id: string; workspace_id: string; name: string; version: number; status: string; content_hash: string; updated_at: string | null; title?: string; schedule_id?: string | null }
+export interface ReportDocView extends ReportDocSummary { document: ReportDocDocument }
+export interface ReportDocRefusal { index: number; op: string; reason: string; suggestion?: ReportOp }
+export interface ReportExportRequest {
+  status: "approval_required"; format: string; snapshot_hash: string; sensitivity: string;
+  approval: { id: string; status: string; risk_tier: string };
+}
+export interface ReportDocTurn {
+  status: "applied" | "refused" | "unchanged" | "proposed" | "no_ops";
+  report: ReportDocView;
+  proposal?: { ops: ReportOp[]; answered_by: string; notes: string[]; model: string | null };
+  refused?: ReportDocRefusal[];
+  deferred?: ReportOp[];
+  forked_from?: string;
+  export?: ReportExportRequest;
+}
+export interface ReportDocVersion { version: number; diff: ReportOp[]; content_hash: string; created_by: string | null; created_at: string | null }
+export interface ReportContentItem { ref: Dict; title: string; kind: "chart" | "kpi" | "finding"; where: string }
+export interface StoryFact { kind: string; text: string; score: number; chart_id: string | null; values: number[]; how: string }
+export interface DashboardStory {
+  dashboard_id: string; version: number; previous_version: number | null; title: string; shows: string;
+  facts: StoryFact[]; changes: StoryFact[]; wording: "rules" | "llm_small"; notes: string[]; story_hash: string; markdown: string;
+}
+export type ReportDocFormat = "pdf" | "docx" | "pptx" | "html";
+
 // ----------------------------------------------------------------------------------- generated contract
 /*
  * Paths, path parameters, query parameters and request bodies come from the generated OpenAPI
@@ -4629,6 +4667,35 @@ export const api = {
     post("/api/v2/dashboards/{dashboard_id}/exports", { path: { dashboard_id: id }, body: { format } }) as Promise<{ status: "allowed" | "approval_required"; sensitivity: string; approval?: { id: string; status: string } }>,
   builderExport: (id: string, format: "csv" | "xlsx" | "pdf", approvalId?: string) =>
     downloadFile(apiPath("get", "/api/v2/dashboards/{dashboard_id}/exports/{fmt}", { path: { dashboard_id: id, fmt: format }, query: { approval_id: approvalId } }), `dashboard.${format}`),
+  /** CONV-05: what a builder dashboard shows, its notable facts and what changed since the previous version. */
+  dashboardStory: (id: string) =>
+    get("/api/v2/dashboards/{dashboard_id}/story", { path: { dashboard_id: id } }) as Promise<DashboardStory>,
+  storyToReport: (id: string, title?: string) =>
+    post("/api/v2/dashboards/{dashboard_id}/story/report", { path: { dashboard_id: id }, body: { title: title ?? null } }) as Promise<ReportDocView>,
+
+  // Report documents (CONV-04): typed ops by conversation, versions, preview, approval-bound exports
+  reportDocs: (ws: string) =>
+    get("/api/v2/workspaces/{workspace_id}/report-documents", { path: W(ws) }) as Promise<ReportDocSummary[]>,
+  createReportDoc: (ws: string, body: { title: string; objective?: string }) =>
+    post("/api/v2/workspaces/{workspace_id}/report-documents", { path: W(ws), body }) as Promise<ReportDocView>,
+  reportContent: (ws: string) =>
+    get("/api/v2/workspaces/{workspace_id}/report-content", { path: W(ws) }) as Promise<ReportContentItem[]>,
+  reportDoc: (id: string) =>
+    get("/api/v2/report-documents/{doc_id}", { path: { doc_id: id } }) as Promise<ReportDocView>,
+  reportDocMessage: (id: string, body: { text: string; focus?: string | null; base_version?: number | null; apply?: boolean }) =>
+    post("/api/v2/report-documents/{doc_id}/messages", { path: { doc_id: id }, body }) as Promise<ReportDocTurn>,
+  reportDocOps: (id: string, ops: ReportOp[], baseVersion?: number) =>
+    post("/api/v2/report-documents/{doc_id}/ops", { path: { doc_id: id }, body: { ops, base_version: baseVersion ?? null } }) as Promise<ReportDocTurn>,
+  reportDocRevert: (id: string, toVersion: number, baseVersion?: number) =>
+    post("/api/v2/report-documents/{doc_id}/revert", { path: { doc_id: id }, body: { to_version: toVersion, base_version: baseVersion ?? null } }) as Promise<ReportDocTurn>,
+  reportDocVersions: (id: string) =>
+    get("/api/v2/report-documents/{doc_id}/versions", { path: { doc_id: id } }) as Promise<ReportDocVersion[]>,
+  reportDocPreview: (id: string) =>
+    get("/api/v2/report-documents/{doc_id}/preview", { path: { doc_id: id } }) as Promise<{ html: string; snapshot_hash: string; version: number }>,
+  reportDocExportRequest: (id: string, format: ReportDocFormat) =>
+    post("/api/v2/report-documents/{doc_id}/exports", { path: { doc_id: id }, body: { format } }) as Promise<ReportExportRequest>,
+  reportDocExport: (id: string, format: ReportDocFormat, approvalId: string) =>
+    downloadFile(apiPath("get", "/api/v2/report-documents/{doc_id}/exports/{fmt}", { path: { doc_id: id, fmt: format }, query: { approval_id: approvalId } }), `report.${format}`),
 
   // Existing-dashboard mode (N-2, BI-011/012)
   biDashboardCandidates: (ws: string, destination = "superset") =>

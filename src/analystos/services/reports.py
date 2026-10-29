@@ -102,7 +102,7 @@ def generate_report(session: Session, run_id: str, *, kind: str = "executive", f
     run = session.get(AnalysisRun, run_id)
     directory = Path(get_settings().artifact_dir) / run.workspace_id / "reports"
     directory.mkdir(parents=True, exist_ok=True)
-    data_hash = stable_hash(data.model_dump())
+    data_hash = stable_hash(data.snapshot())
     files: dict[str, Any] = {}
     for fmt in formats:
         content, mime, ext = render(data, fmt)

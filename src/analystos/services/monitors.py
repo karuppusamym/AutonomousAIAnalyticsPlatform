@@ -43,7 +43,7 @@ ON_VOID_BASELINE = ("refuse", "relabel")
 BASELINE_VOID = "baseline_void"
 # Config keys that say how a signal is announced, not what is watched. S09 gate and rule keys are *not* here: a
 # monitor with other recipients, playbook or gate is its own signal, never folded into an existing monitor.
-HOW_KEYS = ("pinned", "deliver_to")
+HOW_KEYS = ("pinned", "deliver_to", "attach_digest")
 
 
 def condition_key(workspace_id: str, kind: str, config: dict) -> str:
@@ -107,6 +107,10 @@ def validate_delivery(session: Session, workspace_id: str, config: dict) -> None
         from analystos.services.deliveries import check_targets
 
         check_targets(session, workspace_id, config["deliver_to"], "alert")
+    if config.get("attach_digest") is not None:  # CONV-05: a dashboard digest travels with each new alert
+        from analystos.services.stories import check_digest_target
+
+        check_digest_target(session, workspace_id, config["attach_digest"])
 
 
 # ------------------------------------------------------------------------------------ verified baselines (P7-01)
@@ -698,7 +702,24 @@ def _announce(session: Session, monitor: Monitor, alert: Alert) -> None:
         (monitor.config or {}).get("deliver_to")
     deliver(session, monitor.workspace_id, targets, subject_type="alert", subject_id=alert.id,
             origin={"monitor_id": monitor.id})
+    if (monitor.config or {}).get("attach_digest") and targets:  # CONV-05: the dashboard's digest, as a report snapshot
+        _attach_digest(session, monitor, alert, targets)
     alert.notified_at = utcnow()
+
+
+def _attach_digest(session: Session, monitor: Monitor, alert: Alert, targets: list[str]) -> None:
+    """Queue the digest of `config.attach_digest` for the alert's destinations that accept reports (the delivery path
+    refuses, visibly, the ones that do not). Never fails the alert."""
+    from analystos.services.stories import attach_digests
+
+    owner = session.get(User, monitor.created_by) if monitor.created_by else None
+    if owner is None or not owner.active:
+        return
+    try:
+        attach_digests(session, owner, monitor.workspace_id, [monitor.config["attach_digest"]], targets,
+                       origin={"monitor_id": monitor.id, "alert_id": alert.id})
+    except Exception:  # noqa: BLE001 - recorded per dashboard by attach_digests; anything else must not lose the alert
+        log.exception("digest for monitor %s failed", monitor.id)
 
 
 @owned_by("alert", "alert_id")

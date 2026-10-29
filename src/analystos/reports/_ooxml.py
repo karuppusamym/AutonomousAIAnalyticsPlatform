@@ -28,7 +28,7 @@ def xml_text(v: Any) -> str:
 
 def snapshot_hash(data: ReportData) -> str:
     """The hash services/reports.generate_report records as `report_data_hash` for this snapshot."""
-    return stable_hash(data.model_dump())
+    return stable_hash(data.snapshot())
 
 
 def snapshot_id(data: ReportData) -> str:

@@ -25,6 +25,7 @@ purpose_suites:
   insight_narrative: narrative
   summarization: narrative
   analyst_synthesis: narrative
+  data_story: narrative  # CONV-05: rewording computed facts, numbers kept as written
 
 suites:
   json_contract:

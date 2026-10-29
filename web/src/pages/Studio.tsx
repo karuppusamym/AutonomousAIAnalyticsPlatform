@@ -25,7 +25,7 @@ import { fmtDate, fmtNumber, fmtPct, shortHash } from "../lib/format";
 import { useAsync } from "../lib/hooks";
 import { to, type OutputType } from "../routes";
 import { FindingDetail } from "./Insights";
-import { GenerateReportForm, ReportRow } from "./Reports";
+import { GenerateReportForm, NewReportDoc, ReportBuilder, ReportRow } from "./Reports";
 
 /** Artifact type → output filter. Metrics are not outputs: their one home is Data (spec v4 §15). */
 export function outputTypeOf(artifactType: string): OutputType | null {
@@ -33,6 +33,7 @@ export function outputTypeOf(artifactType: string): OutputType | null {
   // ML experiment records (spec, split, trials, package, evaluation, card) live with their experiment in Work
   if (artifactType.startsWith("ml_")) return null;
   if (artifactType === "dashboard" || artifactType === "report" || artifactType === "dataset" || artifactType === "chart") return artifactType;
+  if (artifactType === "report_document") return "report";  // CONV-04: a report shaped by conversation
   if (artifactType === "process_analysis") return "process";
   return "other";
 }
@@ -179,6 +180,16 @@ export function OutputsPage() {
           <summary>Generate a report</summary>
           <div className="card-body">
             <GenerateReportForm wsId={wsId} onCreated={(a) => { void artifacts.reload(); set({ artifact: a.id }); }} />
+          </div>
+        </details>
+      )}
+      {type === "report" && (role === "owner" || role === "editor") && (
+        <details className="card generate-report" open={!items.some((i) => i.kind === "artifact" && i.artifact.type === "report_document")}>
+          <summary>Write a report by asking</summary>
+          <div className="card-body">
+            <p className="small muted">Start with a title, then say what it should contain: “add a section on EMEA backlog”, “include the
+              resolution trend chart”. It uses only charts, numbers and findings that are already verified.</p>
+            <NewReportDoc wsId={wsId} onCreated={(id) => { void artifacts.reload(); set({ artifact: id }); }} />
           </div>
         </details>
       )}
@@ -383,6 +394,8 @@ function ArtifactContent({ a, wsId, role, onSelect }: { a: ArtifactDetail; wsId:
       return <><PublishCard wsId={wsId} artifact={a} /><DashboardPreview wsId={wsId} artifact={a} /></>;
     case "report":
       return <ReportRow wsId={wsId} report={a} />;
+    case "report_document":
+      return <ReportBuilder docId={a.id} role={role} onSwitch={onSelect} />;  // CONV-04
     case "process_analysis":
       return <ProcessAnalysisView wsId={wsId} analysis={{ ...(a.content as unknown as ProcessAnalysis), artifact: { id: a.id, name: a.name, version: a.version } }} />;
     case "dataset":
