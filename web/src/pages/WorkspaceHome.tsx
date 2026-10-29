@@ -15,6 +15,7 @@ import { fmtDate } from "../lib/format";
 import { useAction, useAsync, type AsyncState } from "../lib/hooks";
 import { TERMINAL_RUN } from "../lib/status";
 import { roleAtLeast, to } from "../routes";
+import { useExpertView } from "../lib/expert";
 
 /** A source not checked for this long is shown as stale on the Overview. */
 export const STALE_AFTER_DAYS = 7;
@@ -58,6 +59,7 @@ export function WorkspaceHomePage() {
   const ws = useAsync(() => api.getWorkspace(wsId), [wsId]);
   const sources = useAsync(() => api.listSources(wsId), [wsId]);
   const runs = useAsync(() => api.listRuns(wsId), [wsId]);
+  const expert = useExpertView();
 
   if (ws.error) return <div className="page"><ErrorBox error={ws.error} onRetry={ws.reload} /></div>;
   if (!ws.data) return <div className="page"><Loading /></div>;
@@ -81,7 +83,7 @@ export function WorkspaceHomePage() {
           <AtAGlance ws={w} runs={runs.data} />
           <DataShapeCard wsId={wsId} role={w.role} />
           <ReviewedContext wsId={wsId} role={w.role} />
-          <PilotScorecard wsId={wsId} role={w.role} runs={runs.data} />
+          {expert && <PilotScorecard wsId={wsId} role={w.role} runs={runs.data} />}
         </>
       )}
       {w.role === "owner" && !!runs.data?.length && <WorkModesSettings wsId={wsId} collapsed />}
@@ -185,8 +187,8 @@ function NeedsYou({ wsId, runs, sources }: { wsId: string; runs: Run[]; sources:
   const needs: Need[] = [
     { id: "approvals", label: "Pending approvals", count: count(approvals), error: approvals.error, href: to.approvals(wsId), hint: "Waiting for a decision" },
     { id: "alerts", label: "Open alerts", count: count(alerts), error: alerts.error, href: to.monitoring(wsId, { tab: "alerts" }), hint: "A monitor fired" },
-    { id: "void", label: "Void findings", count: count<Insight>(insights, (i) => i.verification_state?.badge === "void"), error: insights.error,
-      href: to.outputs(wsId, { type: "finding" }), hint: "Their data or definition changed; re-run to verify again" },
+    { id: "void", label: "Findings to re-check", count: count<Insight>(insights, (i) => i.verification_state?.badge === "void"), error: insights.error,
+      href: to.outputs(wsId, { type: "finding" }), hint: "Their data or definition changed; re-run to check them again" },
     { id: "waiting", label: "Investigations waiting for you", count: runs.filter((r) => r.status === "WAITING_USER" || r.status === "PAUSED").length,
       href: to.investigations(wsId), hint: "Paused or asking a question" },
     { id: "questions", label: "Open data questions", count: count(questions), error: questions.error, href: to.data(wsId, "definitions"),

@@ -23,7 +23,7 @@ export function PreparePanel({ wsId, role, recipe, onSelectRecipe, pipeline = nu
   return (
     <div className="stack">
       <p className="muted small">Load a file, or build a recipe of joins, filters and checks. Previews write nothing; results appear in
-        {" "}<Link to={to.outputs(wsId, { type: "prepared" })}>Outputs → Prepared data</Link>.</p>
+        {" "}<Link to={to.outputs(wsId, { type: "prepared" })}>Results → Prepared data</Link>.</p>
       <div className="grid-2">
         <IngestCard wsId={wsId} canEdit={canEdit} />
         <RecipesCard wsId={wsId} canEdit={canEdit} selected={recipe} onSelect={onSelectRecipe} />

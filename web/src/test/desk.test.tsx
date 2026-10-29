@@ -80,7 +80,7 @@ describe("Request desk (S11-T1)", () => {
     const store: Record<string, DeskRequest> = {};
     const f = mockFetch(desk("viewer", store, VIEWER));
     renderAt(`/w/${WS}/work/desk`);
-    expect(await screen.findByRole("heading", { name: "Request desk" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Requests" })).toBeTruthy();
     expect(screen.queryByRole("tab", { name: "Analyst queue" })).toBeNull();  // the queue is for analysts
     fireEvent.change(screen.getByLabelText(/What do you need/), { target: { value: "How many incidents were opened last week?" } });
     fireEvent.change(screen.getByLabelText("Priority"), { target: { value: "high" } });

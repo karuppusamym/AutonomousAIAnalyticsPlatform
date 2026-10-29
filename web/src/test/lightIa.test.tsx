@@ -136,7 +136,7 @@ describe("the gear: admin screens are hidden from analysts and viewers", () => {
     mockFetch(asRole(user, role));
     const { unmount } = renderAt(`/w/${WS}`);
     const nav = screen.getByRole("navigation", { name: "Main" });
-    await within(nav).findByRole("link", { name: "Outputs" });
+    await within(nav).findByRole("link", { name: "Dashboards & reports" });
     for (const t of [...ADMIN_TITLES, "Members & policy"]) expect(within(nav).queryByRole("link", { name: t })).toBeNull();
     expect(within(nav).queryByRole("group", { name: /Settings/ })).toBeNull();
     unmount();
@@ -404,7 +404,7 @@ describe("Overview in two states", () => {
     mockFetch();
     const { container } = renderAt(`/w/${WS}`);
     const card = (await screen.findByRole("heading", { name: "What needs you" })).closest("section")!;
-    await waitFor(() => expect(within(card).getByText("Void findings").previousElementSibling?.textContent).toBe("1"));
+    await waitFor(() => expect(within(card).getByText("Findings to re-check").previousElementSibling?.textContent).toBe("1"));
     expect(within(card).getByText("Pending approvals").closest("a")?.getAttribute("href")).toBe(`/w/${WS}/operate/approvals`);
     expect(within(card).getByText("Open data questions")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Start work" })).toHaveLength(1);

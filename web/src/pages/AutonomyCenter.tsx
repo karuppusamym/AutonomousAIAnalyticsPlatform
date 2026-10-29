@@ -25,8 +25,8 @@ export function AutonomyCenterPage() {
   const setView = (v: AutonomyView) => setParams(v === "overview" ? {} : { view: v });
   return (
     <div className="page">
-      <PageHeader title="Autonomy Center"
-        subtitle="Goals and their runs, queues, exceptions, budgets, schedules and monitors. Every run keeps to its budget; publishing and notifying always wait for an approval." />
+      <PageHeader title="Automations"
+        subtitle="Goals, schedules and alerts that run on their own. Every run stays within its budget, and nothing is published or sent without an approval." />
       <Tabs value={view} onChange={setView} tabs={[
         { id: "overview", label: "Overview" },
         { id: "goals", label: "Goals" },
@@ -47,7 +47,7 @@ export function AutonomyCenterPage() {
 function Overview({ wsId, onView }: { wsId: string; onView: (v: AutonomyView) => void }) {
   const summary = useAsync(() => goalsApi.summary(wsId), [wsId]);
   if (summary.error && !summary.data) return <ErrorBox error={summary.error} onRetry={summary.reload} />;
-  if (!summary.data) return <Loading label="Loading the Autonomy Center…" />;
+  if (!summary.data) return <Loading label="Loading automations…" />;
   return <AutonomyOverview wsId={wsId} summary={summary.data} onView={onView} />;
 }
 

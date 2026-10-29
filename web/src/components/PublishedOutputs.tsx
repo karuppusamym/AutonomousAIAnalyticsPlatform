@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { Artifact } from "../api";
 import { outputDisplayName } from "../lib/outputNames";
 import { fmtDate } from "../lib/format";
+import { useExpertView } from "../lib/expert";
 
 function browserUrl(value: string | null): string | null {
   try {
@@ -15,6 +16,7 @@ export function PublishedOutputs({ wsId, artifacts, onSelect }: {
   wsId: string; artifacts: Artifact[]; onSelect: (artifact: Artifact) => void;
 }) {
   const [search, setSearch] = useState("");
+  const expert = useExpertView();
   const published = useMemo(() => {
     const seen = new Set<string>();
     return artifacts.filter((a) => a.workspace_id === wsId && a.status === "published" &&
@@ -43,7 +45,10 @@ export function PublishedOutputs({ wsId, artifacts, onSelect }: {
               <div className="stack">
                 <strong>{outputDisplayName(a)}</strong>
                 <span className="small muted">{a.type} · {a.platform ?? "BI"} · Published record updated {fmtDate(a.updated_at)}</span>
-                {a.banner && <span className="alert alert-warning" role="alert">Needs re-verification: {a.banner.reason}</span>}
+                {a.banner && <span className="alert alert-warning" role="alert" title={expert ? undefined : a.banner.reason}>
+                  {expert ? <>Needs re-verification: {a.banner.reason}</>
+                    : "Some numbers need re-checking: the data or a definition behind them changed since publishing. Open Details & evidence to re-run."}
+                </span>}
                 <span className="chip-row">
                   {url ? <a className="btn btn-sm" href={url} target="_blank" rel="noreferrer noopener" aria-label={`Open ${outputDisplayName(a)} in ${a.platform ?? "BI"}`}>Open in {a.platform ?? "BI"} ↗</a>
                     : <span className="small muted">Published link unavailable. Open details to inspect the publication.</span>}

@@ -9,6 +9,7 @@ import { ColumnProfilePanel, hasProfile, profileLine, profileMetaText } from "..
 import { ConfidenceBar, EmptyState, ErrorBox, Field, Loading, Notice, PageHeader, StatusBadge, Tag, Card, Tabs } from "../components/ui";
 import { fmtDate, fmtNumber, fmtPct } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
+import { useExpertView } from "../lib/expert";
 
 // The studio's other tabs load on demand (the force-graph renderer among them), keeping the main bundle small.
 const KnowledgeDocs = lazyWithReload(() => import("../components/KnowledgeDocs").then((m) => ({ default: m.KnowledgeDocs })));
@@ -43,6 +44,8 @@ const TABS: { id: StudioTab; label: string }[] = [
   { id: "contexts", label: "Analysis contexts" }, { id: "review", label: "Review queue" }, { id: "metrics", label: "Metrics" }, { id: "definitions", label: "Definitions" },
   { id: "transfer", label: "Import & export" },
 ];
+/** Tabs for data engineers, shown with expert tools on (or when a link opens one directly). */
+const EXPERT_TABS = new Set<StudioTab>(["grounding", "contexts", "transfer"]);
 
 /**
  * Data → Catalog & definitions (spec v4 §15): one screen, seven tabs. The crawled catalog; the
@@ -56,6 +59,8 @@ export function CatalogPage() {
   const [params, setParams] = useSearchParams();
   const tab = (TABS.some((t) => t.id === params.get("tab")) ? params.get("tab") : "catalog") as StudioTab;
   const ws = useAsync(() => api.getWorkspace(wsId), [wsId]);
+  const expert = useExpertView();
+  const shownTabs = TABS.filter((t) => expert || !EXPERT_TABS.has(t.id) || t.id === tab);
   const canEdit = EDITOR_ROLES.has(ws.data?.role ?? "");
   const set = useCallback((patch: Record<string, string | null>) => {
     setParams((prev) => {
@@ -71,11 +76,11 @@ export function CatalogPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Catalog & definitions"
-        subtitle={<>What the data means: tables and columns, documents, metrics and the joins between them. Connect and crawl data
-          under <Link to={to.sources(wsId)}>Sources</Link>.</>} />
-      <div className="catalog-section-picker"><Field label="Choose a data section" htmlFor="catalog-section"><select id="catalog-section" value={tab} onChange={e=>switchTab(e.target.value as StudioTab)}>{TABS.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}</select></Field></div>
-      <div className="catalog-section-tabs"><Tabs value={tab} onChange={switchTab} tabs={TABS} /></div>
+      <PageHeader title="Data dictionary"
+        subtitle={<>What your data means: tables and columns, business terms, metrics and documents. Connect data
+          under <Link to={to.sources(wsId)}>Data sources</Link>.</>} />
+      <div className="catalog-section-picker"><Field label="Choose a data section" htmlFor="catalog-section"><select id="catalog-section" value={tab} onChange={e=>switchTab(e.target.value as StudioTab)}>{shownTabs.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}</select></Field></div>
+      <div className="catalog-section-tabs"><Tabs value={tab} onChange={switchTab} tabs={shownTabs} /></div>
       <div className="tab-panel">
         <Suspense fallback={<Loading />}>
           {tab === "catalog" && <CatalogTab wsId={wsId} canEdit={canEdit} />}

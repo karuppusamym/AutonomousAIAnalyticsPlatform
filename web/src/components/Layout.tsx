@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useMatch, useNavigate } from "react-router-dom";
 import { api, type Workspace } from "../api";
 import { useAuth } from "../auth";
+import { setExpertView, useExpertView } from "../lib/expert";
 import { nextThemePref, setThemePref, useTheme } from "../lib/theme";
 import { AREAS, canSee, fillPath, SCREENS } from "../routes";
 import { CommandPalette } from "./CommandPalette";
@@ -25,6 +26,23 @@ export function ThemeToggle() {
       <span aria-hidden="true">{THEME_ICON[pref]}</span>
       <span className="sr-only">{THEME_LABEL[pref]}; switch to {THEME_LABEL[next].toLowerCase()}</span>
     </button>
+  );
+}
+
+/** Business view by default; analysts turn on the engineering surfaces here (lib/expert.ts). */
+export function ExpertSwitch() {
+  const expert = useExpertView();
+  return (
+    <div className="nav-expert">
+      <label className="field-check">
+        <input type="checkbox" role="switch" checked={expert} onChange={(e) => setExpertView(e.target.checked)}
+          aria-describedby="nav-expert-hint" />
+        <span>Show expert tools</span>
+      </label>
+      <p id="nav-expert-hint" className="small muted">{expert
+        ? "SQL console, notebooks, builds and lineage are shown."
+        : "Off: a simpler view for business users."}</p>
+    </div>
   );
 }
 
@@ -165,6 +183,7 @@ export function Layout() {
           <AreaNav wsId={wsId} wsName={ws?.name} role={ws?.role} />
           {/* On phones the top bar has no room for it, so Lite is offered here instead. */}
           {wsId && <Link className="btn btn-sm sidenav-lite" to={to.lite(wsId)}>Lite workspace</Link>}
+          <ExpertSwitch />
         </nav>
         <main id="main" className="main" tabIndex={-1}>
           <ErrorBoundary resetKey={location.pathname}>

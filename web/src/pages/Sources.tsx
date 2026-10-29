@@ -36,9 +36,9 @@ export function SourcesPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Sources"
-        subtitle={<>Connect a database, warehouse, application or files; choose the tables AnalystOS may read; each crawl profiles them and
-          detects changes. What the data means is curated in the <Link to={to.catalog(wsId)}>Catalog</Link>.</>}
+      <PageHeader title="Data sources"
+        subtitle={<>Connect a database, warehouse, application or files, and choose which tables may be read. What the data means is
+          kept in the <Link to={to.catalog(wsId)}>Data dictionary</Link>.</>}
         actions={<button type="button" className="btn btn-primary" onClick={() => setShowAdd((s) => !s)}>{showAdd ? "Close" : "Add source"}</button>} />
       {showAdd && <AddSource wsId={wsId} onAdded={() => { setShowAdd(false); reloadAll(); }} />}
       <ErrorBox error={sources.error} onRetry={sources.reload} />

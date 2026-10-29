@@ -66,7 +66,7 @@ export function DataShapeCard({ wsId, role }: { wsId: string; role?: string | nu
     <Card title="What you can do with this data" label="What you can do with this data">
       {workspace.length > 0 && (
         <p className="muted" data-testid="shape-workspace">
-          {workspace.map((w) => w.label).join(" · ")}. {workspace[0].reasons[0]}.
+          {workspace.map((w) => w.label).join(" · ")}. {sentence(workspace[0].reasons[0])}
         </p>
       )}
       {rows.length === 0 && <p className="muted">No clear pattern yet. Select more tables in Data, or profile them, and it will fill in.</p>}
@@ -101,4 +101,11 @@ export function DataShapeCard({ wsId, role }: { wsId: string; role?: string | nu
       )}
     </Card>
   );
+}
+
+/** The server writes reasons as lower-case clauses; shown alone, one starts a sentence. */
+function sentence(text: string | undefined): string {
+  if (!text) return "";
+  const t = text.charAt(0).toUpperCase() + text.slice(1);
+  return /[.!?]$/.test(t) ? t : `${t}.`;
 }

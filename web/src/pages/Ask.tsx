@@ -19,6 +19,7 @@ import {
   type Pill,
 } from "../lib/ask";
 import { guessChart } from "../lib/charts";
+import { useExpertView } from "../lib/expert";
 import { fmtDate, fmtMs, fmtNumber, fmtUsd } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import { exampleSql, starterQuestions } from "../lib/starters";
@@ -609,6 +610,7 @@ function Inspector({ turn }: { turn: AskTurn }) {
 
 // ------------------------------------------------------------------------------------ page
 export function AskPage() {
+  const expert = useExpertView();
   const { wsId = "" } = useParams();
   const assets = useAsync(() => api.catalog(wsId), [wsId]);
   const ws = useAsync(() => api.getWorkspace(wsId), [wsId]);
@@ -788,7 +790,7 @@ export function AskPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Ask" subtitle="Questions answered from governed data: verified answers first, generated SQL only through the same gateway as every investigation." />
+      <PageHeader title="Ask a question" subtitle="Ask in plain words. Answers come from your connected data, and every number is checked before you see it." />
       <div className="ask-layout">
         <nav className="card ask-threads" aria-label="Threads" data-tour="ask-threads">
           <div className="card-body stack">
@@ -872,7 +874,7 @@ export function AskPage() {
             </div>
           </Card>
 
-          <Card title="SQL console">
+          {expert && <Card title="SQL console">
             {assets.error && <ErrorBox error={assets.error} onRetry={assets.reload} />}
             {sqlExamples.length > 0 && <div className="chip-row" aria-label="Example queries">
               {sqlExamples.map((example) => <button key={example.label} type="button" className="btn btn-sm"
@@ -894,7 +896,7 @@ export function AskPage() {
             <GatewayError error={qErr} />
             {explain && <ExplainView ex={explain} />}
             {qres && <ResultView res={qres} />}
-          </Card>
+          </Card>}
         </div>
 
         {selectedTurn ? <Inspector turn={selectedTurn} /> : (

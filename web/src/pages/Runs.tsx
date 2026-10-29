@@ -12,6 +12,7 @@ import { StartWorkButton } from "../components/StartWork";
 import { WorkflowPanel } from "../components/WorkflowPanel";
 import { EmptyState, ErrorBox, Loading, PageHeader, StatusBadge, Tabs, Tag, Value } from "../components/ui";
 import { durationBetween, fmtDate } from "../lib/format";
+import { useExpertView } from "../lib/expert";
 import { useAsync } from "../lib/hooks";
 import { to, type WorkTab } from "../routes";
 
@@ -21,6 +22,8 @@ const TABS: { id: WorkTab; label: string }[] = [
   { id: "prepare", label: "Prepare data" }, { id: "builds", label: "dbt builds" }, { id: "workflows", label: "Workflows" },
   { id: "process", label: "Process" },
 ];
+/** Engineering tabs, shown with expert tools on (or when a link opens one directly). */
+const EXPERT_TABS = new Set<WorkTab>(["thread", "notebooks", "experiments", "builds", "workflows", "process"]);
 
 /**
  * Work (spec v4 §15): everything started with Start work. Investigations and their Data Thread
@@ -35,6 +38,8 @@ export function WorkPage() {
   const tab = (TABS.some((t) => t.id === requested) ? requested : "investigations") as WorkTab;
   const ws = useAsync(() => api.getWorkspace(wsId), [wsId]);
   const { user } = useAuth();
+  const expert = useExpertView();
+  const shownTabs = TABS.filter((t) => expert || !EXPERT_TABS.has(t.id) || t.id === tab);
   const set = useCallback((patch: Record<string, string | null>) => {
     setParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -50,9 +55,10 @@ export function WorkPage() {
   const role = user?.is_admin ? "owner" : ws.data?.role;
   return (
     <div className="page">
-      <PageHeader title="Work" subtitle={<>Investigations and prepared data. For a quick question, use <Link to={to.ask(wsId)}>Ask</Link>.</>}
+      <PageHeader title="Investigations" subtitle={<>Deeper analyses that look for causes, trends and drivers. For a quick answer, use{" "}
+        <Link to={to.ask(wsId)}>Ask a question</Link>.</>}
         actions={<StartWorkButton wsId={wsId} />} />
-      <Tabs value={tab} onChange={(t) => setParams(t === "investigations" ? {} : { tab: t })} tabs={TABS} />
+      <Tabs value={tab} onChange={(t) => setParams(t === "investigations" ? {} : { tab: t })} tabs={shownTabs} />
       <div className="tab-panel" role="tabpanel">
         {tab === "investigations" && <Investigations wsId={wsId} />}
         {tab === "thread" && <DataThreadPanel wsId={wsId} role={role} container={params.get("container")} branch={params.get("branch")}
@@ -73,11 +79,12 @@ export function WorkPage() {
 
 function Investigations({ wsId }: { wsId: string }) {
   const runs = useAsync(() => api.listRuns(wsId), [wsId]);
+  const expert = useExpertView();
   return (
     <>
       <ErrorBox error={runs.error} onRetry={runs.reload} />
       {runs.loading && !runs.data && <Loading />}
-      {runs.data?.length === 0 && <EmptyState title="No investigations yet">Use Start work once a source has selected tables.</EmptyState>}
+      {runs.data?.length === 0 && <EmptyState title="No investigations yet">Press Start work once your data is connected.</EmptyState>}
       {!!runs.data?.length && (
         <div className="table-wrap card">
           <table className="table runs-table">
@@ -95,8 +102,8 @@ function Investigations({ wsId }: { wsId: string }) {
                   <td className="small">{fmtDate(r.started_at ?? r.created_at)}</td>
                   <td className="small">{durationBetween(r.started_at, r.finished_at)}</td>
                   <td className="num"><Value value={r.cost_usd} format="usd" /></td>
-                  <td><Link to={to.thread(wsId, "run", r.id)} className="btn btn-xs btn-ghost">Data Thread<span className="sr-only"> of {r.objective}</span></Link>
-                    <Link to={to.runConsole(wsId, r.id)} className="btn btn-xs btn-ghost">Agent console<span className="sr-only"> for {r.objective}</span></Link></td>
+                  <td>{expert && <><Link to={to.thread(wsId, "run", r.id)} className="btn btn-xs btn-ghost">Data Thread<span className="sr-only"> of {r.objective}</span></Link>
+                    <Link to={to.runConsole(wsId, r.id)} className="btn btn-xs btn-ghost">Agent console<span className="sr-only"> for {r.objective}</span></Link></>}</td>
                 </tr>
               ))}
             </tbody>

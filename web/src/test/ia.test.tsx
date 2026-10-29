@@ -54,7 +54,7 @@ describe("route manifest (spec v4 §15)", () => {
   });
 
   it("has five areas and the gear, each with at least one navigable screen, in the spec's order", () => {
-    expect(AREAS.map((a) => a.label)).toEqual(["Overview", "Data", "Work", "Outputs", "Operate", "Settings"]);
+    expect(AREAS.map((a) => a.label)).toEqual(["Overview", "Data", "Analyze", "Results", "Approvals & automation", "Settings"]);
     for (const a of AREAS) expect(SCREENS.some((s) => s.area === a.id && s.nav)).toBe(true);
   });
 
@@ -136,7 +136,7 @@ describe("route manifest (spec v4 §15)", () => {
     await waitFor(() => expect(within(nav).getByRole("group", { name: /Settings/ })).toBeTruthy());
     const groups = within(nav).getAllByRole("group").map((g) => g.getAttribute("aria-labelledby"));
     expect(groups).toEqual(["nav-a-overview", "nav-a-data", "nav-a-work", "nav-a-outputs", "nav-a-operate", "nav-a-settings"]);
-    expect(within(within(nav).getByRole("group", { name: "Data" })).getByRole("link", { name: "Catalog & definitions" }).getAttribute("href"))
+    expect(within(within(nav).getByRole("group", { name: "Data" })).getByRole("link", { name: "Data dictionary" }).getAttribute("href"))
       .toBe(`/w/${WS}/data/catalog`);
     await screen.findByRole("heading", { name: "IT Service Management", level: 1 });
   });
@@ -204,11 +204,14 @@ describe("unknown is never shown as 0", () => {
 describe("Ctrl/Cmd-K command palette", () => {
   it("lists every navigable screen for the current workspace and filters by terms", () => {
     const items = screenItems(WS, "ITSM");
-    expect(items.map((i) => i.label)).toContain("Catalog & definitions");
+    expect(items.map((i) => i.label)).toContain("Data dictionary");
     expect(items.find((i) => i.label === "Platform settings")?.href).toBe("/settings/platform");
     expect(screenItems(undefined).some((i) => i.href.includes(":wsId"))).toBe(false);
     expect(filterItems(items, "token").map((i) => i.label)).toEqual(["Usage & cost"]);
-    expect(filterItems(items, "data cat").map((i) => i.label)).toEqual(["Catalog & definitions"]);
+    expect(filterItems(items, "data cat").map((i) => i.label)).toEqual(["Data dictionary"]);
+    // the old names still find the renamed screens
+    expect(filterItems(items, "autonomy center").map((i) => i.label)).toEqual(["Automations"]);
+    expect(filterItems(items, "outputs").map((i) => i.label)).toContain("Dashboards & reports");
     // the gear's admin screens are not offered to analysts or viewers
     for (const role of ["analyst", "viewer"]) {
       const labels = screenItems(WS, "ITSM", { isAdmin: false, role }).map((i) => i.label);

@@ -69,7 +69,7 @@ export function DeskPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Request desk"
+      <PageHeader title="Requests"
         subtitle="Ask for a number, an explanation, a definition or a report. The desk answers what it can through the governed paths and hands the rest to an analyst, with the context already gathered." />
       <NewRequest wsId={wsId} onCreated={created} />
       <Tabs<View> value={view} onChange={(v) => setParams((p) => { p.set("view", v); return p; })}

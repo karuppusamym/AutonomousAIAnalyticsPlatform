@@ -230,7 +230,7 @@ function ProcessForm({ wsId, candidates, onDone }: { wsId: string; candidates: P
             placeholder={pathHint ? pathHint.path.join(" → ") : "Created → Assigned → Worked → Closed"} />
         </Field>
         <div className="chip-row">
-          <label className="field-check"><input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} /> Save to Outputs</label>
+          <label className="field-check"><input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} /> Save to Results</label>
           <button type="submit" className="btn btn-primary" disabled={act.busy}>{act.busy ? "Analyzing…" : "Analyze"}</button>
         </div>
         <ErrorBox error={act.error} />
@@ -257,7 +257,7 @@ export function ProcessAnalysisView({ analysis: a, wsId }: { analysis: ProcessAn
   return (
     <section className="stack" aria-label="Process analysis">
       <Card title={a.title} actions={<>
-        {a.artifact && <Link className="btn btn-sm btn-ghost" to={to.outputs(wsId, { artifact: a.artifact.id })}>Open in Outputs</Link>}
+        {a.artifact && <Link className="btn btn-sm btn-ghost" to={to.outputs(wsId, { artifact: a.artifact.id })}>Open in Results</Link>}
         <button type="button" className="btn btn-sm" onClick={download}>Download JSON</button></>}>
         <div className="stats-row">
           <Stat label="cases" value={n(a.summary.cases)} />
