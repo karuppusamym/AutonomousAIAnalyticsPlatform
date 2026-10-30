@@ -8,8 +8,12 @@ test("guided template collects a baseline and decision before starting", async (
   const form = page.getByRole("form", { name: "Start explain" });
   await form.getByLabel("Guided investigation").selectOption("sla_change");
   await expect(form.getByRole("button", { name: "Start investigation" })).toBeDisabled();
-  await form.getByLabel("Period to investigate").fill("Q3 2026");
-  await form.getByLabel("Comparison baseline").fill("Q2 2026");
+  await form.getByLabel("Period starts").fill("2026-07-01");
+  await form.getByLabel("Period ends").fill("2026-09-30");
+  await form.getByLabel("Name for this period (optional)").fill("Q3 2026");
+  await form.getByLabel("Compare with").selectOption("custom");
+  await form.getByLabel("Baseline starts").fill("2026-04-01");
+  await form.getByLabel("Baseline ends").fill("2026-06-30");
   await form.getByLabel("Decision this should support").fill("Choose a team to review");
   await form.getByText("Show reviewed context", { exact: true }).click();
   expect(await axeViolations(page)).toEqual([]);
