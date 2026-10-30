@@ -7,7 +7,7 @@ Behaviour per task key:
   test:hang  a statistic hung in native code that holds the GIL (catastrophic regex backtracking):
              the pool process freezes, heartbeats stop, Temporal must time the attempt out.
   other      returns at once.
-Each call appends `{key, attempt, queue, pid, at}` as a JSON line to $AOS_PROBE_DIR/calls.jsonl.
+Each call writes `{key, attempt, queue, pid, at}` to its own $AOS_PROBE_DIR/call-<pid>-<id>.json.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ import os
 import re
 import threading
 import time
+import uuid
 from pathlib import Path
 
 from temporalio import activity
@@ -30,13 +31,12 @@ FINISHED: dict[str, str] = {}
 def _record(key: str) -> None:
     info = activity.info()
     line = json.dumps({"key": key, "attempt": info.attempt, "queue": info.task_queue, "pid": os.getpid(), "at": time.time()})
-    with _lock, (Path(os.environ["AOS_PROBE_DIR"]) / "calls.jsonl").open("a") as f:
-        f.write(line + "\n")
+    # One file per call: appends to one shared file from several pool processes are not atomic on Windows.
+    (Path(os.environ["AOS_PROBE_DIR"]) / f"call-{os.getpid()}-{uuid.uuid4().hex}.json").write_text(line, encoding="utf-8")
 
 
 def calls(probe_dir: Path) -> list[dict]:
-    path = probe_dir / "calls.jsonl"
-    return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()] if path.exists() else []
+    return sorted((json.loads(p.read_text(encoding="utf-8")) for p in probe_dir.glob("call-*.json")), key=lambda c: c["at"])
 
 
 @activity.defn(name="plan_run")

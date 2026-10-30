@@ -863,10 +863,10 @@ def _ingested(session: Session, container_type: str, container_id: str) -> dict[
         AnalysisStep.container_type == container_type, AnalysisStep.container_id == container_id)) if (st.origin or {}).get("id")}
 
 
-def ingest_ask_thread(user: User, workspace_id: str, thread_id: str) -> dict[str, Any]:
+def ingest_ask_thread(user: User, workspace_id: str, thread_id: str, *, view: bool = True) -> dict[str, Any]:
     """Each answered turn becomes a query step (a step-by-step answer, one per answered step): version 1 =
     the recorded answer, self-checked on its stored result; no query is re-run. Idempotent: turns already
-    ingested are skipped."""
+    ingested are skipped. `view=False` (recording after an answer) skips building the thread view nobody reads."""
     from analystos.db.models import AskTurn
 
     actor = f"user:{user.id}"
@@ -880,7 +880,7 @@ def ingest_ask_thread(user: User, workspace_id: str, thread_id: str) -> dict[str
                 if origin_id in done:
                     continue
                 _ingest_query(s, workspace_id, branch, actor, turn, origin_id, title, sql, chart, result)
-        return thread(s, branch)
+        return thread(s, branch) if view else {"branch_id": branch.id}
 
 
 def _turn_queries(turn: Any) -> list[tuple[str, str, str, Any, dict[str, Any]]]:
@@ -942,7 +942,7 @@ def record_quietly(container_type: str, workspace_id: str, container_id: str, us
         if container_type == "run":
             ingest_run(user, workspace_id, container_id)
         else:
-            ingest_ask_thread(user, workspace_id, container_id)
+            ingest_ask_thread(user, workspace_id, container_id, view=False)  # on the answer's path: no view
     except Exception as exc:  # noqa: BLE001 - recording is a convenience; the run/answer stands without it
         get_logger(__name__).warning("recording %s %s as steps failed: %s", container_type, container_id, exc)
 

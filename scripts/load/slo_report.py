@@ -92,16 +92,46 @@ def start_temporal(suffix: str, containers: list[str]) -> str:
     return f"127.0.0.1:{port}"
 
 
-def login(base: str) -> str:
+def login(base: str, email: str | None = None, password: str | None = None) -> str:
     import httpx
 
     from analystos.core.config import get_settings
 
     s = get_settings()
-    r = httpx.post(f"{base}/api/auth/login", json={"email": s.bootstrap_admin_email, "password": s.bootstrap_admin_password},
-                   timeout=30)
+    r = httpx.post(f"{base}/api/auth/login", json={"email": email or s.bootstrap_admin_email,
+                                                   "password": password or s.bootstrap_admin_password}, timeout=60)
     r.raise_for_status()
     return r.json()["access_token"]
+
+
+ASKER_PASSWORD = "load-test-asker-1"  # local load plane only (harness.configure), like its JWT secret
+
+
+def add_askers(ws: str, n: int) -> list[str]:
+    """One analyst login per simulated person. Ask budgets are per person per hour (governance/budgets.py), so
+    20 people sharing one login would measure that login's budget refusals, not Ask latency (2026-10-28 run:
+    207 of 269 asks refused `budget_exceeded`)."""
+    from sqlalchemy import select
+
+    from analystos.core.config import get_settings
+    from analystos.core.ids import new_id
+    from analystos.db.base import session_scope
+    from analystos.db.models import User
+    from analystos.security.auth import hash_password
+    from analystos.services.workspaces import add_member
+    from analystos.tenancy import system_scope
+
+    emails = [f"load-asker-{i}@analystos.local" for i in range(n)]
+    digest = hash_password(ASKER_PASSWORD)
+    with system_scope(), session_scope() as s:
+        owner = s.scalar(select(User).where(User.email == get_settings().bootstrap_admin_email))
+        for i, email in enumerate(emails):
+            if s.scalar(select(User).where(User.email == email)) is None:
+                s.add(User(id=new_id("usr"), email=email, name=f"Load asker {i}", password_hash=digest, attributes={}))
+        s.flush()
+        for email in emails:
+            add_member(s, owner, ws, email, "analyst")
+    return emails
 
 
 # ------------------------------------------------------------------------------------------- load
@@ -119,6 +149,7 @@ class Recorder:
 
 
 def ask_user(base: str, token: str, ws: str, until: float, think: float, rec: Recorder, seed: int) -> None:
+    """One person: their own login (`token`), one thread, a question every `think` seconds (+-50%)."""
     import httpx
 
     rng = random.Random(seed)
@@ -137,13 +168,19 @@ def ask_user(base: str, token: str, ws: str, until: float, think: float, rec: Re
                 status, body = r.status_code, (r.json() if r.status_code < 500 else {})
             except httpx.HTTPError as exc:
                 status, body = 599, {"error": type(exc).__name__}
-            rec.add("ask", time.perf_counter() - t0, status, {"outcome": body.get("status") if isinstance(body, dict) else None})
+            outcome = body.get("status") if isinstance(body, dict) else None
+            if outcome == "refused":  # which governance step refused it (budget, scope, no model, ...)
+                outcome = f"refused:{(body.get('refusal') or {}).get('kind')}"
+            rec.add("ask", time.perf_counter() - t0, status, {"outcome": outcome})
             time.sleep(rng.uniform(0.5, 1.5) * think)
 
 
 def run_batch(base: str, token: str, ws: str, n: int, deadline: float, rec: Recorder) -> dict:
     import httpx
 
+    if n <= 0:  # --runs 0: Ask alone (how fast Ask is when nothing else uses the host)
+        return {"started": 0, "requested": 0, "finished": 0, "not_finished": 0, "not_finished_last_status": {},
+                "outcomes": {}, "seconds": harness.summary([], scale=1.0, digits=1)}
     h = {"Authorization": f"Bearer {token}"}
     ids: dict[str, float] = {}
     with httpx.Client(base_url=base, headers=h, timeout=60) as c:
@@ -181,6 +218,58 @@ def run_batch(base: str, token: str, ws: str, n: int, deadline: float, rec: Reco
     return {"started": len(ids), "requested": n, "finished": len(done), "not_finished": len(ids) - len(done),
             "not_finished_last_status": unfinished,
             "outcomes": outcomes, "seconds": harness.summary([s for _, s in done.values()], scale=1.0, digits=1)}
+
+
+# ------------------------------------------------------------------------------------------- host load
+def _cpu_times() -> tuple[float, float] | None:
+    """(busy, total) CPU time of the whole host: GetSystemTimes on Windows, /proc/stat on Linux."""
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        idle, kernel, user = (wintypes.FILETIME() for _ in range(3))
+        if not ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)):
+            return None
+        val = [(t.dwHighDateTime << 32) | t.dwLowDateTime for t in (idle, kernel, user)]
+        return float(val[1] + val[2] - val[0]), float(val[1] + val[2])  # kernel time includes idle time
+    try:
+        fields = [float(x) for x in Path("/proc/stat").read_text().splitlines()[0].split()[1:]]
+    except OSError:
+        return None
+    idle = fields[3] + (fields[4] if len(fields) > 4 else 0.0)
+    return sum(fields) - idle, sum(fields)
+
+
+class HostLoad:
+    """Host CPU busy share every `every` seconds while the load runs (the evidence says how loaded the host was:
+    other sessions' work on a shared dev host moves the latencies)."""
+
+    def __init__(self, every: float = 2.0) -> None:
+        self.every, self.samples, self._stop = every, [], threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def _run(self) -> None:
+        last = _cpu_times()
+        while not self._stop.wait(self.every):
+            now = _cpu_times()
+            if last and now and now[1] > last[1]:
+                self.samples.append((now[0] - last[0]) / (now[1] - last[1]))
+            last = now
+
+    def __enter__(self) -> HostLoad:
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._stop.set()
+        self._thread.join(timeout=5)
+
+    def summary(self) -> dict:
+        xs = sorted(self.samples)
+        if not xs:
+            return {"n": 0}
+        return {"n": len(xs), "mean_busy": round(sum(xs) / len(xs), 3), "p95_busy": round(xs[int(0.95 * (len(xs) - 1))], 3),
+                "max_busy": round(xs[-1], 3)}
 
 
 # ------------------------------------------------------------------------------------------- SLIs
@@ -265,12 +354,19 @@ def client_slis(rec: Recorder) -> dict:
     return out
 
 
+def _load_text(load: dict) -> str:
+    if not load.get("n"):
+        return "not sampled"
+    return f"mean {load['mean_busy']:.0%}, p95 {load['p95_busy']:.0%}, max {load['max_busy']:.0%} ({load['n']} samples)"
+
+
 def markdown(report: dict) -> str:
     slo, ev = report["slo"], report["verdict"]
     lines = [f"# S12 load test and SLO report - {report['date']}", "",
              f"Load: {report['load']['ask_users']} people asking (think {report['load']['think_seconds']} s) for "
              f"{report['load']['duration_seconds']} s and {report['load']['runs']} concurrent investigations: "
-             f"{slo['load_factor']}x the pilot targets of config/slo.yaml v{slo['version']}. Host: {report['host']}.", "",
+             f"{slo['load_factor']}x the pilot targets of config/slo.yaml v{slo['version']}. Host: {report['host']}; "
+             f"host CPU busy during the load: {_load_text(report.get('host_load') or {})}.", "",
              "| SLO | Target | Client side | Server (/metrics) | Detail | Met |", "|---|---|---|---|---|---|"]
     detail = {"ask_latency": f"p95 {ev['ask_latency']['p95_ms']} ms", "run_success": f"p95 {ev['run_success']['p95_s']} s",
               "availability": ""}
@@ -293,6 +389,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--duration", type=float, default=120)
     ap.add_argument("--factor", type=float, default=None, help="default: config/slo.yaml load_factor")
     ap.add_argument("--run-deadline", type=float, default=900)
+    ap.add_argument("--runs", type=int, default=None,
+                    help="concurrent investigations (default: concurrent_runs x factor); 0 = Ask alone")
     ap.add_argument("--base-url")
     ap.add_argument("--token")
     ap.add_argument("--workspace")
@@ -305,13 +403,15 @@ def main(argv: list[str] | None = None) -> int:
     slo = load_slo()
     factor = args.factor or float(slo["load_factor"])
     users = max(1, round(slo["pilot"]["ask_users"] * factor))
-    nruns = max(1, round(slo["pilot"]["concurrent_runs"] * factor))
+    nruns = max(1, round(slo["pilot"]["concurrent_runs"] * factor)) if args.runs is None else max(0, args.runs)
     procs, plane, notes, containers = [], None, [], []
     try:
         if args.base_url:
             base, token, ws = args.base_url.rstrip("/"), args.token, args.workspace
             if not (token and ws):
                 ap.error("--base-url needs --token and --workspace")
+            tokens = [token] * users
+            notes.append("every asker used the one --token login: its per-person Ask budget applies to all of them")
         else:
             plane = harness.configure(args.suffix)
             plane.env.update({"ANALYSTOS_ORCHESTRATOR": "local", "ANALYSTOS_INPROCESS_SCHEDULER": "false",
@@ -332,11 +432,15 @@ def main(argv: list[str] | None = None) -> int:
             with system_scope():  # set-up is platform work (strict tenancy: an unbound session sees nothing)
                 _, ws, staged = setup_world(snow)
             notes.append(f"world: ServiceNow mock `incident` staged into one workspace in {staged} s")
+            with system_scope():
+                askers = add_askers(ws, users)
+            notes.append(f"{users} people asking, each with their own analyst login (Ask budgets are per person)")
             api, base = harness.start_api(plane)
             procs.append(api)
             for _ in range(args.workers):
                 procs.append(harness.spawn([sys.executable, "-m", "analystos.cli", "worker"], plane))
             token = login(base)
+            tokens = [login(base, email, ASKER_PASSWORD) for email in askers]
         before = scrape(base)
         rec = Recorder()
         until = time.monotonic() + args.duration
@@ -346,10 +450,11 @@ def main(argv: list[str] | None = None) -> int:
                                                                             time.monotonic() + args.run_deadline, rec)))
         runner.start()
         think = float(slo["pilot"]["ask_think_seconds"])
-        with ThreadPoolExecutor(max_workers=users) as pool:
-            for i in range(users):
-                pool.submit(ask_user, base, token, ws, until, think, rec, i)
-        runner.join()
+        with HostLoad() as host_load:
+            with ThreadPoolExecutor(max_workers=users) as pool:
+                for i in range(users):
+                    pool.submit(ask_user, base, tokens[i], ws, until, think, rec, i)
+            runner.join()
         after = scrape(base)
         client = client_slis(rec)
         server = server_slis(before, after, slo)
@@ -357,6 +462,7 @@ def main(argv: list[str] | None = None) -> int:
         report = {"date": started.strftime("%Y-%m-%d"), "started_at": started.isoformat(), "slo": slo,
                   "load": {"ask_users": users, "think_seconds": think, "duration_seconds": args.duration, "runs": nruns,
                            "factor": factor}, "host": f"{sys.platform}, {os.cpu_count()} cores",
+                  "host_load": host_load.summary(),
                   "client": {k: ({**v, "raw": []} if isinstance(v, dict) else v) for k, v in client.items()},
                   "server": server, "runs": runs_box, "verdict": verdict, "notes": notes}
         notes.append("no model was called (OPENROUTER_API_KEY cleared): Ask answered from the registry and rules")
@@ -368,9 +474,9 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         if hasattr(os, "killpg"):
             harness.stop(procs)
-        else:  # Windows: no process groups; the API has no pool children here (local orchestrator, threads)
-            for p in procs:
-                p.terminate()
+        else:  # Windows: no process groups. End each tree: a worker's compute pool children and its manager
+            for p in procs:  # outlive a plain terminate() (orphans after the 2026-10-29 Temporal run)
+                subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True, check=False)
                 try:
                     p.wait(timeout=15)
                 except subprocess.TimeoutExpired:

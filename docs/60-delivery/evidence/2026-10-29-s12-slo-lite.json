@@ -1,0 +1,149 @@
+{
+  "date": "2026-10-29",
+  "started_at": "2026-10-29T20:55:19.567452+00:00",
+  "slo": {
+    "version": 1,
+    "owner": "platform operations (sign-off: product owner, before the pilot)",
+    "pilot": {
+      "ask_users": 10,
+      "ask_think_seconds": 5,
+      "concurrent_runs": 10
+    },
+    "load_factor": 2.0,
+    "slos": {
+      "ask_latency": {
+        "p95_seconds": 3.0,
+        "target": 0.95
+      },
+      "run_success": {
+        "target": 0.95,
+        "max_p95_seconds": 900
+      },
+      "availability": {
+        "target": 0.995
+      }
+    }
+  },
+  "load": {
+    "ask_users": 20,
+    "think_seconds": 5.0,
+    "duration_seconds": 120,
+    "runs": 20,
+    "factor": 2.0
+  },
+  "host": "win32, 8 cores",
+  "host_load": {
+    "n": 155,
+    "mean_busy": 0.751,
+    "p95_busy": 1.0,
+    "max_busy": 1.0
+  },
+  "client": {
+    "ask": {
+      "n": 239,
+      "errors_5xx": 0,
+      "latency_ms": {
+        "n": 239,
+        "p50": 3966.1,
+        "p95": 14151.9,
+        "p99": 17248.9,
+        "max": 18128.9
+      },
+      "raw": [],
+      "outcomes": {
+        "refused:no_api_key": 72,
+        "answered": 167
+      }
+    },
+    "thread": {
+      "n": 20,
+      "errors_5xx": 0,
+      "latency_ms": {
+        "n": 20,
+        "p50": 744.2,
+        "p95": 942.5,
+        "p99": 1113.7,
+        "max": 1113.7
+      },
+      "raw": []
+    },
+    "run_start": {
+      "n": 20,
+      "errors_5xx": 0,
+      "latency_ms": {
+        "n": 20,
+        "p50": 1202.0,
+        "p95": 1393.7,
+        "p99": 1406.6,
+        "max": 1406.6
+      },
+      "raw": []
+    },
+    "run_poll": {
+      "n": 772,
+      "errors_5xx": 0,
+      "latency_ms": {
+        "n": 772,
+        "p50": 144.0,
+        "p95": 978.8,
+        "p99": 1653.8,
+        "max": 4958.6
+      },
+      "raw": []
+    },
+    "availability": 1.0
+  },
+  "server": {
+    "ask_requests": 259.0,
+    "ask_within_target_share": 0.4903,
+    "requests": 1051.0,
+    "availability": 1.0,
+    "runs_by_outcome": {},
+    "run_success": null
+  },
+  "runs": {
+    "started": 20,
+    "requested": 20,
+    "finished": 20,
+    "not_finished": 0,
+    "not_finished_last_status": {},
+    "outcomes": {
+      "WAITING_USER": 20
+    },
+    "seconds": {
+      "n": 20,
+      "p50": 291.0,
+      "p95": 305.2,
+      "p99": 307.2,
+      "max": 307.2
+    }
+  },
+  "verdict": {
+    "ask_latency": {
+      "target": ">= 95% within 3.0 s",
+      "client": 0.4435,
+      "server": 0.4903,
+      "p95_ms": 14151.9,
+      "met": false
+    },
+    "run_success": {
+      "target": ">= 95% completed or at the approval gate, p95 <= 900 s",
+      "client": 1.0,
+      "server": null,
+      "p95_s": 305.2,
+      "met": true
+    },
+    "availability": {
+      "target": ">= 99.5%",
+      "client": 1.0,
+      "server": 1.0,
+      "met": true
+    }
+  },
+  "notes": [
+    "topology: lite (runs execute inside the API process, local orchestrator)",
+    "world: ServiceNow mock `incident` staged into one workspace in 8.6 s",
+    "20 people asking, each with their own analyst login (Ask budgets are per person)",
+    "no model was called (OPENROUTER_API_KEY cleared): Ask answered from the registry and rules"
+  ]
+}

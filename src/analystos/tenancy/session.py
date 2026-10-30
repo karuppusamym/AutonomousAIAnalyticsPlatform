@@ -17,7 +17,10 @@ from sqlalchemy.orm import Session
 
 from analystos.tenancy.context import current_tenant, is_system
 
-_SET_TENANT = text("SELECT set_config('app.tenant_id', :t, true)")
+# One round trip per transaction (S12-T6: an Ask opens ~18 transactions; two statements each were a quarter of its
+# statements). `set_config('role', r, true)` is `SET LOCAL ROLE r` (same membership check, this transaction only);
+# the target list runs left to right, so the role is set before the tenant.
+_BIND = text("SELECT set_config('role', :r, true), set_config('app.tenant_id', :t, true)")
 
 
 def _settings() -> Any:
@@ -27,8 +30,7 @@ def _settings() -> Any:
 
 
 def _restrict(connection: Any, tenant: str | None, role: str) -> None:
-    connection.exec_driver_sql(f'SET LOCAL ROLE "{role}"')
-    connection.execute(_SET_TENANT, {"t": tenant or ""})
+    connection.execute(_BIND, {"r": role, "t": tenant or ""})
 
 
 def on_after_begin(session: Session, transaction: Any, connection: Any) -> None:
