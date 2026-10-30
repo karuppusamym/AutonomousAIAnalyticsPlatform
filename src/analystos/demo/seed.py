@@ -1,11 +1,14 @@
 """`analystos demo-seed`: the ready demo workspaces, built through the running API.
 
     analystos demo-seed [--api http://localhost:8000] [--servicenow http://localhost:8090] [--web http://localhost:5173]
-                        [--only investigation|process]
+                        [--only investigation|process|metrics]
 
 Two workspaces, both by default: the investigation one (`packs/itsm/demo.yaml`: investigation, dashboards,
 file, recipe, schedule, monitor) and the process mining one (`packs/itsm/process_mining_demo.yaml`: the ServiceNow
-task activity log and the records it describes, a brief, and saved process analyses per task type).
+task activity log and the records it describes, a brief, and saved process analyses per task type). Each demo workspace
+also gets an approved semantic model with its key metrics (the pack's `semantic` section; ADR-016): proposed by
+admin@, approved by approver@. `--only metrics` does only that, for every demo workspace that exists (the Retail one
+included, whose spec is `packs/sales/retail_demo.yaml`).
 
 It goes through the HTTP API as the seeded users (never around it), so every governed path is the one the demo
 shows: the source is registered, discovered and loaded through the loader, the investigation runs on whatever
@@ -34,6 +37,8 @@ from analystos.core.config import DATA_ROOT
 
 DEMO_FILE = DATA_ROOT / "packs" / "itsm" / "demo.yaml"
 PROCESS_DEMO_FILE = DATA_ROOT / "packs" / "itsm" / "process_mining_demo.yaml"
+RETAIL_DEMO_FILE = DATA_ROOT / "packs" / "sales" / "retail_demo.yaml"
+DEMO_FILES = (DEMO_FILE, PROCESS_DEMO_FILE, RETAIL_DEMO_FILE)
 DONE, ACTIVE = ("COMPLETED",), ("NEW", "PLANNED", "RUNNING", "WAITING_USER", "PAUSED")
 
 
@@ -311,6 +316,94 @@ def ensure_process_tables(analyst: Api, wid: str, d: dict[str, Any] | None = Non
     return built["source_id"]
 
 
+def structure_proposal(spec: dict[str, Any], assets: dict[str, dict]) -> list[dict[str, Any]]:
+    """The pack's `semantic.datasets` as Ossie datasets over the workspace's catalogued tables (`table` -> its fq name).
+    A plain field reads its own column; `expression` derives one; `time` / `dimension` make it groupable."""
+    datasets = []
+    for d in spec["datasets"]:
+        asset = assets.get(d["table"])
+        if asset is None:
+            raise SystemExit(f"semantic dataset {d['name']}: table {d['table']} is not selected in this workspace")
+        fields = []
+        for f in d["fields"]:
+            field: dict[str, Any] = {"name": f["name"], "expressions": [{"dialect": "ANSI_SQL",
+                                                                         "expression": f.get("expression") or f["name"]}]}
+            if f.get("time") or f.get("dimension"):
+                field["dimension"] = {"is_time": bool(f.get("time"))}
+            if f.get("label"):
+                field["label"] = f["label"]
+            fields.append(field)
+        datasets.append({"name": d["name"], "source": asset["fq"], "description": d.get("description"), "fields": fields,
+                         **({"primary_key": d["primary_key"]} if d.get("primary_key") else {})})
+    return datasets
+
+
+def metric_proposals(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """The pack's `semantic.metrics` as proposal bodies, groupable by every dimension field of their dataset."""
+    by_name = {d["name"]: d for d in spec["datasets"]}
+    out = []
+    for m in spec["metrics"]:
+        ds = by_name[m.get("dataset") or spec["datasets"][0]["name"]]
+        dims = [f["name"] for f in ds["fields"] if f.get("time") or f.get("dimension")]
+        out.append({"name": m["name"], "expression": m["expression"], "display_name": m.get("display_name"),
+                    "description": m.get("description"), "format": m.get("format"), "grain": m.get("grain", "record"),
+                    "dataset": ds["name"], "dimensions": dims, "ai_context": {"synonyms": list(m.get("synonyms") or [])}})
+    return out
+
+
+def ensure_semantic_model(admin: Api, approver: Api, wid: str, d: dict[str, Any]) -> None:
+    """An approved semantic model with the pack's key metrics, through the review API like any person's proposal:
+    admin@ proposes the structure and each metric, approver@ approves them (separation of duties, hash-bound
+    approvals, a new version only when something changed). Dev and demo only: the seeded approver exists only there.
+    A metric already proposed or approved with the same expression is reused as is (the semantic service matches on
+    the expression), so a later edit to a spec's synonyms or dimensions alone does not reach an existing workspace."""
+    spec = d.get("semantic")
+    if not spec:
+        return
+    base = f"/api/workspaces/{wid}/semantic"
+    assets = {a["name"]: a for a in admin.get(f"/api/workspaces/{wid}/assets") if a.get("selected")}
+    r = admin.c.post(f"{base}/model/proposals", json={"datasets": structure_proposal(spec, assets),
+                                                      "description": spec.get("description")})
+    if r.status_code == 201:
+        log("proposed", f"semantic model v{r.json()['version']} ({len(spec['datasets'])} datasets) as admin@analystos.local")
+    elif r.status_code != 409:  # 409: the current version already holds this structure
+        raise SystemExit(f"POST {base}/model/proposals -> {r.status_code}: {r.text[:500]}")
+    current = admin.get(base).get("model") or {}
+    if current.get("status") == "proposed":
+        approver.post(f"{base}/model/approve", {"version": current["version"], "reason": "demo seed (ADR-016)"})
+        log("approved", f"semantic model v{current['version']} as approver@analystos.local")
+    else:
+        log("exists", f"semantic model v{current.get('version')} ({current.get('status')})")
+    approved = []
+    for body in metric_proposals(spec):
+        row = admin.post(f"{base}/metrics", body)["metric"]
+        if row["status"] == "proposed":
+            approver.post(f"{base}/metrics/{body['name']}/approve", {"version": row["version"], "reason": "demo seed (ADR-016)"})
+        elif row["status"] != "approved":
+            raise SystemExit(f"metric {body['name']} v{row['version']} is {row['status']}: review it in Catalog -> Metrics")
+        on = (row.get("definition") or {}).get("dataset")
+        # Same name and expression as a run's earlier proposal: that proposal is the one reviewed (said, not hidden).
+        approved.append(f"{body['display_name'] or body['name']} v{row['version']}"
+                        + (f" (the run's definition on {on})" if on and on != body["dataset"] else ""))
+    log("metrics", f"approved: {', '.join(approved)}")
+
+
+def ensure_demo_metrics(admin: Api, approver: Api) -> list[tuple[str, str]]:
+    """`--only metrics`: the approved semantic model in every demo workspace that exists; a missing one is skipped."""
+    have = {w["name"]: w["id"] for w in admin.get("/api/workspaces")}
+    done = []
+    for path in DEMO_FILES:
+        d = demo(path)
+        name = d["workspace"]["name"]
+        if name not in have:
+            log("skipped", f"{name}: no such workspace")
+            continue
+        log("demo", name)
+        ensure_semantic_model(admin, approver, have[name], d)
+        done.append((name, have[name]))
+    return done
+
+
 def ensure_process_workspace(admin: Api, analyst: Api, approver: Api, instance_url: str, *, timeout: float,
                              investigate: bool = True) -> str:
     d = process_demo()
@@ -322,6 +415,7 @@ def ensure_process_workspace(admin: Api, analyst: Api, approver: Api, instance_u
     inv = (d.get("process") or {}).get("investigation")
     if investigate and inv:  # an investigation on the process tables: the same agents, gateway and approvals
         ensure_investigation(analyst, approver, wid, timeout, objective=inv["objective"], source_ids=[tables_source])
+    ensure_semantic_model(admin, approver, wid, d)  # after the run, so its own proposals are reviewed in the same version
     return wid
 
 
@@ -335,8 +429,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--timeout", type=float, default=1200, help="seconds to wait for the investigation")
     ap.add_argument("--wait-api", type=float, default=180, help="seconds to wait for /api/health")
     ap.add_argument("--skip-investigation", action="store_true", help="everything except the investigation (and its schedule)")
-    ap.add_argument("--only", choices=("investigation", "process"), default=None,
-                    help="build one workspace: investigation (findings, dashboards) or process (process mining); default both")
+    ap.add_argument("--only", choices=("investigation", "process", "metrics"), default=None,
+                    help="build one workspace: investigation (findings, dashboards) or process (process mining); default both. "
+                         "metrics: only the approved semantic model of every demo workspace that exists")
     args = ap.parse_args(argv)
     build_investigation, build_process = args.only in (None, "investigation"), args.only in (None, "process")
 
@@ -348,6 +443,10 @@ def main(argv: list[str] | None = None) -> int:
     analyst = Api(args.api, "analyst@analystos.local", args.password)
     approver = Api(args.api, "approver@analystos.local", args.password)
     ready: list[tuple[str, str]] = []
+    if args.only == "metrics":
+        for name, wid in ensure_demo_metrics(admin, approver):
+            print(f"Approved metrics ready: {name}: {args.web.rstrip('/')}/w/{wid}", flush=True)
+        return 0
     if build_process:  # quick (no worker needed), so it is ready while the investigation runs
         log("demo", process_demo()["workspace"]["name"])
         ready.append((process_demo()["workspace"]["name"], ensure_process_workspace(
@@ -362,6 +461,7 @@ def main(argv: list[str] | None = None) -> int:
             rid = ensure_investigation(analyst, approver, wid, args.timeout)
             ensure_schedule(analyst, wid, rid)
         ensure_monitor(analyst, wid, evaluate=not args.skip_investigation)
+        ensure_semantic_model(admin, approver, wid, demo())
         ready.insert(0, (demo()["workspace"]["name"], wid))
     shown = args.password if args.password == "ChangeMe123!" else "(as given)"
     web = args.web.rstrip("/")

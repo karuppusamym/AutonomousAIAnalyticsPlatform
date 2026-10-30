@@ -264,7 +264,20 @@ PRESETS: dict[str, dict[str, LLMMode]] = {
         "rev_second_opinion": "off", "risk_check": "off", "alert_triage": "off", "decision_structured": "off",
         "hypothesis_priority": "off", "chart_selection": "off", "feedback_classification": "off", "stop_check": "off",
         "ask_route": "off", "clarify_needed": "off", "metric_match": "off", "join_path_choice": "off"},
+    # Dev and pilot default (ADR-016, decided under owner delegation 2026-10-30): deterministic first, and when a
+    # model is needed only the low-cost open models and the JEV decision model may answer (PILOT_LOW_COST_DISABLED).
+    "pilot_low_cost": {p: "auto" for p in DETERMINISTIC_CAPABLE},
 }
+
+# The models pilot_low_cost leaves enabled: the ones the live e2e and the pilot rehearsal used (cost $0.010 and $0.016).
+PILOT_LOW_COST_MODELS = ("deepseek/deepseek-v4-flash-0731", "deepseek/deepseek-v4-flash", "qwen/qwen3-14b", "qwen/qwen3-32b",
+                         "openai/gpt-oss-120b", "typesafe/jev-1.13")
+# Every other model config/models.yaml names. Claude and Gemini are blocked anyway (models.yaml blocked_families); listing
+# them keeps the setting honest if the block is ever lifted. tests/unit/test_pilot_low_cost_preset.py fails when a model
+# is added to models.yaml without a decision here.
+PILOT_LOW_COST_DISABLED = ["openai/gpt-5.4-mini", "openai/gpt-5.4", "anthropic/claude-sonnet-5", "anthropic/claude-opus-5",
+                           "google/gemini-3.5-flash", "google/gemini-3.5-flash-lite"]
+PILOT_DAILY_SPEND_CAP_USD = 2.0
 
 # Escalation policy a preset sets (replaces llm.escalation wholesale; {} = the models.yaml defaults).
 # max_quality keeps the large tier (Sonnet) first wherever it was first before cheap-first routing (the
@@ -278,4 +291,8 @@ PRESET_ESCALATION: dict[str, dict[str, EscalationPolicy]] = {
 # Settings a preset changes besides the purpose modes (deep-merged by platform_settings.apply_preset).
 PRESET_PATCHES: dict[str, dict] = {
     "air_gapped": {"features": {"jev_decisions": False}},
+    "pilot_low_cost": {"llm": {"disabled_models": PILOT_LOW_COST_DISABLED, "daily_spend_cap_usd": PILOT_DAILY_SPEND_CAP_USD},
+                       "features": {"jev_decisions": True}},
 }
+# The preset `analystos seed` stores on a fresh development database (ADR-016). Never applied outside env=dev.
+DEV_DEFAULT_PRESET = "pilot_low_cost"

@@ -12,7 +12,13 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from analystos.contracts.platform import PRESET_ESCALATION, PRESET_PATCHES, PRESETS, PlatformSettings
+from analystos.contracts.platform import (
+    DEV_DEFAULT_PRESET,
+    PRESET_ESCALATION,
+    PRESET_PATCHES,
+    PRESETS,
+    PlatformSettings,
+)
 from analystos.core.errors import Forbidden, InvalidInput, NotFound
 from analystos.db.base import session_scope
 from analystos.db.models import PlatformSetting, User
@@ -131,13 +137,23 @@ def update(session: Session, user: User, patch: dict[str, Any], *, note: str = "
     return {"version": new_version, "changes": changes, **({"model_switch_gate": gated} if gated else {})}
 
 
-def apply_preset(session: Session, user: User, preset: str, *, gate: SwitchGate | None = None) -> dict[str, Any]:
+def apply_preset(session: Session, user: User, preset: str, *, gate: SwitchGate | None = None,
+                 note: str | None = None) -> dict[str, Any]:
     if preset not in PRESETS:
         raise InvalidInput(f"preset must be one of {sorted(PRESETS)}")
     # A preset is expressed as modes; per-purpose ladder overrides would shadow it, so it clears them.
     patch = _deep_merge(PRESET_PATCHES.get(preset, {}), {"llm": {"purpose_modes": PRESETS[preset], "ladders": {},
                                                                  "escalation": PRESET_ESCALATION.get(preset, {})}})
-    return update(session, user, patch, note=f"preset {preset}", gate=gate)
+    return update(session, user, patch, note=note or f"preset {preset}", gate=gate)
+
+
+def seed_dev_default(session: Session, admin: User) -> dict[str, Any] | None:
+    """`analystos seed` on a development database: store the dev and pilot default (ADR-016) as version 1.
+    Only when nothing is stored yet; an administrator's saved choice is never overwritten. None = left as is."""
+    if session.scalar(select(PlatformSetting.version).limit(1)) is not None:
+        return None
+    return apply_preset(session, admin, DEV_DEFAULT_PRESET,
+                        note=f"preset {DEV_DEFAULT_PRESET}: dev and pilot default (ADR-016, owner delegation 2026-10-30)")
 
 
 def history(session: Session, limit: int = 50) -> list[dict[str, Any]]:

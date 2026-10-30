@@ -35,7 +35,12 @@ allowlist:
 # price and no provider-reported cost is recorded as cost_source=missing_price and surfaced in
 # /api/admin/token-savings; it is never silently counted as $0. Bump prices_version on every change.
 # `region` overrides the provider region; unset = unknown (fails closed under data_residency).
-prices_version: "2026-09-29"  # OpenRouter list prices read 2026-09-29; typesafe/jev-1.13 is not sold there (unpriced)
+# 2026-10-30: typesafe/jev-1.13 gets a PROVISIONAL price (ADR-016, owner delegation). OpenRouter lists only
+# typesafe/jev-router, with a dynamic price (-1), not jev-1.13. The provisional price is today's list price of the most
+# expensive enabled low-cost model (openai/gpt-oss-120b, $0.15 in / $0.60 out), above every row of this table, so the
+# pre-call estimate errs high. Replace it with the vendor's price when one is published. The other rows are still the
+# 2026-09-29 reading (OpenRouter's reported usage.cost is what gets recorded when the provider returns it).
+prices_version: "2026-10-30"
 # `prompt_cache: true` = the router sends `cache_control` breakpoints after the stable prompt prefix
 # (static system text + workspace header, P4-T04); needed for Anthropic models, also via OpenRouter.
 models:
@@ -50,6 +55,7 @@ models:
   google/gemini-3.5-flash: {input_usd_per_mtok: 1.5, output_usd_per_mtok: 9.0}
   google/gemini-3.5-flash-lite: {input_usd_per_mtok: 0.3, output_usd_per_mtok: 2.5}
   deepseek/deepseek-v4-flash: {input_usd_per_mtok: 0.14, output_usd_per_mtok: 0.28}
+  typesafe/jev-1.13: {input_usd_per_mtok: 0.15, output_usd_per_mtok: 0.60, price_provisional: true}  # see prices_version note
 
 # Cheap first, escalate (2026-09-26): chat profiles answer from small models; `escalation_models` is the
 # large tier the router moves to only when the small answer fails deterministic validation (unparseable

@@ -1,0 +1,52 @@
+# The Retail Orders demo workspace (orders, customers, products as CSV files; built by hand for the pilot, not by
+# `analystos demo-seed`). Only its approved semantic model is seeded, when the workspace exists:
+# `analystos demo-seed --only metrics`. Domain data lives here, in the pack. Not a capability manifest.
+workspace:
+  name: Retail Orders (demo)
+
+# Approved semantic model (ADR-016, decided under owner delegation 2026-10-30; dev and demo only). Proposed by admin@,
+# approved by approver@ (see packs/itsm/demo.yaml `semantic`). Late Delivery Rate keeps the definition the pilot answer
+# key uses: late = delivered after the promised date, over all orders.
+semantic:
+  description: Order and delivery measures for the demo, reviewed for the pilot.
+  datasets:
+    - name: orders
+      table: orders
+      primary_key: [order_id]
+      description: One row per order.
+      fields:
+        - {name: order_id}
+        - {name: order_date, label: Order date, time: true}
+        - {name: sales_channel, label: Sales channel, dimension: true}
+        - {name: status, label: Status, dimension: true}
+        - {name: promised_date}
+        - {name: delivered_date}
+        - {name: returned, label: Returned, dimension: true}
+        - {name: quantity}
+        - {name: unit_price}
+        - {name: discount_pct}
+  metrics:
+    - name: order_count
+      display_name: Order count
+      description: Number of orders.
+      expression: COUNT(*)
+      format: number
+      synonyms: [orders, number of orders, how many orders, order volume]
+    - name: late_delivery_rate
+      display_name: Late Delivery Rate
+      description: Share of orders delivered after the promised date.
+      expression: AVG(CASE WHEN delivered_date > promised_date THEN 1.0 ELSE 0.0 END)
+      format: percent
+      synonyms: [late deliveries, late rate]
+    - name: return_rate
+      display_name: Return rate
+      description: Share of orders returned (returned = 'Yes').
+      expression: AVG(CASE WHEN returned = 'Yes' THEN 1.0 ELSE 0.0 END)
+      format: percent
+      synonyms: [returns rate, share returned]
+    - name: net_sales
+      display_name: Net sales
+      description: Quantity times unit price after the order's percentage discount.
+      expression: SUM(quantity * unit_price * (1 - discount_pct / 100.0))
+      format: currency
+      synonyms: [sales, revenue, net revenue]

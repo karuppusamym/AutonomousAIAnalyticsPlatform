@@ -1,5 +1,23 @@
 # Capability register (evidence)
 
+## 2026-10-30 — Owner decisions taken under delegation (ADR-016): model policy, JEV price, demo metrics, SLOs
+
+The owner delegated these on 2026-10-30. They are recorded as the agent's decisions, to revisit:
+[ADR-016](../03-decisions/adr-log.md).
+
+| Capability | Code path | Evidence |
+|---|---|---|
+| Dev and pilot model policy (N-14) | Preset `pilot_low_cost` (`contracts/platform.py`: modes `auto`, `PILOT_LOW_COST_DISABLED`, $2/day, JEV on); `platform_settings.seed_dev_default` called by `analystos seed` when `env=dev` and nothing is stored | `tests/unit/test_pilot_low_cost_preset.py` (every `models.yaml` model decided, only low-cost open models and JEV enabled, no Claude/Gemini); `tests/integration/test_platform_settings.py::test_seed_stores_the_dev_default_once_and_never_overwrites_a_saved_choice`; fresh-database `analystos seed` (v1 stored, a second seed writes nothing) |
+| JEV price (N-13), provisional | `config/models.yaml` `typesafe/jev-1.13` $0.15 / $0.60 per Mtok, `price_provisional: true` (`llm/config.ModelMeta`), `prices_version` 2026-10-30 | OpenRouter list read 2026-10-30 (jev-1.13 not listed); `test_a_priced_jev_passes_the_approval_threshold_instead_of_falling_back` |
+| Approved metrics in the demo workspaces | `semantic` sections in `packs/itsm/demo.yaml`, `packs/itsm/process_mining_demo.yaml`, `packs/sales/retail_demo.yaml`; `demo/seed.ensure_semantic_model` / `--only metrics` (admin@ proposes, approver@ approves, through `/api/workspaces/{id}/semantic`) | `tests/unit/test_demo_semantic_seed.py` (specs pass `definition_problems`; C06/C04 questions match without a model); live on a clone of the rehearsal database: three models and 14 metrics approved, idempotent; readiness definitions pass |
+| C06 / C04 re-walk | Ask governed rung (`agents/ask_metrics.py` → `semantic/compiler.py`); dashboard draft (`dashboards/drafts.py`) | [evidence/adr016-owner-decisions-20261030.md](evidence/adr016-owner-decisions-20261030.md): C06 `answered_by=semantic` from Late Delivery Rate v1, 0 model calls, numbers match; C04 KPIs and charts from the approved incident metrics, by-priority resolution hours match the answer key |
+| SLO targets | `config/slo.yaml` header: provisionally accepted 2026-10-30, numbers unchanged, S12-T6 capacity finding recorded | — |
+
+Not shown:
+* a live model run on the new policy (the re-walk had no provider key, so it was rules only);
+* a live JEV call at the provisional price;
+* the shared `analystos` database seeded with the metrics or switched to the preset.
+
 ## 2026-10-30 — Meaning review that converges; readiness in plain words (PILOT-FIX-04)
 
 From the [VALUE-05 rehearsal](evidence/value-05-pilot-rehearsal-20261030.md): card C11 took 3 meaning rounds and about 11

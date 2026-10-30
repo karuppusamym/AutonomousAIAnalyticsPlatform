@@ -82,3 +82,60 @@ monitor:
   name: Weekly incident volume drift
   kind: metric_drift
   config: {metric: record_count, grain: week, lookback: 8, z_threshold: 3}
+
+# Approved semantic model for the demo (ADR-016, decided under owner delegation 2026-10-30; dev and demo only).
+# `analystos demo-seed` proposes it as admin@ and approves it as approver@ through the semantic review API (structure
+# first, then each metric: separation of duties, hash-bound approvals). `table` is resolved to the workspace's
+# catalogued table; `time: true` marks the time dimension, `dimension: true` a field Ask and dashboards may group by.
+semantic:
+  description: Incident operations measures for the demo, reviewed for the pilot.
+  datasets:
+    - name: incident
+      table: incident
+      primary_key: [sys_id]
+      description: One row per ServiceNow incident.
+      fields:
+        - {name: sys_id}
+        - {name: opened_at, label: Opened, time: true}
+        - {name: resolved_at}
+        - {name: priority, label: Priority, dimension: true}
+        - {name: category, label: Category, dimension: true}
+        - {name: assignment_group_name, label: Assignment group, dimension: true}
+        - {name: contact_type, label: Contact type, dimension: true}
+        - {name: made_sla}
+        - {name: reassignment_count}
+        - name: resolution_hours
+          label: Resolution hours
+          expression: (EXTRACT(EPOCH FROM resolved_at) - EXTRACT(EPOCH FROM opened_at)) / 3600.0
+  metrics:
+    - name: incident_count
+      display_name: Incident count
+      description: Number of incidents opened.
+      expression: COUNT(*)
+      format: number
+      synonyms: [incidents, number of incidents, how many incidents, incident volume, volume]
+    - name: mean_resolution_hours
+      display_name: Mean resolution hours
+      description: Average hours from opened to resolved, over resolved incidents (open incidents have no resolution time).
+      expression: AVG(resolution_hours)
+      format: hours
+      synonyms: [mean time to resolve, mttr, average resolution time, average resolution time in hours, resolution time,
+                 resolution time in hours, average resolution hours]
+    - name: sla_breach_rate
+      display_name: SLA breach rate
+      description: Share of incidents that did not meet their SLA (made_sla false); incidents with no SLA flag are left out.
+      expression: AVG(CASE WHEN made_sla THEN 0.0 WHEN NOT made_sla THEN 1.0 END)
+      format: percent
+      synonyms: [sla breaches, breach rate, sla miss rate]
+    - name: total_reassignments
+      display_name: Reassignment count
+      description: Total number of times incidents moved to another assignment group.
+      expression: SUM(reassignment_count)
+      format: number
+      synonyms: [reassignments, total reassignments]
+    - name: open_backlog
+      display_name: Open backlog
+      description: Incidents not resolved yet (no resolved time) at the last load.
+      expression: SUM(CASE WHEN resolved_at IS NULL THEN 1 ELSE 0 END)
+      format: number
+      synonyms: [backlog, open incidents, unresolved incidents]

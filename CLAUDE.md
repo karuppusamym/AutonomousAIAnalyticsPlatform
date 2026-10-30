@@ -2,7 +2,7 @@
 
 This repository is the product home (ADR-001). Code baseline: AnalystOS (Python package `analystos`).
 Read [`README.md`](README.md), then the v2 spec for the module you change (`docs/04-specs/Sxx-*.md`).
-Decisions: [`docs/03-decisions/adr-log.md`](docs/03-decisions/adr-log.md) (v2, ADR-001…015) and
+Decisions: [`docs/03-decisions/adr-log.md`](docs/03-decisions/adr-log.md) (v2, ADR-001…016) and
 `docs/10-architecture/adr/` (inherited 0001…0025). Older intent docs (`docs/00-intent/`) explain existing
 behaviour; where they disagree with a v2 spec, the v2 spec wins. `AIAnalystAgentOS`, `AIDataAnalyst` (Atlas)
 and DataPilot are donors: port behaviour and tests, never runtime calls (ADR-0018).

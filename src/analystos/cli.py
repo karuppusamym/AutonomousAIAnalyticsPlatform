@@ -98,9 +98,19 @@ def seed() -> None:
         # Domain knowledge comes from the installed domain packs (packs/<name>/knowledge) and lives in
         # the read-only platform knowledge pack (P4-K01); an unchanged sync writes no new revision.
         report = sync_from_domain_packs(s, packs.installed())
+        model_policy = None
+        if settings.env == "dev":  # ADR-016: the dev and pilot model policy, stored once on a fresh database
+            from analystos.services import platform_settings
+
+            s.flush()
+            admin = s.scalar(select(User).where(User.email == settings.bootstrap_admin_email))
+            model_policy = platform_settings.seed_dev_default(s, admin)
     print("seeded users, registries and domain-pack knowledge "
           f"(platform pack revision {report['revision']}, {report['documents']} documents, "
           f"{'updated' if report['changed'] else 'unchanged'})")
+    if model_policy is not None:
+        print(f"stored the dev model policy as platform settings v{model_policy['version']}: preset pilot_low_cost "
+              "(deterministic first, low-cost open models only, $2/day cap; ADR-016)")
 
 
 def list_packs() -> None:

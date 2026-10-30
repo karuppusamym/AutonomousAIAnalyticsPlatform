@@ -358,7 +358,9 @@ function PresetsView() {
   };
   return (
     <Card title="Presets">
-      <p className="muted small">A preset sets when models are used per purpose. <code>air_gapped</code> keeps deterministic rungs first,
+      <p className="muted small">A preset sets when models are used per purpose. <code>pilot_low_cost</code> (the dev and pilot default,
+        ADR-016) keeps deterministic rungs first, enables only the low-cost open models and JEV, and sets a $2 daily cap.{" "}
+        <code>air_gapped</code> keeps deterministic rungs first,
         turns JEV off and leaves a local model as the last rung; pair it with the deployment flag (see Air-gap). A preset that changes
         a purpose's primary model passes the evaluation gate first.</p>
       <div className="chip-row">

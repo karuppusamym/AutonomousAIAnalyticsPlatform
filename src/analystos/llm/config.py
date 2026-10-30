@@ -100,6 +100,9 @@ class ModelMeta(BaseModel):
     region: str | None = None  # overrides the provider region; None = inherit (unknown if both are None)
     input_usd_per_mtok: float | None = None
     output_usd_per_mtok: float | None = None
+    # A price set by the platform until the vendor publishes one (ADR-016: typesafe/jev-1.13). It is used exactly like
+    # a list price; the flag only says it must be replaced, and the admin model view shows it.
+    price_provisional: bool = False
     # Provider prompt caching needs explicit breakpoints (Anthropic `cache_control`, also through
     # OpenRouter). Families with automatic prefix caching (OpenAI, DeepSeek, Gemini) leave it false:
     # the cache-stable prompt order is enough for them.

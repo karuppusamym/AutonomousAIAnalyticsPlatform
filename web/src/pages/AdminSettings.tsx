@@ -116,7 +116,7 @@ export function SettingsEditor() {
       {notice && <Notice tone="success">{notice}</Notice>}
       <ErrorBox error={act.error} />
 
-      <Card title="Presets" actions={<span className="muted small">A preset replaces the per-purpose modes only.</span>}>
+      <Card title="Presets" actions={<span className="muted small">A preset replaces the per-purpose modes; pilot_low_cost also sets the enabled models and daily cap, air_gapped turns JEV off.</span>}>
         <div className="chip-row">
           {Object.keys(d.presets).map((p) => (
             <button key={p} type="button" className="btn btn-sm" onClick={() => void applyPreset(p)} disabled={act.busy}>{humanKey(p)}</button>

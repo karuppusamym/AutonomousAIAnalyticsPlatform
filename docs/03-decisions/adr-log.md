@@ -1,6 +1,6 @@
 # Architecture decision log
 
-Status values: **Proposed**, **Accepted**, **Superseded**. The owner delegated these decisions on 2026-10-27 ("you make decisions, best options"); all entries below are accepted on that basis.
+Status values: **Proposed**, **Accepted**, **Superseded**. The owner delegated these decisions on 2026-10-27 ("you make decisions, best options"); all entries below are accepted on that basis. ADR-016 records the decisions delegated again on 2026-10-30 ("any decision, check with yourself").
 ADRs inherited from AnalystOS (`AIAnalystAgentOS/docs/10-architecture/adr/0001…0025`) remain in force
 unless an entry below supersedes them. Each entry gives the decision, why, and what it costs.
 
@@ -390,3 +390,78 @@ that already exist.
 **Recommendation to the owner.** Accept only if there is a concrete reason, such as a customer standard,
 team skills, or a planned agent sub-graph. Otherwise choose (a), or (b) if the interest is agent
 internals. In every case, ORC-T1 and ORC-T2 are worth doing for the two existing backends.
+
+---
+
+## ADR-016 Dev and pilot defaults decided under owner delegation (2026-10-30) — Accepted (owner delegation; revisit any time)
+
+**Context.** On 2026-10-30 the owner delegated their open decisions ("any decision, check with yourself"). Four were
+blocking the pilot: the dev and pilot model policy (N-14), a price for the JEV decision model (N-13), the missing
+approved metrics in the demo workspaces (rehearsal C04/C06, PILOT-FIX-05), and sign-off of the SLO targets (S12-T6).
+Each was **decided by the agent under that delegation, not by the owner**. Each can be reversed without a migration;
+the "To revisit" line says how.
+
+**Decision 1: dev and pilot model policy (N-14).**
+* Named preset `pilot_low_cost` (`contracts/platform.py`):
+  * LLM mode `auto` (deterministic first) for every purpose that has a rules path.
+  * Only these models stay enabled: deepseek-v4-flash (`-0731` and plain), qwen3-14b, qwen3-32b, gpt-oss-120b and
+    the JEV decision model. These are the models the live e2e ($0.010) and the pilot rehearsal ($0.016) used.
+  * Every other model `config/models.yaml` names is in `llm.disabled_models`: gpt-5.4(-mini), Claude, Gemini.
+  * Daily spend cap $2.
+  * `features.jev_decisions` on.
+* `analystos seed` stores it as platform settings v1 on a fresh **development** database (`env=dev` only). It never
+  overwrites a stored choice.
+* Claude and Gemini also stay blocked by `blocked_families` (the owner's standing cost rule of 2026-10-27).
+* The N-14 visible fallback is unchanged: a purpose with no allowed route still says why it answered from rules.
+* A test fails when a model is added to `models.yaml` without being enabled or disabled here.
+* *To revisit:* Admin → Models → Presets (another preset), or edit `llm.disabled_models` /
+  `llm.daily_spend_cap_usd` in Admin → Settings. An existing database keeps its stored settings; apply the preset there
+  by hand.
+
+**Decision 2: JEV price (N-13).**
+* `typesafe/jev-1.13` is not on OpenRouter's model list. Read 2026-10-30: only `typesafe/jev-router`, with a dynamic
+  price (-1).
+* It gets a **provisional** price (`price_provisional: true`, `prices_version` 2026-10-30) of $0.15 / $0.60 per
+  million input / output tokens. That is today's list price of the most expensive enabled low-cost model
+  (gpt-oss-120b), and above every row of the price table, so the pre-call estimate errs high.
+* A decision call (~400 tokens) is estimated at about $0.0001, so JEV now passes the approval threshold instead of
+  falling back to rules.
+* JEV's authority is unchanged (CLAUDE.md rule 3; `decisions/authority.py`): it may rank, choose among valid
+  options or escalate, never grant.
+* *To revisit:* replace the row with the vendor's price when one is published, and drop the flag.
+
+**Decision 3: approved metrics in the demo workspaces.**
+* Each demo workspace's pack carries a `semantic` section:
+  * `packs/itsm/demo.yaml`: incident count, mean resolution hours, SLA breach rate, reassignment count, open
+    backlog.
+  * `packs/itsm/process_mining_demo.yaml`: average wait hours, handover rate, case count, mean case duration hours,
+    rework rate.
+  * `packs/sales/retail_demo.yaml`: order count, Late Delivery Rate, return rate, net sales.
+* `analystos demo-seed` sends them through the ordinary semantic review API:
+  * admin@ proposes the structure and each metric;
+  * approver@ approves (separation of duties, hash-bound approvals, versioned).
+  * `--only metrics` does just this for every demo workspace that exists.
+* Dev and demo only: the seeded approver exists only when `env=dev`, and production profiles never run demo-seed.
+* Where a run had already proposed a metric with the same name and expression, the seed approves that proposal and
+  says so in its log.
+* *To revisit:* deprecate or replace a metric in Catalog → Metrics; change the pack spec for new installs.
+
+**Decision 4: SLO targets (`config/slo.yaml`).**
+* The targets are **provisionally accepted** under owner delegation 2026-10-30, numbers unchanged. The owner
+  confirms them before a production commitment.
+* Recorded with them is the S12-T6 finding: Ask meets 3 s p95 alone on the dev host but needs separate API capacity
+  at 2x pilot load. The answer is capacity, not a looser target.
+* *To revisit:* edit `config/slo.yaml`; the load report and the alert rules read the same numbers.
+
+**Why.**
+* The cheapest working configuration is already proven live: e2e 26/26 and the 12-card rehearsal, both on these
+  models.
+* Without approved metrics, Ask stays ad hoc and dashboard drafts are weak (rehearsal C04 "partly", C06 ad hoc).
+* Each choice errs on the cautious side: blocked families stay blocked, the price errs high, approvals go through
+  the normal path, and no SLO number was loosened.
+
+**What it costs.**
+* Live tiers can no longer use gpt-5.4-mini as the large escalation tier without re-enabling it.
+* JEV calls now spend money (fractions of a cent each) and appear in the spend views.
+* The demo seed approves its own metrics, which a real deployment must never copy.
+* The SLO acceptance is provisional, and a production commitment still needs the owner.

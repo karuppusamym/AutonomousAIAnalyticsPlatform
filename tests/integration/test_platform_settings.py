@@ -109,3 +109,21 @@ def test_mcp_host_allowlist_is_admin_controlled_and_read_by_the_mcp_client(users
     with pytest.raises(OutboundRefused, match="allowlist"):
         mc._validate_url("https://other.example.com/mcp", public)
 
+
+
+def test_seed_stores_the_dev_default_once_and_never_overwrites_a_saved_choice(users):
+    """ADR-016: `analystos seed` on a fresh dev database stores pilot_low_cost; a later seed keeps the admin's edits."""
+    from analystos.contracts.platform import PILOT_LOW_COST_DISABLED
+
+    with session_scope() as s:
+        r = ps.seed_dev_default(s, s.get(User, users["admin"]))
+    assert r is not None and r["version"] == 1
+    effective = ps.get()
+    assert effective.llm.disabled_models == PILOT_LOW_COST_DISABLED and effective.llm.daily_spend_cap_usd == 2.0
+    assert set(effective.llm.purpose_modes.values()) == {"auto"}
+    with session_scope() as s:
+        assert "ADR-016" in s.get(PlatformSetting, 1).note
+        ps.update(s, s.get(User, users["admin"]), {"llm": {"daily_spend_cap_usd": 5.0}}, note="admin choice")
+    with session_scope() as s:
+        assert ps.seed_dev_default(s, s.get(User, users["admin"])) is None
+    assert ps.get().llm.daily_spend_cap_usd == 5.0

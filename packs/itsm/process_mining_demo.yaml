@@ -39,3 +39,67 @@ process:
       Why do some incidents, change requests and catalog tasks take much longer than others? Compare case duration by
       kind of case and status, by how often the work changed hands, by rework and by whether the case followed the
       expected path, and find where cases wait longest between steps.
+
+# Approved semantic model for the demo (ADR-016, decided under owner delegation 2026-10-30; dev and demo only): over the
+# case and transition tables built above. Proposed by admin@, approved by approver@ (see demo.yaml `semantic`).
+semantic:
+  description: Process measures over the ServiceNow task activity log, reviewed for the pilot.
+  datasets:
+    - name: transitions
+      table: u_task_activity_transitions
+      description: One row per step-to-step move of a case.
+      fields:
+        - {name: from_at, label: Step started, time: true}
+        - {name: segment, label: Case type, dimension: true}
+        - {name: transition, label: Transition, dimension: true}
+        - {name: from_activity, label: From step, dimension: true}
+        - {name: to_activity, label: To step, dimension: true}
+        - {name: wait_hours}
+        - {name: handover, label: Handover, dimension: true}
+    - name: cases
+      table: u_task_activity_cases
+      primary_key: [case_id]
+      description: One row per case (incident, change request or catalog task).
+      fields:
+        - {name: case_id}
+        - {name: started_at, label: Started, time: true}
+        - {name: segment, label: Case type, dimension: true}
+        - {name: status, label: Status, dimension: true}
+        - {name: duration_hours}
+        - {name: rework, label: Rework, dimension: true}
+  metrics:
+    - name: avg_wait_hours
+      display_name: Average wait hours
+      description: Average hours between one step and the next.
+      dataset: transitions
+      expression: AVG(wait_hours)
+      format: hours
+      synonyms: [average wait, wait time, waiting time]
+    - name: handover_rate
+      display_name: Handover rate
+      description: Share of step-to-step moves where the work changed hands.
+      dataset: transitions
+      expression: AVG(CASE WHEN handover THEN 1.0 ELSE 0.0 END)
+      format: percent
+      synonyms: [share of handovers]
+    - name: case_count
+      display_name: Case count
+      description: Number of cases in the activity log.
+      dataset: cases
+      expression: COUNT(*)
+      format: number
+      synonyms: [cases, number of cases, how many cases]
+    - name: mean_case_duration_hours
+      display_name: Mean case duration hours
+      description: Average hours from a case's first to its last activity.
+      dataset: cases
+      expression: AVG(duration_hours)
+      format: hours
+      synonyms: [case duration, average case duration, cycle time]
+    - name: rework_rate
+      display_name: Rework rate
+      description: Share of cases that repeated a step.
+      dataset: cases
+      expression: AVG(CASE WHEN rework THEN 1.0 ELSE 0.0 END)
+      format: percent
+      synonyms: [share of rework]

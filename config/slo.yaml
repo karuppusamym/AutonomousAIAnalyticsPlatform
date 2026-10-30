@@ -1,8 +1,12 @@
 # Service level objectives (spec S12 §2/§5). The owner signs these off; the load test runs at `load_factor` x the
 # pilot targets and reports each SLO as met / missed (scripts/load/slo_report.py). The alert rules
 # (deploy/helm/analystos/files/prometheus/rules.yaml, values monitoring.prometheusRule.slo) use the same numbers.
+# Status (ADR-016): provisionally accepted under owner delegation 2026-10-30; confirm before a production commitment.
+# The numbers below are unchanged. S12-T6 finding (2026-10-29, evidence/2026-10-29-s12-slo-*.md): Ask meets the 3 s
+# p95 alone on the dev host (95.5%, p95 0.94 s) but missed it at 2x pilot load next to 20 investigations on one shared
+# 8-core host (74%, p95 9.0 s): the pilot needs separate API capacity (its own >= 2 cores), not a looser target.
 version: 1
-owner: "platform operations (sign-off: product owner, before the pilot)"
+owner: "platform operations (provisionally accepted under owner delegation 2026-10-30, ADR-016; product owner confirms before a production commitment)"
 pilot:                       # expected pilot load per installation
   ask_users: 10              # people asking at the same time
   ask_think_seconds: 5       # pause between one person's questions
