@@ -412,3 +412,12 @@ def test_editor_api_drafts_simulates_signs_and_publishes(client, world):
     renamed = client.put(f"{base}/drafts/{nxt['id']}", json={"yaml": _yaml(_spec("playbook.renamed"))},
                          headers=_hdr("usr_author", **{"If-Match": f'"{nxt["revision"]}"'}))
     assert renamed.status_code == 422 and "must stay" in renamed.json()["error"]["message"]
+
+
+def test_a_draft_whose_manifest_id_is_no_key_is_refused_not_a_server_error(client, world):
+    """Security self-check 2026-10-30 (ZAP API scan): YAML without a usable `id` raised a ValidationError -> 500."""
+    base = f"/api/workspaces/{WS}/playbook-editor/drafts"
+    for spec in ({k: v for k, v in _spec().items() if k != "id"}, _spec("9 not a key")):
+        r = client.post(base, json={"yaml": _yaml(spec)}, headers=_hdr("usr_author"))
+        assert r.status_code == 422, r.text
+        assert r.json()["error"]["code"] == "invalid_input" and r.json()["error"]["details"]["problems"][0].startswith("key:")

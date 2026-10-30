@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 
 from analystos.api.deps import current_user, db
@@ -90,8 +90,12 @@ def create_draft(workspace_id: str, body: PlaybookYamlIn, response: Response, us
                  session: Session = Depends(db, scope="function")):
     """A new draft version from YAML (the key is the manifest id); 409 when the key already has a draft."""
     spec = editor.parse_yaml(body.yaml)
-    d = defs.create_draft(session, session.merge(user), workspace_id,
-                          DefinitionDraftIn(kind="playbook", key=str(spec.get("id") or ""), title=body.title, spec=spec))
+    try:  # a manifest id that is no valid key is the caller's mistake (422), not a server error
+        draft = DefinitionDraftIn(kind="playbook", key=str(spec.get("id") or ""), title=body.title, spec=spec)
+    except ValidationError as exc:
+        raise InvalidInput("the playbook YAML is not a valid draft", details={
+            "problems": [f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()]}) from None
+    d = defs.create_draft(session, session.merge(user), workspace_id, draft)
     set_etag(response, d.revision)
     return _out(d)
 
