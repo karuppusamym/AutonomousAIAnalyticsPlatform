@@ -160,13 +160,30 @@ class Settings(BaseSettings):
     tool_signing_secret: str | None = None
     # The artifact store as isolated workers reach it (the API's base URL on their network).
     worker_artifact_url: str = "http://localhost:8000"
-    # temporal | local. local runs the same engine in-process (lite profile, tests, laptops); lite's default.
-    orchestrator: str = "temporal"
-    # Local orchestrator (ADR-0025): None = the profile default (lite: 4, otherwise tasks run inline in
-    # each run's driver thread, as before). A shared pool of this many threads executes ready tasks.
+    # The run orchestrator backend (ADR-015, workflows/backends.py): temporal | local | langgraph. local runs the
+    # same engine in-process (lite profile, tests, laptops; lite's default); langgraph drives it with a
+    # stateless LangGraph graph in the API process (needs the `langgraph` extra; never a profile default).
+    orchestrator: Literal["temporal", "local", "langgraph"] = "temporal"
+    # Where local/langgraph runs are driven: api = the API process (one API process drives runs) | process =
+    # `analystos driver` processes holding Postgres run leases, safe with several API replicas (ORC-T7).
+    run_driver: Literal["api", "process"] = "api"
+    # A driver's lease on a run lasts this long without a heartbeat; another driver then takes the run over.
+    driver_lease_seconds: float = Field(default=30.0, ge=3.0, le=3600.0)
+    # Runs one `analystos driver` process drives at once, and how often it looks for runs to take.
+    driver_max_runs: int = Field(default=16, ge=1, le=512)
+    driver_poll_seconds: float = Field(default=1.0, gt=0, le=60.0)
+    # LangGraph backend: supersteps per graph invocation before the driver re-invokes (the equivalent of
+    # Temporal's continue_as_new; no state is lost, all of it is in Postgres).
+    langgraph_recursion_limit: int = Field(default=200, ge=20, le=100_000)
+    # LangSmith tracing would send run state to a hosted service: startup refuses the langgraph backend while
+    # LANGSMITH_TRACING / LANGCHAIN_TRACING_V2 is on, unless an operator opts in here.
+    langgraph_allow_tracing: bool = False
+    # Local orchestrator (ADR-0025): None = the profile default (lite and langgraph: 4, otherwise tasks run
+    # inline in each run's driver thread, as before). A shared pool of this many threads executes ready tasks.
     local_workers: int | None = Field(default=None, ge=1, le=64)
     # Re-drive every non-terminal run when the API starts (the engine's claims make it safe). Assumes one
-    # API process drives local runs: orphaned RUNNING claims are released at startup. None = lite only.
+    # API process drives local runs: orphaned RUNNING claims are released at startup. None = lite and
+    # langgraph only.
     local_resume: bool | None = None
     # Seconds between sweeps that re-drive parked (WAITING_USER, PAUSED) local runs whose state changed
     # without a signal (an approval decided by another process, an expiry). 0 = no sweep.
@@ -409,11 +426,14 @@ class Settings(BaseSettings):
         """Threads executing local tasks; None = inline in each run's driver (the standard behaviour)."""
         if self.local_workers is not None:
             return self.local_workers
-        return 4 if self.profile == "lite" else None
+        # langgraph fans a superstep's tasks out on the shared pool, so it always has one
+        return 4 if self.profile == "lite" or self.orchestrator == "langgraph" else None
 
     @property
     def resume_local_runs(self) -> bool:
-        return self.local_resume if self.local_resume is not None else self.profile == "lite"
+        if self.local_resume is not None:
+            return self.local_resume
+        return self.profile == "lite" or self.orchestrator == "langgraph"
 
     @property
     def run_inprocess_scheduler(self) -> bool:

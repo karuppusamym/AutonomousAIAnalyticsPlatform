@@ -237,6 +237,11 @@ ADR for every cross-cutting change, and the tracker plus evidence as the single 
 **Status.** Proposed 2026-10-27; accepted by the owner 2026-10-29. Build tracked as ORC-T1..T7. ADR-002 is
 *superseded in part*: its decision stands except the clause "no LangGraph".
 
+**Implementation (2026-10-30).** ORC-T1..T7 are built, phase 2 (ORC-T7) included: `workflows/backends.py` (protocol
+and capabilities), `runtime/loop.py::next_action`, `workflows/langgraph_backend.py`, `workflows/driver.py` (`analystos
+driver`, migration 0076 `run_lease` / `run_driver`). Operator guide: [runbook 04 §6](../30-runbooks/04-lite-and-profiles.md).
+Evidence: [capability register](../60-delivery/02-capability-register.md), rows ORC-T1..T7.
+
 **Context.** The owner asked for the run orchestrator to be a deployment choice that includes LangGraph,
 next to Temporal and the local runner. ADR-002 and spec v4 §17 (open question 5) declined LangGraph for two
 reasons: a second checkpoint store, and no durable scheduling. Spec v4 said to revisit only if a flow

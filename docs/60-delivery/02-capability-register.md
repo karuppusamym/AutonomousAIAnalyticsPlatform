@@ -1,5 +1,24 @@
 # Capability register (evidence)
 
+## 2026-10-30 — Orchestrator backends: seam, LangGraph driver, run-lease drivers (ORC-T1..T7, ADR-015)
+
+| Capability | Code path | Evidence |
+|---|---|---|
+| Backend seam | `workflows/backends.py` (protocol, `Capabilities`, `validate`, `get_backend`), `orchestrator.py` `TemporalBackend` / `InProcessBackend`; capability reads in `api/app.py`, `core/profiles.py`, `workers/dispatch.py`; `ANALYSTOS_ORCHESTRATOR` a `Literal` | `tests/unit/test_orchestrator_backends.py` (12, incl. no name comparison left); `tests/unit/test_local_orchestrator.py` unchanged and green; `tests/integration/test_temporal_queues.py` 5/5 (2026-10-30) |
+| One decision function | `runtime/loop.py::next_action` (local and langgraph); Temporal keeps its inline copy | `tests/conformance/orchestrator/test_next_action_parity.py`: 20 shapes x 3 drivers, AST coverage of `engine._decide` keys; a deliberate drift fails 4 cases |
+| Conformance suite | `tests/conformance/orchestrator/` (`ConformanceEngine`), Temporal leg `tests/integration/test_orchestrator_conformance_temporal.py` | 106 passed (local + langgraph), Temporal 6/6 on a dev server (2026-10-30) |
+| LangGraph backend | `workflows/langgraph_backend.py` (`LangGraphRuntime`: no checkpointer, fixed graph, `Send` on the shared pool, tenant per node, recursion bound + re-invoke, parks) | Conformance suite; live e2e 26/26 and restart drill 7/7 ([`evidence/orc-t6-t7-live-20261030.md`](evidence/orc-t6-t7-live-20261030.md)) |
+| Packaging and guards | `langgraph` extra (1.2.x), `[tool.importlinter]` contract, `workflows/langgraph_guard.py` (tracing refused without `ANALYSTOS_LANGGRAPH_ALLOW_TRACING`; `tracing_context(enabled=False)`), `/api/health` `checks.orchestrator`, `profiles.summary()["orchestrator"]` | `lint-imports` 1 kept / 0 broken; `test_orchestrator_backends.py`; `test_slim_install.py` (core install has no langgraph; no image carries it) |
+| Run-lease drivers | `workflows/driver.py`, `analystos driver`, `ANALYSTOS_RUN_DRIVER=process`, migration `0076_run_leases` | `tests/integration/test_run_driver_leases.py` 4/4 (two driver processes, kill + takeover, no overlap, fencing, migration); live takeover under the e2e (11 s, epoch 1 -> 2, run completed; e2e 25/26, publication timeout) |
+| Operator docs | [runbook 04 §6](../30-runbooks/04-lite-and-profiles.md), README, CLAUDE.md, ADR-015 implementation note | `.env.example` not edited (unreadable from the building session); variables listed in runbook 04 §6 |
+
+Checks on the final code (merged with develop 809a53e, Windows 11 dev host, 2026-10-30): fast suite 5111 passed /
+106 skipped / 0 failed; ruff clean; `lint-imports` clean. Not run here: the worker conformance suite (POSIX-only),
+CI (GitHub Actions blocked by billing).
+
+Not done / follow-ups: the Superset publisher's fixed 30 s timeout on `POST /api/v1/database/` is too short when the
+analytics database holds hundreds of schemas (Superset syncs a permission per schema); `.env.example` entries.
+
 ## 2026-10-29 — Release pipeline, kind proof install, gVisor compute pods (FND-004, S07-T1)
 
 | Capability | Code path | Evidence |

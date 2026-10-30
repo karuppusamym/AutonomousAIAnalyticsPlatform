@@ -26,6 +26,7 @@ GLOBAL_TABLES: dict[str, str] = {
     "spend_counter": "budget counters keyed by scope string (workspace/run keys carry their ids)",
     "verification_sweep": "platform sweep bookkeeping (counts only)",
     "model_matrix_result": "per-model scores on the product's golden suite (S12 §3), no tenant data",
+    "run_driver": "heartbeats of `analystos driver` processes (host, pid, run count), no tenant data",
 }
 
 
@@ -49,6 +50,7 @@ PLATFORM_PRIVATE_TABLES = frozenset({"audit_event", "model_call", "decision", "d
 CHILD_PARENTS: dict[str, tuple[str, str]] = {
     "agent_message": ("analysis_run", "run_id"),
     "run_task": ("analysis_run", "run_id"),
+    "run_lease": ("analysis_run", "run_id"),
     "artifact_version": ("artifact", "artifact_id"),
     "verification_dependency": ("verification_record", "record_id"),
     "knowledge_object": ("knowledge_pack", "pack_id"),

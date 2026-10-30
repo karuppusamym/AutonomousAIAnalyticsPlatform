@@ -1,6 +1,6 @@
-# Runbook 04 — Lite by default, profiles and configuration tiers
+# Runbook 04 — Lite by default, profiles, configuration tiers and choosing an orchestrator
 
-Decision: [ADR-0025](../10-architecture/adr/0025-lite-by-default.md) (spec v4 §12a; tracker P7-16, P7-17).
+Decisions: [ADR-0025](../10-architecture/adr/0025-lite-by-default.md) (spec v4 §12a; tracker P7-16, P7-17), and [ADR-015](../03-decisions/adr-log.md) for the orchestrator backends (§6; tracker ORC-T1..T7).
 One codebase and one behaviour; the profile only decides which services run and which defaults apply.
 
 ## 1. Profiles
@@ -53,8 +53,8 @@ Naming services still works without a profile flag (`docker compose up -d postgr
   connection attempt, and `tool.superset_publish` is listed as unavailable with the reason.
 
 Durability in `lite` is "resume from Postgres after a restart", not Temporal's timers and history, and
-it assumes **one API process** drives local runs (resume releases the claims it finds). Move to
-`standard` for more than one API replica or for durable timers.
+it assumes **one API process** drives local runs (resume releases the claims it finds). For more than one API
+replica, run `analystos driver` processes under Postgres run leases (§6), or move to `standard` for durable timers.
 
 ### Unavailable, with the reason
 
@@ -148,6 +148,7 @@ seed, start and a completed local run
 | Profile | `ANALYSTOS_PROFILE`, `ANALYSTOS_ENV`, `ANALYSTOS_BOOTSTRAP_ADMIN_EMAIL` |
 | Models | `OPENROUTER_API_KEY`, `ANALYSTOS_MODELS_CONFIG`, `ANALYSTOS_AIR_GAPPED` |
 | standard / scale | `ANALYSTOS_ORCHESTRATOR`, `ANALYSTOS_REDIS_URL`, `ANALYSTOS_TEMPORAL_ADDRESS`, `ANALYSTOS_TEMPORAL_NAMESPACE`, `ANALYSTOS_TEMPORAL_QUEUE_PREFIX`, `ANALYSTOS_WORKER_QUEUES`, `ANALYSTOS_SOURCE_MAX_CONCURRENT_STEPS` (goal-run query steps per source at once, default 4; a source's `config.max_concurrent_steps` overrides it, S06) |
+| langgraph orchestrator (§6) | `ANALYSTOS_ORCHESTRATOR=langgraph` (needs the `langgraph` extra), `ANALYSTOS_LANGGRAPH_ALLOW_TRACING` (default false: startup refuses while `LANGSMITH_TRACING` / `LANGCHAIN_TRACING_V2` is on), `ANALYSTOS_RUN_DRIVER` (`api` default, or `process`: `analystos driver` processes under Postgres run leases) |
 | bi | `ANALYSTOS_SUPERSET_URL`, `ANALYSTOS_SUPERSET_PUBLIC_URL`, `ANALYSTOS_SUPERSET_EMBED_DOMAINS`, `ANALYSTOS_SUPERSET_USERNAME`, `ANALYSTOS_SUPERSET_PASSWORD`, `ANALYSTOS_SUPERSET_ANALYTICS_SQLALCHEMY_URI`, `ANALYSTOS_ANALYTICS_BI_ROLE_PREFIX`, `ANALYSTOS_ANALYTICS_BI_SECRET` |
 | graph | `ANALYSTOS_GRAPH_ENABLED`, `ANALYSTOS_NEO4J_URI`, `ANALYSTOS_NEO4J_USER`, `ANALYSTOS_NEO4J_PASSWORD` |
 | demo | `ANALYSTOS_SERVICENOW_MOCK_URL`, `ANALYSTOS_SOURCE_SECRET_SERVICENOW` |
@@ -171,6 +172,7 @@ seed, start and a completed local run
 | Area | Variables |
 |---|---|
 | Local orchestrator (lite) | `ANALYSTOS_LOCAL_WORKERS`, `ANALYSTOS_LOCAL_RESUME`, `ANALYSTOS_LOCAL_SWEEP_SECONDS`, `ANALYSTOS_INPROCESS_SCHEDULER` |
+| LangGraph driver and run leases (§6) | `ANALYSTOS_LANGGRAPH_RECURSION_LIMIT` (supersteps per graph invocation before the driver re-invokes, default 200), `ANALYSTOS_DRIVER_LEASE_SECONDS` (default 30), `ANALYSTOS_DRIVER_MAX_RUNS` (runs per driver process, default 16), `ANALYSTOS_DRIVER_POLL_SECONDS` (default 1) |
 | Compose containers | `ANALYSTOS_IN_CONTAINER` (set by `compose.yaml`: a `localhost` Redis, Superset, Temporal or mock URL from a host `.env` is read as the compose service of that name, and a URL keeps only its first word, so a note after it in `.env` does no harm) |
 | Spend caps and counters | `ANALYSTOS_SPEND_COUNTER_STORE`, `ANALYSTOS_BUDGET_COUNTER_PREFIX` |
 | Connection pools | `ANALYSTOS_DB_POOL_MODE`, `ANALYSTOS_DB_POOL_SIZE`, `ANALYSTOS_DB_MAX_OVERFLOW`, `ANALYSTOS_DB_POOL_TIMEOUT`, `ANALYSTOS_DB_POOL_RECYCLE`, `ANALYSTOS_ANALYTICS_POOL_MODE`, `ANALYSTOS_ANALYTICS_POOL_SIZE`, `ANALYSTOS_ANALYTICS_MAX_OVERFLOW`, `ANALYSTOS_ANALYTICS_POOL_TIMEOUT`, `ANALYSTOS_LOADER_POOL_MODE`, `ANALYSTOS_LOADER_POOL_SIZE`, `ANALYSTOS_LOADER_MAX_OVERFLOW`, `ANALYSTOS_LOADER_POOL_TIMEOUT`, `ANALYSTOS_DB_TRANSACTION_POOLER` |
@@ -273,6 +275,120 @@ and a deterministic `idempotency_key`, then `raise_for_result(dispatch_isolated(
 job gets `{**job, "inputs": {artifact_id: path}}` and its returned dict becomes the JSON output `result`;
 `ctx.trial()` (context handlers) enforces `max_trials`. When the pool is not configured, `require_pool`
 raises `FeatureUnavailable` with the remedy; the manifest should declare `requires: [pool:compute-ml]`.
+
+## 6. Choosing an orchestrator (ADR-015)
+
+The orchestrator only *drives* runs. Every backend runs the same engine (`runtime/engine.py`) over the same
+Postgres state (tasks, claims, budgets, approvals), takes the same decision after each `get_state`
+(`runtime/loop.py::next_action`), and is held to one conformance suite (`tests/conformance/orchestrator`,
+plus `tests/integration/test_orchestrator_conformance_temporal.py`). Playbooks stay the only flow
+definition, approvals stay hash-bound, and SQL still goes through the gateway. Schedules and monitors do
+not depend on the orchestrator (`analystos scheduler`, or in process under lite).
+
+| `ANALYSTOS_ORCHESTRATOR` | Drives runs in | Waits | After a crash | Use it when |
+|---|---|---|---|---|
+| `local` (lite default) | the API process (`LocalRuntime`) | parks; a signal, the 60 s sweep or a restart re-drives it | `resume()` at the next start | one API process: laptops, pilots, lite installs |
+| `temporal` (standard/scale default) | `analystos worker` (AnalysisWorkflow) | `nudge` signal + timer | Temporal history; no resume step | several API replicas, worker pools per queue, durable timers, HA |
+| `langgraph` (never a default) | the API process (a stateless LangGraph graph on `LocalRuntime`) | parks, as `local` | `resume()` at the next start, as `local` | a team or customer standardises on LangGraph, or wants its graph view; same limits as `local` |
+
+**What `langgraph` is not.** It adds no behaviour that `local` lacks. It is not more durable and it is not HA.
+
+* The graph is compiled **without a checkpointer**: Postgres is the only run-state store.
+* Its shape is fixed in code, and its edges are chosen by `next_action`, never by a model.
+* No LangChain chat model, tool, agent or retriever is used. `interrupt()` / `Command(resume=...)` are not
+  used either, so a resume value can never stand in for an approval.
+* Each invocation is bounded by `ANALYSTOS_LANGGRAPH_RECURSION_LIMIT` supersteps. The driver then re-invokes
+  from Postgres state, which is the equivalent of Temporal's `continue_as_new`.
+* Every node binds the run's tenant itself (ADR-009).
+* Only `workflows/langgraph_backend.py` may import `langgraph`, `langchain_*` or `langsmith`. The
+  import-linter contract in `pyproject.toml` enforces this; run `lint-imports`.
+
+The graph, from `LangGraphRuntime.mermaid()`:
+
+```mermaid
+graph TD;
+  __start__([start]) --> plan;
+  plan --> state;
+  state -.-> finish;
+  state -.-> plan;
+  state -.-> execute;
+  state -.-> park;
+  state -.-> idle;
+  state -.-> __end__([end]);
+  execute --> state;
+  idle --> state;
+  finish --> __end__;
+  park --> __end__;
+```
+
+`state` reads `engine.get_state` and routes on `next_action`:
+
+* `finish`: done, failed, cancelled, or a budget used up;
+* `plan`: a replan;
+* `execute`: one `Send` per ready step, on the shared `ANALYSTOS_LOCAL_WORKERS` pool. A superstep waits for
+  all of them;
+* `park`: the run waits for a person or is paused. The invocation ends and holds no thread;
+* `idle`: tasks are running elsewhere. It sleeps up to the poll interval, capped by the run's remaining
+  wall-clock budget;
+* end: the run is already terminal.
+
+### Turning `langgraph` on
+
+1. Install the extra in the API image or venv: `pip install "analystos[langgraph]"`. It pins
+   `langgraph>=1.2.18,<1.3` and pulls `langchain-core` and `langsmith`. Without it, startup fails with
+   `FeatureUnavailable` naming the remedy, and `/api/health` reports `checks.orchestrator` down.
+2. Set `ANALYSTOS_ORCHESTRATOR=langgraph` on the API, and on `analystos driver` processes if you use them
+   (below). It defaults `ANALYSTOS_LOCAL_WORKERS` to 4 and resumes runs at startup in any profile.
+3. Leave LangSmith tracing off. Tracing would send run state to a hosted service, so startup refuses the
+   backend while `LANGSMITH_TRACING`, `LANGSMITH_TRACING_V2`, `LANGCHAIN_TRACING_V2` or `LANGCHAIN_TRACING`
+   is true. An operator who accepts that sets `ANALYSTOS_LANGGRAPH_ALLOW_TRACING=true`. Without that opt-in,
+   every invocation also runs inside `tracing_context(enabled=False)`, so nothing leaves by default.
+4. Check `GET /api/health`: `orchestrator` is `"langgraph"`, `checks.orchestrator.state` is `"up"`,
+   `installation.orchestrator.available` is `true`, and `checks.temporal` and `checks.worker` are `off`.
+
+These variables are not in `.env.example` yet: the session that built ORC-T1..T7 could not edit that file.
+Copy them from here:
+
+```bash
+ANALYSTOS_ORCHESTRATOR=langgraph          # temporal | local | langgraph
+ANALYSTOS_LANGGRAPH_ALLOW_TRACING=false   # true = allow LangSmith tracing (sends run state to a hosted service)
+ANALYSTOS_LANGGRAPH_RECURSION_LIMIT=200   # supersteps per graph invocation before the driver re-invokes
+ANALYSTOS_RUN_DRIVER=api                  # api | process (`analystos driver` processes under run leases)
+```
+
+Switching between `local` and `langgraph` is safe at any time: stop the API, change the variable, and start
+it. All state is in Postgres, so either backend resumes what the other left. Switching to or from `temporal`
+with runs in flight is not supported: finish or cancel them first.
+
+### More than one API replica without Temporal: `analystos driver` (ORC-T7)
+
+Set `ANALYSTOS_RUN_DRIVER=process` on the API **and** on every driver. Then no API process drives `local` or
+`langgraph` runs. The API only records that a run wants driving (`run_lease.wake_at`, set by a start, an
+approval, a control or feedback), and one or more `analystos driver` processes share the work:
+
+* A driver claims due runs with `FOR UPDATE SKIP LOCKED` and bumps the lease `epoch`. A run is due when it
+  was woken, has never parked, was parked longer than `ANALYSTOS_LOCAL_SWEEP_SECONDS`, or its lease expired.
+* It renews its leases every third of `ANALYSTOS_DRIVER_LEASE_SECONDS` (default 30). Once 80 % of the lease
+  has passed without a successful renewal, it stops deciding for that run, so a frozen or partitioned
+  driver stops before another can take over.
+* A lease that expires is taken over by another driver. That driver first releases the run's RUNNING task
+  claims, so a late result of the dead attempt is `superseded`.
+* Renewals and releases are fenced by `epoch`: a driver whose lease was taken over cannot touch it.
+
+Two drivers never advance the same run. `tests/integration/test_run_driver_leases.py` runs two driver
+processes, kills one mid-run and checks the takeover.
+
+* `ANALYSTOS_DRIVER_MAX_RUNS` (default 16) caps the runs one driver drives at once; `--max-runs N` overrides it.
+* `/api/health` `checks.orchestrator.drivers` lists the drivers that heartbeated within a lease (table
+  `run_driver`). The check is down when there is none.
+
+```bash
+ANALYSTOS_ORCHESTRATOR=langgraph ANALYSTOS_RUN_DRIVER=process .venv/bin/uvicorn analystos.api.app:app   # API replicas
+ANALYSTOS_ORCHESTRATOR=langgraph ANALYSTOS_RUN_DRIVER=process .venv/bin/analystos driver                # 1..n drivers
+```
+
+Only analysis runs move to drivers. Crawls, recipe and ML compute and query transport behave as under `local`
+in every mode: in process, or the subprocess transport for isolated pools.
 
 ## Persistent uploads and artifacts
 

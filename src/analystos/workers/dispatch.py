@@ -352,7 +352,9 @@ def default_transport(settings: Any = None) -> Transport:
     settings = _settings(settings)
     mode = settings.isolated_transport
     if mode == "auto":
-        mode = "temporal" if settings.orchestrator == "temporal" else "subprocess"
+        from analystos.workflows.backends import capabilities
+
+        mode = capabilities(settings).isolated_transport
     with _default_lock:
         if mode not in _default:
             _default[mode] = TemporalTransport() if mode == "temporal" else SubprocessTransport(settings.worker_artifact_url)
