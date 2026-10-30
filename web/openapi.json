@@ -6042,6 +6042,7 @@
       },
       "PilotReviewIn": {
         "additionalProperties": false,
+        "description": "An investigation is named by `run_id`; an Ask conversation, builder dashboard, report document or\nscheduled digest by `subject_id`. `assisted_minutes` includes `review_minutes` (checking and correcting).",
         "properties": {
           "accuracy": {
             "enum": [
@@ -6073,14 +6074,64 @@
             "title": "Evidence Kind",
             "type": "string"
           },
+          "interventions": {
+            "default": 0,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Interventions",
+            "type": "integer"
+          },
           "notes": {
             "default": "",
             "maxLength": 3000,
             "title": "Notes",
             "type": "string"
           },
+          "review_minutes": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Minutes"
+          },
           "run_id": {
-            "title": "Run Id",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          },
+          "subject_type": {
+            "default": "investigation",
+            "enum": [
+              "investigation",
+              "ask",
+              "dashboard",
+              "report",
+              "digest"
+            ],
+            "title": "Subject Type",
             "type": "string"
           },
           "task": {
@@ -6101,7 +6152,6 @@
           }
         },
         "required": [
-          "run_id",
           "evidence_kind",
           "task",
           "baseline_minutes",
@@ -41244,6 +41294,89 @@
           }
         },
         "summary": "Create Review",
+        "tags": [
+          "investigation value"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/pilot-reviews/subjects": {
+      "get": {
+        "description": "What the caller may assess for a pilot task card: investigations, own Ask conversations, dashboards,\nreport documents or scheduled digests.",
+        "operationId": "review_subjects_api_workspaces__workspace_id__pilot_reviews_subjects_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "subject_type",
+            "required": false,
+            "schema": {
+              "default": "investigation",
+              "title": "Subject Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Subjects",
         "tags": [
           "investigation value"
         ]

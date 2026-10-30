@@ -6143,6 +6143,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{workspace_id}/pilot-reviews/subjects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review Subjects
+         * @description What the caller may assess for a pilot task card: investigations, own Ask conversations, dashboards,
+         *     report documents or scheduled digests.
+         */
+        get: operations["review_subjects_api_workspaces__workspace_id__pilot_reviews_subjects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{workspace_id}/pilot-reviews/{review_id}": {
         parameters: {
             query?: never;
@@ -10764,7 +10785,11 @@ export interface components {
             /** Workspace Name */
             workspace_name: string;
         };
-        /** PilotReviewIn */
+        /**
+         * PilotReviewIn
+         * @description An investigation is named by `run_id`; an Ask conversation, builder dashboard, report document or
+         *     scheduled digest by `subject_id`. `assisted_minutes` includes `review_minutes` (checking and correcting).
+         */
         PilotReviewIn: {
             /**
              * Accuracy
@@ -10781,12 +10806,27 @@ export interface components {
              */
             evidence_kind: "rehearsal" | "real_pilot";
             /**
+             * Interventions
+             * @default 0
+             */
+            interventions?: number;
+            /**
              * Notes
              * @default
              */
             notes?: string;
+            /** Review Minutes */
+            review_minutes?: number | null;
             /** Run Id */
-            run_id: string;
+            run_id?: string | null;
+            /** Subject Id */
+            subject_id?: string | null;
+            /**
+             * Subject Type
+             * @default investigation
+             * @enum {string}
+             */
+            subject_type?: "investigation" | "ask" | "dashboard" | "report" | "digest";
             /** Task */
             task: string;
             /** Usefulness */
@@ -25680,6 +25720,42 @@ export interface operations {
                 "application/json": components["schemas"]["PilotReviewIn"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_subjects_api_workspaces__workspace_id__pilot_reviews_subjects_get: {
+        parameters: {
+            query?: {
+                subject_type?: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
