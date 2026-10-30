@@ -1282,3 +1282,16 @@ Re-walk: [`evidence/pilot-fix-ask-20261030.md`](evidence/pilot-fix-ask-20261030.
 Limits: no demo workspace has an approved semantic model (owner action), so C06 stays ad hoc on the shared databases,
 with a note saying why. Governed metrics cannot use lookup fields (product category, customer region) until that join
 is certified.
+
+## 2026-10-30 — Pilot fixes: cross-filter scope, digests on schedules, report summary, coded numbers (PILOT-FIX-03, -07, -08)
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| Cross-filter reaches every tile its source can take (PILOT-FIX-03) | `dashboards/interact.py`: `origins` (tables a chart showing the field reads), `reach`, `pushdown` (predicate in the tile query's own WHERE on that table's column, sqlglot nodes and `sqlbuild` literals; denied columns, set operations and other tables refused), `why_not` in plain words; Show rows carries the pushed filter. Every statement through `QueryGateway.execute` as the viewer | `tests/unit/test_dashboard_interact.py` (real validator + DuckDB); web and Playwright explore journeys; re-walk C05 matches the answer key. "Apply as dashboard filter" still scopes the saved filter to charts that show the field |
+| Dashboard summary on a schedule (PILOT-FIX-07) | `web/src/components/DashboardDigest.tsx` on the Summary panel; schedule form checkbox list; `lib/schedules.withDigest` keeps every other config key | `test_report_docs_service.py` (editor only, builder dashboards only, next fire saves the digest, nothing sent without a destination); `dashboardDigest.test.tsx`; `e2e/dashboard-digest.spec.ts` (axe-clean); re-walk C09 |
+| Report summary drafted from verified blocks (PILOT-FIX-08) | `reports/summary.py` + `reports/design.draft_summary`: template sentences (rules rung), optional `data_story` rewording in `always` mode with a per-sentence numbers guard, plain fallback note; a `text.set` the engine guards again | `tests/unit/test_report_summary.py`; re-walk C07 (rules only). The summary repeats a finding's discovery-row figure (PILOT-FIX-06) |
+| Coded numbers are groupings | `skills/viz.is_coded_number`; `dashboards/drafts.classify` (prompt-named groupings first, text categories before codes); `dashboards/questions.infer_fields` (ordinal axis); a second identical filter control is refused (`dashboards/ops.py`) | `test_dashboard_conversation.py`, `test_skills_viz_dashboards.py`, `test_dashboard_ops.py`; re-walk C04: no "Average priority" KPI |
+
+Re-walk evidence: [`evidence/pilot-fix-dash-reports-20261030.md`](evidence/pilot-fix-dash-reports-20261030.md) (agent,
+rules only, on a copy of the rehearsal database; no analyst results).
+

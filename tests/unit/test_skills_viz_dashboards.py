@@ -113,3 +113,21 @@ def test_registry_entries_resolve():
 
     for s in SKILLS:  # compatible with the platform SkillSpec contract
         SkillSpec(id=s["id"], category=s["category"], description=s["description"], deterministic=s["deterministic"])
+
+
+@pytest.mark.parametrize("name,semantic_type,role,distinct,coded", [
+    ("priority", "numeric", "dimension", 5, True),       # the rehearsal's "Average priority" KPI
+    ("incident.priority", None, None, None, True),       # the name alone
+    ("status", "numeric", None, 7, True),
+    ("severity_level", "numeric", None, None, True),
+    ("risk_code", "code", None, 12, True),
+    ("store_type", "category", None, 4, True),
+    ("reopen_count", "numeric", "measure", 4, False),    # a count is a measure even with few values
+    ("priority", "numeric", "dimension", 400, False),    # too many values to be codes
+    ("resolution_hours", "numeric", "duration", 900, False),
+    ("amount", "numeric", None, 3, False),
+])
+def test_coded_numbers_are_dimensions(name, semantic_type, role, distinct, coded):
+    from analystos.skills.viz import is_coded_number
+
+    assert is_coded_number(name, semantic_type=semantic_type, role=role, distinct=distinct) is coded

@@ -113,6 +113,27 @@ class DraftPlan:
                 **({"clarify": self.clarify, "examples": self.examples} if self.clarify else {})}
 
 
+def _coded(column: Any) -> bool:
+    """A catalog column that holds codes, not quantities (`skills.viz.is_coded_number`)."""
+    from analystos.skills.viz import is_coded_number
+
+    distinct = (column.profile or {}).get("distinct")
+    return is_coded_number(column.name, semantic_type=column.semantic_type, role=(column.semantics or {}).get("semantic_role"),
+                           distinct=int(distinct) if isinstance(distinct, int | float | str) and str(distinct).isdigit() else None)
+
+
+def classify(columns: list[Any]) -> tuple[list[str], list[str], list[str]]:
+    """(time, categorical, numeric) column names a draft may use. Readable groupings have 2..50 values and are not
+    keys; a coded number (priority 1-5) is a grouping, never a measure to average."""
+    times = [c.name for c in columns if c.semantic_type == "datetime"]
+    coded = {c.name for c in columns if c.semantic_type == "numeric" and _coded(c)}
+    readable = [c for c in columns if not c.is_key and 2 <= int((c.profile or {}).get("distinct") or 10) <= 50]
+    cats = [c.name for c in readable if c.semantic_type in ("categorical", "boolean")] + [c.name for c in readable if c.name in coded]
+    nums = [c.name for c in columns if c.semantic_type == "numeric" and not c.is_key and not c.name.lower().endswith("_id")
+            and c.name not in coded]
+    return times, cats, nums
+
+
 def gather(session: Any, user: Any, workspace_id: str) -> PlanContext:
     """What the planner may use, already narrowed to the caller's scope (masked metrics and withheld tables are absent)."""
     from sqlalchemy import select
@@ -174,15 +195,12 @@ def gather(session: Any, user: Any, workspace_id: str) -> PlanContext:
         cols = list(session.scalars(select(SourceColumn).where(SourceColumn.asset_id == asset.id).order_by(SourceColumn.ordinal)))
         usable = [c for c in cols if f"{fq}.{c.name}".lower() not in denied
                   and not {"pii", "restricted", "sensitive"} & {t.lower() for t in c.tags or []}]
-        times = [c.name for c in usable if c.semantic_type == "datetime"]
-        cats = [c.name for c in usable if c.semantic_type in ("categorical", "boolean") and not c.is_key
-                and 2 <= int((c.profile or {}).get("distinct") or 10) <= 50]
-        nums = [c.name for c in usable if c.semantic_type == "numeric" and not c.is_key and not c.name.lower().endswith("_id")]
+        times, cats, nums = classify(usable)
         sem = asset.semantics or {}
         start = next((t for t in times if re.search(r"(open|creat|start|submit|order|report)", t.lower())), None)
         ctx.tables.append(Table(fq=fq, entity=_words(asset.name), time_column=start or (times[0] if times else None),
                                 words=tokens(asset.name) | tokens(asset.business_name) | tokens(sem.get("entity"))
-                                | tokens(entities.get(fq.lower())), categorical=cats[:8], numeric=nums[:6]))
+                                | tokens(entities.get(fq.lower())), categorical=cats[:12], numeric=nums[:6]))
     return ctx
 
 
@@ -258,7 +276,8 @@ def plan_catalog(tables: list[Table], topic: set[str], typed: set[str] | None = 
         if t.time_column:
             charts.append(Tile(id=_slug(f"{e}_per_month", "c"), kind="chart", question=f"{e} per month",
                                title=f"{e.capitalize()} per month", type="line", score=s + 0.5, group=t.fq))
-        for c in t.categorical[:4]:
+        named = sorted(t.categorical, key=lambda c: not tokens(c) & typed)  # groupings the prompt names first
+        for c in named[:4]:
             charts.append(Tile(id=_slug(f"{e}_by_{c}", "c"), kind="chart", question=f"count of {e} by {_words(c)}",
                                title=f"{e.capitalize()} by {_words(c)}", score=s + 0.2, group=t.fq))
             filters.append(_words(c))
