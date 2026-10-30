@@ -348,6 +348,35 @@ def test_database_connects_as_the_workspace_bi_login(router, fake):
     assert make_url(db["sqlalchemy_uri"]).password == "rotated"
 
 
+def test_a_database_create_that_times_out_but_lands_is_reused(router, fake, monkeypatch):
+    """Superset syncs per-schema permissions while it creates a connection; on a large analytics database that
+    outlasts the request. The publisher takes the connection Superset made instead of failing or doubling it."""
+    p = publisher()
+    original = p._create_database
+
+    def slow(workspace_id, uri):
+        original(workspace_id, uri)  # Superset finishes the create...
+        raise UpstreamUnavailable("Superset POST /api/v1/database/ timed out")  # ...after the client gave up
+
+    monkeypatch.setattr(p, "_create_database", slow)
+    monkeypatch.setattr(p, "DATABASE_WAIT_POLL", 0)
+    db_id, created = p.ensure_database("ws_unit")
+    assert created and db_id in fake.databases and len(fake.databases) == 1
+
+
+def test_a_database_create_that_times_out_and_never_lands_still_fails(router, fake, monkeypatch):
+    p = publisher()
+
+    def lost(workspace_id, uri):
+        raise UpstreamUnavailable("Superset POST /api/v1/database/ timed out")
+
+    monkeypatch.setattr(p, "_create_database", lost)
+    monkeypatch.setattr(p, "DATABASE_WAIT_SECONDS", 0)
+    with pytest.raises(UpstreamUnavailable, match="timed out"):
+        p.ensure_database("ws_unit")
+    assert not fake.databases
+
+
 def test_publisher_without_a_bi_login_refuses_to_create_a_database(router, fake):
     p = SupersetPublisher(base_url=BASE, username="admin", password="admin",
                           analytics_sqlalchemy_uri="postgresql+psycopg2://analystos_reader:reader@postgres:5432/analytics")

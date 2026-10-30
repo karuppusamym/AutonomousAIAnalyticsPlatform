@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -171,6 +172,7 @@ class SupersetClient:
         params: dict[str, Any] | None = None,
         allow_404: bool = False,
         raw: bool = False,
+        timeout: float | None = None,
     ) -> Any:
         if self._access is None:
             self.login()
@@ -178,7 +180,8 @@ class SupersetClient:
             headers = {"Authorization": f"Bearer {self._access}", "Referer": self.base_url}
             if method != "GET":
                 headers["X-CSRFToken"] = self.csrf_token()
-            resp = self._send(method, path, json=json_body, params=params, headers=headers)
+            extra = {"timeout": timeout} if timeout is not None else {}
+            resp = self._send(method, path, json=json_body, params=params, headers=headers, **extra)
             if attempt == 0 and resp.status_code == 401:
                 self._refresh_access()
                 continue
@@ -202,8 +205,8 @@ class SupersetClient:
     def get(self, path: str, **kw: Any) -> Any:
         return self.request("GET", path, **kw)
 
-    def post(self, path: str, body: Any) -> Any:
-        return self.request("POST", path, json_body=body)
+    def post(self, path: str, body: Any, *, timeout: float | None = None) -> Any:
+        return self.request("POST", path, json_body=body, timeout=timeout)
 
     def put(self, path: str, body: Any) -> Any:
         return self.request("PUT", path, json_body=body)
@@ -387,7 +390,35 @@ class SupersetPublisher(SupersetAccess):
         if not self.analytics_uri:
             raise InvalidInput("superset_analytics_sqlalchemy_uri is not configured")
         uri = self.analytics_uri_for(workspace_id)
-        body = self.client.post(
+        try:
+            body = self._create_database(workspace_id, uri)
+        except UpstreamUnavailable as exc:
+            # Superset builds permissions for every schema of the analytics database while it creates the
+            # connection, which outlasts a request timeout on a database with hundreds of schemas. It usually
+            # finishes anyway: take the connection it made rather than failing (or creating a second one).
+            if "timed out" not in exc.message:
+                raise
+            made = self._await_database(workspace_id)
+            if made is None:
+                raise
+            self.check_database_tenant(made, workspace_id)
+            return made, True
+        return int(body["id"]), True
+
+    DATABASE_CREATE_TIMEOUT = 180.0  # seconds; creation syncs per-schema permissions synchronously
+    DATABASE_WAIT_SECONDS = 120.0
+    DATABASE_WAIT_POLL = 5.0
+
+    def _await_database(self, workspace_id: str) -> int | None:
+        deadline = time.monotonic() + self.DATABASE_WAIT_SECONDS
+        while True:
+            found = self.find_database(workspace_id)
+            if found is not None or time.monotonic() >= deadline:
+                return found
+            time.sleep(self.DATABASE_WAIT_POLL)
+
+    def _create_database(self, workspace_id: str, uri: str) -> dict[str, Any]:
+        return self.client.post(
             "/api/v1/database/",
             {
                 "database_name": self.database_name(workspace_id),
@@ -401,8 +432,8 @@ class SupersetPublisher(SupersetAccess):
                 "impersonate_user": False,
                 "extra": self._database_extra(uri, None, workspace_id),
             },
+            timeout=self.DATABASE_CREATE_TIMEOUT,
         )
-        return int(body["id"]), True
 
     # -- workspace access (P4-02) ---------------------------------------------------------------
     BASE_USER_ROLES = ("Gamma",)  # Superset's read-only application role: no data access of its own
