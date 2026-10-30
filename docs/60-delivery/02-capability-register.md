@@ -1,5 +1,20 @@
 # Capability register (evidence)
 
+## 2026-10-30 — Internal security self-check before the external pen test (prep for S12-T8; not a pen test)
+
+Evidence: [evidence/security-self-check-20261030.md](evidence/security-self-check-20261030.md). S12-T8 stays External.
+
+| Capability | Code path | Evidence |
+|---|---|---|
+| API hardening headers | `api/security_headers.py` (pure ASGI, outermost but request id): `nosniff`, `X-Frame-Options: DENY`, CSP `default-src 'none'; frame-ancestors 'none'` (docs: anti-framing only), `Referrer-Policy: no-referrer`, `Cross-Origin-Resource-Policy: same-origin`, `Permissions-Policy`, `Cache-Control: no-store` unless the route set one | `tests/unit/test_security_headers.py`; ZAP API scan re-test 2026-10-30 |
+| Web hardening headers | `web/nginx.conf`, Helm `templates/scheduler-web.yaml`: CSP (scripts from the origin only, no eval, `object-src 'none'`, `frame-ancestors 'none'`), `X-Frame-Options`, `nosniff` (now on `/assets/` too), `Permissions-Policy`, COOP, all `always` | `tests/unit/test_security_headers.py` (both configs); ZAP web baseline re-test; SPA loaded under the CSP with no violations |
+| Input bounds that were 500s | `api/routers/workspaces.WorkspaceIn.name` 1–200; `api/routers/playbook_editor.create_draft` turns an invalid manifest id into 422 | `tests/unit/test_workspace_input_bounds.py`, `test_playbook_authoring.py::test_a_draft_whose_manifest_id_is_no_key_is_refused_not_a_server_error` |
+| Production deploys only tag-signed images | `.github/workflows/deploy.yml` `SIGNER` (`release.yml@refs/tags/v` for production); inputs reach scripts through `env:` | `tests/unit/test_supply_chain.py` (2 new); runbook 14 §3 |
+| Dependency audit | `pip-audit` (resolved `standard,otel`; dev venv), `npm audit` prod + dev | 0 known vulnerabilities after `web/package-lock.json` dev bumps (vite 8.3.5, vitest 5.0.5) |
+
+Not shown: object-level authorization with real ids across two tenants (ZAP used placeholder ids), a cluster (TLS,
+HSTS, NetworkPolicies, gVisor), a real IdP. Accepted risks are listed in the evidence file for the tester.
+
 ## 2026-10-30 — Meaning review that converges; readiness in plain words (PILOT-FIX-04)
 
 From the [VALUE-05 rehearsal](evidence/value-05-pilot-rehearsal-20261030.md): card C11 took 3 meaning rounds and about 11
