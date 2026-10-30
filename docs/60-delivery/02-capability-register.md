@@ -1,5 +1,21 @@
 # Capability register (evidence)
 
+## 2026-10-30 — Registry screens fixed; MCP endpoint shipped; prompts editable (REG-FIX-01/02, PROMPT-01)
+
+Found in the browser on the redeployed stack (Settings → Capability registry):
+
+| Screen | What was wrong | Fix | Test |
+|---|---|---|---|
+| Data tools, MCP servers | "Error: Not Found" on tools, signing keys and the review queue: the browser calls `/api/v2/tools…`, the router answered only `/v2/tools…` | `api/app.py`: `tools_v2` also mounted under `/api` (`include_in_schema=False`) | `test_web_reaches_v2_routes.py` (fails without the fix) |
+| MCP clients | Tokens offered for `/mcp`, but the images had no `mcp` extra, so the endpoint did not exist | `mcp` in `standard` and the compose API extras; `checks.mcp` in `/api/health`; a warning on the screen when it is off | `test_slim_install.py` |
+| Prompts | Read-only | Editable by administrators through versioned platform settings, validated against the built-in template | `test_prompt_overrides.py`, `increment3.test.tsx` |
+
+Whether these features are needed: data tools publish certified metrics and verified queries as signed, typed tools
+that agents and outside callers use without writing SQL (S10); MCP clients let outside AI assistants (for example a
+desktop assistant) use those tools as a governed service identity; MCP servers admit outside tools under quarantine.
+All three stay administrator screens. Local results: Python fast suite, ruff, web typecheck, 517 vitest, build and
+110 Playwright tests pass.
+
 ## 2026-10-30 — Redeploy on Docker compose and live e2e re-run (V2-E2E-1)
 
 The full compose stack (profiles standard, bi, demo: API, worker, scheduler, Temporal, Redis, Superset 6.1.0, ServiceNow

@@ -35,7 +35,7 @@ def _deep_merge(base: dict, patch: dict) -> dict:
     for k, v in patch.items():
         out[k] = _deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) and k not in (
             "purpose_modes", "ladders", "purpose_run_caps", "routing_overrides", "profile_models", "profile_escalation_models",
-            "escalation") else v
+            "escalation", "overrides") else v
     return out
 
 
@@ -199,6 +199,10 @@ def _validate_references(settings: PlatformSettings) -> None:
     for purpose in [*settings.llm.purpose_modes, *settings.llm.ladders, *settings.llm.purpose_run_caps, *settings.llm.escalation]:
         if purpose not in cfg.routing:
             raise InvalidInput(f"unknown model purpose {purpose}")
+    from analystos.agents.prompts import validate_override
+
+    for name, text in settings.prompts.overrides.items():
+        validate_override(name, text)
     for purpose, rungs in settings.llm.ladders.items():
         if not rungs or len(set(rungs)) != len(rungs):
             raise InvalidInput(f"ladder for {purpose} must list each rung once and not be empty")

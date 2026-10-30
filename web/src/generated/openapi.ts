@@ -396,11 +396,32 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Prompts */
+        /**
+         * Prompts
+         * @description Every template with its built-in text and, where an administrator edited it, the text in use.
+         */
         get: operations["prompts_api_admin_prompts_get"];
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/prompts/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Edit Prompt */
+        put: operations["edit_prompt_api_admin_prompts__name__put"];
+        post?: never;
+        /** Reset Prompt */
+        delete: operations["reset_prompt_api_admin_prompts__name__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -11164,6 +11185,16 @@ export interface components {
             /** Question */
             question?: string | null;
         };
+        /** PromptEditIn */
+        PromptEditIn: {
+            /**
+             * Note
+             * @default
+             */
+            note?: string;
+            /** Text */
+            text: string;
+        };
         /** ProposalIn */
         ProposalIn: {
             /** Asset */
@@ -13099,6 +13130,78 @@ export interface operations {
                 "x-correlation-id"?: string | null;
             };
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_prompt_api_admin_prompts__name__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromptEditIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_prompt_api_admin_prompts__name__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                name: string;
+            };
             cookie?: never;
         };
         requestBody?: never;

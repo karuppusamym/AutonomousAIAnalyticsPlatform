@@ -1,7 +1,7 @@
 # AnalystOS application image (API, Temporal worker, scheduler). ADR-0025: the extras decide its weight.
-#   lite API (default):   docker build --build-arg EXTRAS=reports,ml ...        core + PDF/XLSX/DOCX/PPTX reports + ML
-#   standard API:         --build-arg EXTRAS=reports,temporal,ml                  + the Temporal client
-#   worker / scheduler:   --build-arg EXTRAS=standard                             + ml, graph (every extra)
+#   lite API (default):   docker build --build-arg EXTRAS=reports,ml,mcp ...    core + PDF/XLSX/DOCX/PPTX reports + ML + /mcp
+#   standard API:         --build-arg EXTRAS=reports,temporal,ml,mcp              + the Temporal client
+#   worker / scheduler:   --build-arg EXTRAS=standard                             + ml, graph, mcp (every extra)
 # The ML stack (scikit-learn, statsmodels) is in the API image too: ML experiments train in the lite API and are
 # checked there before they are dispatched (compose default; ADR-0022's isolated compute-ml pool is opt-in). Built
 # without it (EXTRAS=reports) the driver model, experiments and Holt-Winters forecasts report "unavailable".
@@ -25,7 +25,7 @@ RUN --mount=type=secret,id=pipcert,required=false \
     pip wheel --no-cache-dir --no-deps --wheel-dir /dist .
 
 FROM python:3.11-slim
-ARG EXTRAS=reports,ml
+ARG EXTRAS=reports,ml,mcp
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 # Operators select a models file by path (Helm: ANALYSTOS_MODELS_CONFIG=/app/config/models*.yaml); the same

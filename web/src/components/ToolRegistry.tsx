@@ -632,6 +632,9 @@ function ReviewTable({ ws, tools, onChanged }: { ws: string; tools: RegistryTool
 // ------------------------------------------------------------------------------------ MCP clients and catalogue
 export function McpClients() {
   const clients = useAsync(() => api.listMcpClients(), []);
+  // A deployment built without the `mcp` extra serves no /mcp: say so before anyone hands out a token for it.
+  const health = useAsync(() => api.health(), []);
+  const mcpOff = health.data?.checks?.mcp?.enabled === false;
   const act = useAction();
   const [name, setName] = useState("");
   const [token, setToken] = useState<{ client_id: string; token: string } | null>(null);
@@ -657,6 +660,9 @@ export function McpClients() {
           as its own service identity within its grants: a role capped at analyst, tools by name, family or pattern, a per-minute rate,
           daily quotas and an expiry.
         </p>
+        {mcpOff && <Notice tone="warning"><p>The MCP endpoint is turned off on this installation (the image was built without the
+          <code>mcp</code> extra), so MCP clients cannot connect yet. Tokens still work for <code>/v2/tools/…:invoke</code>. Rebuild the
+          API image with <code>EXTRAS=…,mcp</code> to turn it on.</p></Notice>}
         <form className="chip-row" aria-label="New client" onSubmit={(e) => { e.preventDefault(); void create(); }}>
           <input aria-label="Client name" placeholder="Client name, e.g. claude-desktop" required value={name} onChange={(e) => setName(e.target.value)} />
           <button type="submit" className="btn btn-sm btn-primary" disabled={act.busy || !name.trim()}>Create client</button>

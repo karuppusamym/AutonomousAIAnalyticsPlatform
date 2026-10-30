@@ -231,6 +231,14 @@ class FeatureFlags(BaseModel):
     reports: bool = True
 
 
+class PromptSettings(BaseModel):
+    """Administrator edits of the model prompts (agents/prompts.py), by template name. A template without an
+    entry uses the built-in text. Checked against the built-in on save (agents/prompts.py::validate_override):
+    the same placeholders, and the untrusted-context rule kept where the built-in has it."""
+
+    overrides: dict[str, str] = Field(default_factory=dict)
+
+
 class PlatformSettings(BaseModel):
     llm: LLMSettings = Field(default_factory=LLMSettings)
     context: ContextSettings = Field(default_factory=ContextSettings)
@@ -241,6 +249,7 @@ class PlatformSettings(BaseModel):
     features: FeatureFlags = Field(default_factory=FeatureFlags)
     outbound: OutboundSettings = Field(default_factory=OutboundSettings)
     decisions: DecisionSettings = Field(default_factory=DecisionSettings)
+    prompts: PromptSettings = Field(default_factory=PromptSettings)
 
 
 PRESETS: dict[str, dict[str, LLMMode]] = {

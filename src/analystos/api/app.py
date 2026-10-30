@@ -118,6 +118,9 @@ for r in (auth.router, workspaces.router, analysis.router, artifacts.router, adm
     app.include_router(r)
 app.include_router(mcp_router.router)
 app.include_router(tools_v2_router.router)  # tool, agent and data-product registry (S10)
+# The web client reaches only /api (nginx and the dev proxy forward nothing else): the same routes again under /api,
+# kept out of the schema so the generated client keeps one typed path per route. External callers keep /v2.
+app.include_router(tools_v2_router.router, prefix="/api", include_in_schema=False)
 app.include_router(triggers_v2_router.router)  # signed triggers, incidents, conversation channels (S09)
 app.include_router(models_admin_router.router)  # model gateway admin (S05)
 app.include_router(ops_v2_router.router)  # S12: model evaluation matrix, spend (cost ledger) and its export
@@ -155,7 +158,7 @@ app.include_router(deliveries_router.router)  # approved external email/webhook 
 app.include_router(data_shape_router.router)  # what the selected tables are good for (patterns, next steps)
 app.include_router(index_advice_router.router)  # index / partitioning / clustering advice, never applied (N-11)
 app.include_router(bi_dashboards_router.router)  # existing-dashboard mode (N-2, BI-011/012)
-mcp_server.mount(app)  # MCP protocol endpoint at /mcp (P4-X06)
+MCP_GATE = mcp_server.mount(app)  # MCP protocol endpoint at /mcp (P4-X06); None without the `mcp` extra
 
 
 @app.exception_handler(AnalystOSError)
@@ -343,6 +346,8 @@ def health():
         transport = caps.isolated_transport
     checks["isolated_pools"] = {"ok": True, "enabled": bool(pools), "pools": pools,
                                 "transport": transport if pools else None}
+    # Informational: a deployment without the `mcp` extra serves no /mcp, so MCP clients cannot connect.
+    checks["mcp"] = {"ok": True, "enabled": MCP_GATE is not None, "path": mcp_server.MCP_PATH}
     from analystos.core.profiles import summary
 
     problems = health_problems(checks)

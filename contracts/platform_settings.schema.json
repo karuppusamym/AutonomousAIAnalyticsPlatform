@@ -480,6 +480,20 @@
       "title": "OutboundSettings",
       "type": "object"
     },
+    "PromptSettings": {
+      "description": "Administrator edits of the model prompts (agents/prompts.py), by template name. A template without an\nentry uses the built-in text. Checked against the built-in on save (agents/prompts.py::validate_override):\nthe same placeholders, and the untrusted-context rule kept where the built-in has it.",
+      "properties": {
+        "overrides": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Overrides",
+          "type": "object"
+        }
+      },
+      "title": "PromptSettings",
+      "type": "object"
+    },
     "PurposeProfile": {
       "description": "What the context compiler (P4-T03) gives one model purpose, and how much of it.\n\n`sections` are filled in order after the mandatory part (the caller's required inputs); each\nsection is cut in whole items and whatever does not fit is listed as omitted, never truncated.\n`referenced_only` restricts the catalog to the tables the objective/question/SQL names (SQL\ngeneration and repair). Budgets are characters of compact JSON (\u2248 3.6 chars per token).",
       "properties": {
@@ -615,6 +629,9 @@
     },
     "decisions": {
       "$ref": "#/$defs/DecisionSettings"
+    },
+    "prompts": {
+      "$ref": "#/$defs/PromptSettings"
     }
   },
   "title": "PlatformSettings",

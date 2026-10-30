@@ -98,7 +98,7 @@ services:
       context: .
       dockerfile: deploy/docker/Dockerfile
       # lite: core + reports; standard/scale add the Temporal client (deploy/compose/standard.env).
-      args: {EXTRAS: "${ANALYSTOS_API_EXTRAS:-reports,ml}"}  # ml: experiments train in or are checked by the API
+      args: {EXTRAS: "${ANALYSTOS_API_EXTRAS:-reports,ml,mcp}"}  # ml: experiments train in or are checked by the API; mcp: /mcp for MCP clients
     environment: *app-env
     depends_on:
       postgres: {condition: service_healthy}

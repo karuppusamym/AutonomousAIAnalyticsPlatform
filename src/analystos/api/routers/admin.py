@@ -265,9 +265,44 @@ def settings_rollback(body: RollbackIn, admin: User = Depends(admin_user), sessi
 
 @router.get("/admin/prompts")
 def prompts(_: User = Depends(admin_user)):
-    from analystos.agents.prompts import PROMPTS
+    """Every template with its built-in text and, where an administrator edited it, the text in use."""
+    from analystos.agents.prompts import PROMPTS, overrides, placeholders
+    from analystos.services import platform_settings
 
-    return [{"name": k, "version": k.rsplit(".", 1)[-1], "text": v} for k, v in sorted(PROMPTS.items())]
+    edits, version = overrides(), platform_settings.current()[0]
+    return [{"name": k, "version": k.rsplit(".", 1)[-1], "text": edits.get(k, v), "built_in": v, "edited": k in edits,
+             "placeholders": sorted(placeholders(v)), "settings_version": version} for k, v in sorted(PROMPTS.items())]
+
+
+class PromptEditIn(BaseModel):
+    text: str
+    note: str = ""
+
+
+def _set_prompt(session: Session, admin: User, name: str, text: str | None, note: str) -> dict:
+    from analystos.agents.prompts import PROMPTS
+    from analystos.services import platform_settings
+
+    if name not in PROMPTS:
+        raise NotFound(f"prompt template {name} not found")
+    edits = dict(platform_settings.current()[1].prompts.overrides)
+    if text is None:
+        edits.pop(name, None)
+    else:
+        edits[name] = text
+    # One versioned settings change: history, diff, audit and rollback come with it (Platform settings history).
+    return platform_settings.update(session, session.merge(admin), {"prompts": {"overrides": edits}},
+                                    note=note or (f"prompt {name} reset to the built-in text" if text is None else f"prompt {name} edited"))
+
+
+@router.put("/admin/prompts/{name}")
+def edit_prompt(name: str, body: PromptEditIn, admin: User = Depends(admin_user), session: Session = Depends(db, scope="function")):
+    return _set_prompt(session, admin, name, body.text, body.note)
+
+
+@router.delete("/admin/prompts/{name}")
+def reset_prompt(name: str, admin: User = Depends(admin_user), session: Session = Depends(db, scope="function")):
+    return _set_prompt(session, admin, name, None, "")
 
 
 @router.get("/admin/token-savings")

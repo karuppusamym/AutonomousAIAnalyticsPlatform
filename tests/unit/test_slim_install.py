@@ -101,7 +101,7 @@ def test_image_extras_agree_across_compose_dockerfile_and_helm():
     services = compose["services"]
     default = re.fullmatch(r"\$\{ANALYSTOS_API_EXTRAS:-([^}]*)\}", services["api"]["build"]["args"]["EXTRAS"]).group(1)
     dockerfile = (ROOT / "deploy" / "docker" / "Dockerfile").read_text(encoding="utf-8")
-    assert re.search(r"^ARG EXTRAS=(\S*)$", dockerfile, re.M).group(1) == default == "reports,ml"
+    assert re.search(r"^ARG EXTRAS=(\S*)$", dockerfile, re.M).group(1) == default == "reports,ml,mcp"
 
     named = {"api(lite)": _names(default)}
     for name, svc in services.items():

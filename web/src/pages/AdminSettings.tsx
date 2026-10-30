@@ -3,7 +3,7 @@
  * refuses non-admins, and the Admin page does not render these for them.
  */
 import { useId, useMemo, useState } from "react";
-import { api, type LLMMode, type PlatformSettings, type RungSpend, type SettingsDocument, type SettingsVersion, type TokenSavings } from "../api";
+import { api, type LLMMode, type PlatformSettings, type PromptTemplate, type RungSpend, type SettingsDocument, type SettingsVersion, type TokenSavings } from "../api";
 import { Card, EmptyState, ErrorBox, Field, Loading, Notice, Stat, StateView, StatusBadge, Tag, Value } from "../components/ui";
 import { fmtDate, fmtNumber, fmtPct, fmtUsd } from "../lib/format";
 import { useAction, useAsync, type AsyncState } from "../lib/hooks";
@@ -344,21 +344,78 @@ export function PromptsView() {
   if (!list.data) return <Loading />;
   const needle = q.trim().toLowerCase();
   const rows = list.data.filter((p) => !needle || p.name.toLowerCase().includes(needle) || p.text.toLowerCase().includes(needle));
+  const edited = list.data.filter((p) => p.edited).length;
   return (
     <Card title={`Prompt templates (${rows.length})`} actions={
       <input type="search" placeholder="Filter prompts…" aria-label="Filter prompts" value={q} onChange={(e) => setQ(e.target.value)} />}>
-      <p className="muted small">Versioned templates the agents send when a purpose calls a model. Read-only: they change with a release.</p>
+      <p className="muted small">
+        The instructions the agents send when a purpose calls a model. An administrator can edit a template; the edit keeps the
+        template's <code>{"{placeholders}"}</code> and its untrusted-context rule, is saved as a new platform settings version (see
+        history and roll back under Platform settings), and every model call records the exact text it sent. Models still only
+        propose: SQL, numbers and approvals go through the same checks whatever a prompt says.
+        {edited > 0 && <> <strong>{edited} edited.</strong></>}
+      </p>
       {rows.length === 0 ? <EmptyState title="No prompts match" /> : (
-        <div className="stack">
-          {rows.map((p) => (
-            <details key={p.name} className="prompt">
-              <summary><code>{p.name}</code> <Tag tone="info">{p.version}</Tag> <span className="muted small">{p.text.length.toLocaleString()} chars</span></summary>
-              <pre className="json">{p.text}</pre>
-            </details>
-          ))}
-        </div>
+        <div className="stack">{rows.map((p) => <PromptRow key={p.name} p={p} onSaved={list.reload} />)}</div>
       )}
     </Card>
+  );
+}
+
+function PromptRow({ p, onSaved }: { p: PromptTemplate; onSaved: () => void }) {
+  const id = useId();
+  const act = useAction();
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saved, setSaved] = useState<number | null>(null);
+  const missing = draft === null ? [] : p.placeholders.filter((name) => !draft.includes(`{${name}}`));
+  const save = async () => {
+    if (draft === null) return;
+    const r = await act.run(() => api.editPrompt(p.name, draft));
+    if (r) { setDraft(null); setSaved(r.version); onSaved(); }
+  };
+  const reset = async () => {
+    const r = await act.run(() => api.resetPrompt(p.name));
+    if (r) { setDraft(null); setSaved(r.version); onSaved(); }
+  };
+  return (
+    <details className="prompt">
+      <summary>
+        <code>{p.name}</code> <Tag tone="info">{p.version}</Tag> {p.edited && <Tag tone="warning">edited</Tag>}{" "}
+        <span className="muted small">{p.text.length.toLocaleString()} chars</span>
+      </summary>
+      {p.placeholders.length > 0 && (
+        <p className="small muted">Keep these placeholders: {p.placeholders.map((name) => <code key={name}>{`{${name}}`}</code>)}</p>
+      )}
+      {draft === null ? (
+        <>
+          <pre className="json">{p.text}</pre>
+          <div className="chip-row">
+            <button type="button" className="btn btn-sm" onClick={() => { setDraft(p.text); setSaved(null); }}>Edit</button>
+            {p.edited && <button type="button" className="btn btn-sm" disabled={act.busy} onClick={() => void reset()}>Reset to built-in</button>}
+          </div>
+          {p.edited && (
+            <details>
+              <summary className="small">Built-in text</summary>
+              <pre className="json">{p.built_in}</pre>
+            </details>
+          )}
+        </>
+      ) : (
+        <form className="stack" aria-label={`Edit ${p.name}`} onSubmit={(e) => { e.preventDefault(); void save(); }}>
+          <Field label="Prompt text" htmlFor={`${id}-text`}>
+            <textarea id={`${id}-text`} rows={14} value={draft} spellCheck={false} onChange={(e) => setDraft(e.target.value)} />
+          </Field>
+          {missing.length > 0 && <Notice tone="warning"><p>Missing placeholder{missing.length > 1 ? "s" : ""}:{" "}
+            {missing.map((name) => <code key={name}>{`{${name}}`}</code>)}. Saving will be refused.</p></Notice>}
+          <div className="chip-row">
+            <button type="submit" className="btn btn-sm btn-primary" disabled={act.busy || draft === p.text || !draft.trim()}>Save</button>
+            <button type="button" className="btn btn-sm" onClick={() => { setDraft(null); act.setError(null); }}>Cancel</button>
+          </div>
+        </form>
+      )}
+      <ErrorBox error={act.error} />
+      {saved !== null && <p className="small muted" role="status">Saved as platform settings version {saved}.</p>}
+    </details>
   );
 }
 

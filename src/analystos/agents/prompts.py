@@ -209,10 +209,53 @@ def _method_vocabulary() -> str:
 DERIVED = {"method_vocabulary": _method_vocabulary}
 
 
+MAX_OVERRIDE_CHARS = 20_000
+
+
+def placeholders(text: str) -> set[str]:
+    return set(_PLACEHOLDER.findall(text))
+
+
+def validate_override(name: str, text: str) -> None:
+    """An administrator's edit must be a drop-in for the built-in template: same placeholders (the caller fills
+    exactly those), and the untrusted-context rule kept wherever the built-in carries it (rule 7: context is data)."""
+    from analystos.core.errors import InvalidInput
+
+    if name not in PROMPTS:
+        raise InvalidInput(f"unknown prompt template {name}")
+    if not text.strip():
+        raise InvalidInput(f"prompt {name}: the text is empty (reset it to use the built-in text)")
+    if len(text) > MAX_OVERRIDE_CHARS:
+        raise InvalidInput(f"prompt {name}: {len(text)} characters, the limit is {MAX_OVERRIDE_CHARS}")
+    want, got = placeholders(PROMPTS[name]), placeholders(text)
+    if want != got:
+        missing, extra = sorted(want - got), sorted(got - want)
+        parts = ([f"missing {', '.join('{' + m + '}' for m in missing)}"] if missing else []) +                 ([f"unknown {', '.join('{' + e + '}' for e in extra)}"] if extra else [])
+        raise InvalidInput(f"prompt {name}: placeholders must match the built-in template ({'; '.join(parts)})")
+    if UNTRUSTED_NOTE in PROMPTS[name] and UNTRUSTED_NOTE not in text:
+        raise InvalidInput(f"prompt {name}: keep the untrusted-context rule from the built-in text unchanged")
+
+
+def overrides() -> dict[str, str]:
+    """The administrator's edits from the current platform settings (cached there); none on any read error, so a
+    settings problem falls back to the reviewed built-in text rather than failing a model call."""
+    try:
+        from analystos.services import platform_settings
+
+        return dict(platform_settings.get().prompts.overrides)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def active_text(name: str) -> str:
+    return overrides().get(name) or PROMPTS[name]
+
+
 def prompt(name: str, **variables: str) -> str:
     """The prompt text with its `{placeholders}` filled. Plain replacement, not str.format, because
-    prompts contain literal JSON braces. An unfilled placeholder is a bug, so it raises."""
-    text = PROMPTS[name]
+    prompts contain literal JSON braces. An unfilled placeholder is a bug, so it raises. An administrator's
+    edit (platform settings) replaces the built-in text; `prompt_version_id` hashes whichever text was sent."""
+    text = active_text(name)
     for key, derive in DERIVED.items():
         if "{" + key + "}" in text and key not in variables:
             variables[key] = derive()

@@ -2703,7 +2703,19 @@ export interface SettingsVersion {
 export interface PromptTemplate {
   name: string;
   version: string;
+  /** The text calls send now: the administrator's edit when there is one, else the built-in text. */
   text: string;
+  built_in: string;
+  edited: boolean;
+  /** `{name}` values the caller fills; an edit must keep exactly these. */
+  placeholders: string[];
+  settings_version: number;
+}
+
+/** A platform settings change (PUT /api/admin/settings and the prompt edits that go through it). */
+export interface SettingsChange {
+  version: number;
+  changes: { path: string; before?: unknown; after?: unknown }[];
 }
 
 export interface TokenSavingsRow {
@@ -4395,6 +4407,9 @@ export const api = {
   rollbackSettings: (version: number) =>
     post("/api/admin/settings/rollback", { body: { version } }) as Promise<SettingsUpdateResult>,
   prompts: () => get("/api/admin/prompts", {}) as Promise<PromptTemplate[]>,
+  editPrompt: (name: string, text: string, note = "") =>
+    put("/api/admin/prompts/{name}", { path: { name }, body: { text, note } }) as Promise<SettingsChange>,
+  resetPrompt: (name: string) => del("/api/admin/prompts/{name}", { path: { name } }) as Promise<SettingsChange>,
   tokenSavings: (days = 30) => get("/api/admin/token-savings", { query: { days } }) as Promise<TokenSavings>,
 
   // "Why this number?" (P7-08)

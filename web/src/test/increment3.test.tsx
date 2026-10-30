@@ -14,6 +14,9 @@ import { AddSource, SourceCard } from "../pages/Sources";
 import { buildCrawlInput, crawlStatsSummary, driftCounts, emptyCrawlForm, stageProgress } from "../lib/crawls";
 import { buildMonitorConfig, describeMonitorConfig, emptyMonitorForm, validateMonitorForm } from "../lib/monitors";
 import { buildScheduleConfig, emptyScheduleForm, formFromSchedule, mergeScheduleConfig } from "../lib/schedules";
+
+const PROMPT = (name: string, text: string, placeholders: string[] = []) =>
+  ({ name, version: name.split(".").pop() ?? "v1", text, built_in: text, edited: false, placeholders, settings_version: 3 });
 import {
   fieldSchema, pendingChanges, presetEffect, savedShare, settingsPatch, validateLimits, withPurposeMode,
 } from "../lib/settings";
@@ -646,7 +649,7 @@ describe("Admin page gating", () => {
     session.set("tok", ADMIN);
     mockApi([
       ["GET", /\/api\/auth\/me$/, ADMIN], ["GET", /\/api\/agents$/, []],
-      ["GET", /\/api\/admin\/prompts$/, [{ name: "planning.v2", version: "v2", text: "You plan analyses." }, { name: "sql.v1", version: "v1", text: "Write SQL." }]],
+      ["GET", /\/api\/admin\/prompts$/, [PROMPT("planning.v2", "You plan analyses."), PROMPT("sql.v1", "Write SQL.")]],
     ]);
     render(<AuthProvider><MemoryRouter><AdminPage /></MemoryRouter></AuthProvider>);
     fireEvent.click(screen.getByRole("tab", { name: "Prompts" }));
@@ -654,6 +657,32 @@ describe("Admin page gating", () => {
     fireEvent.change(screen.getByLabelText("Filter prompts"), { target: { value: "sql" } });
     expect(screen.getByText("Prompt templates (1)")).toBeTruthy();
     expect(screen.getByText("Write SQL.")).toBeTruthy();
+  });
+
+  it("lets an admin edit a prompt, warns about a dropped placeholder and resets an edit", async () => {
+    session.set("tok", ADMIN);
+    const fetchMock = mockApi([
+      ["GET", /\/api\/auth\/me$/, ADMIN], ["GET", /\/api\/agents$/, []],
+      ["GET", /\/api\/admin\/prompts$/, [PROMPT("sql_generation.v1", "Write {dialect} SQL.", ["dialect"]),
+        { ...PROMPT("planning.v1", "Plan briefly."), built_in: "Plan.", edited: true }]],
+      ["PUT", /\/api\/admin\/prompts\/sql_generation\.v1$/, { version: 7, changes: [{ path: "prompts.overrides.sql_generation.v1" }] }],
+      ["DELETE", /\/api\/admin\/prompts\/planning\.v1$/, { version: 8, changes: [] }],
+    ]);
+    render(<AuthProvider><MemoryRouter><AdminPage /></MemoryRouter></AuthProvider>);
+    fireEvent.click(screen.getByRole("tab", { name: "Prompts" }));
+    expect(await screen.findByText("1 edited.")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);  // rows keep the served order: sql_generation first
+    const box = screen.getByLabelText("Prompt text");
+    fireEvent.change(box, { target: { value: "Write SQL." } });
+    expect(screen.getByText(/Saving will be refused/)).toBeTruthy();
+    fireEvent.change(box, { target: { value: "Write careful {dialect} SQL." } });
+    expect(screen.queryByText(/Saving will be refused/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved as platform settings version 7.")).toBeTruthy();
+    const put = calls(fetchMock, "PUT", /\/api\/admin\/prompts\/sql_generation\.v1$/)[0];
+    expect(JSON.parse(String(put[1]?.body))).toMatchObject({ text: "Write careful {dialect} SQL." });
+    fireEvent.click(screen.getByRole("button", { name: "Reset to built-in" }));
+    await waitFor(() => expect(calls(fetchMock, "DELETE", /\/api\/admin\/prompts\/planning\.v1$/)).toHaveLength(1));
   });
 });
 
