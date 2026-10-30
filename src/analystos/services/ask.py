@@ -161,6 +161,22 @@ _REMEDY_DEFAULTS = {"env": "OPENROUTER_API_KEY", "retry_in_s": "about 60", "data
                     "cap": "calls", "used": "all", "limit": "the cap"}
 
 
+# What an analyst sees for a refusal that only an administrator can fix (the business view of Ask; the expert view
+# and administrators keep the technical title and remedy). Rehearsal friction, 2026-10-30: the rules-only refusal
+# showed an environment variable and `docker compose` to an analyst.
+NEEDS_MODEL = {"title": "This question needs an AI model",
+               "message": "This question needs an AI model, which isn't turned on for this workspace. Ask your administrator.",
+               "remedy": "Nothing was guessed. Questions the platform answers without a model (counts and breakdowns of "
+                         "a table, approved metrics, saved answers) still work."}
+BUSINESS_REFUSALS: dict[str, dict[str, str]] = {
+    "no_api_key": NEEDS_MODEL, "mode_off": NEEDS_MODEL, "no_model": NEEDS_MODEL,
+    "policy_blocked": NEEDS_MODEL, "residency_blocked": NEEDS_MODEL,
+    "provider_cooldown": {"title": "The AI model is unavailable right now",
+                          "message": "The AI model this workspace uses is unavailable right now. Ask your administrator.",
+                          "remedy": "Nothing was guessed. Try again later."},
+}
+
+
 class _RemedyValues(dict):
     def __missing__(self, key: str) -> str:
         return _REMEDY_DEFAULTS.get(key, "")
@@ -169,8 +185,11 @@ class _RemedyValues(dict):
 def refusal(kind: str, message: str, **details: Any) -> dict[str, Any]:
     spec = REFUSALS[kind]
     values = _RemedyValues({k: v for k, v in details.items() if v is not None})
-    return {"kind": kind, "title": spec["title"], "message": message, "remedy": spec["remedy"].format_map(values),
-            "details": details}
+    out = {"kind": kind, "title": spec["title"], "message": message, "remedy": spec["remedy"].format_map(values),
+           "details": details}
+    if kind in BUSINESS_REFUSALS:
+        out["business"] = dict(BUSINESS_REFUSALS[kind])
+    return out
 
 
 def refusal_for(exc: AnalystOSError) -> dict[str, Any]:
@@ -218,6 +237,8 @@ class AdhocContext:
     on_stage: Callable[[str, str, dict[str, Any]], None] | None = None
     semantic_catalog: dict[str, Any] | None = None
     conversation_memory: dict[str, Any] | None = None  # S04: clarifications that apply to this user and conversation
+    previous_answer: dict[str, Any] | None = None  # the conversation's last answer, for follow-ups (PILOT-FIX-02)
+    approved_metrics_unmodelled: dict[str, Any] | None = None  # approved metrics while no semantic model is approved
 
     @property
     def router(self):
@@ -253,6 +274,11 @@ def adhoc_context(session: Session, user: User, workspace_id: str) -> AdhocConte
     ws = get_workspace(session, workspace_id)
     ctx = AdhocContext(user=user, workspace=ws, scope=scope, policy=load_policy(session, ws), agent=get_agent_spec(session, "sql"),
                        services=default_services(), semantic_catalog=load_catalog(session, workspace_id))
+    if ctx.semantic_catalog is None:  # PILOT-FIX-05: say so when an approved metric cannot be used yet
+        from analystos.semantic.service import approved_metrics
+
+        ctx.approved_metrics_unmodelled = {name: {"definition": dict(m.definition or {})}
+                                           for name, m in approved_metrics(session, workspace_id).items()} or None
     session.expunge_all()
     return ctx
 
@@ -364,7 +390,8 @@ def provenance(session: Session, workspace_id: str, out: dict[str, Any]) -> dict
             "parent_turn_id": out.get("parent_turn_id"),
             "model": out.get("model"), "query_id": result.get("query_id"), "cache_hit": bool(result.get("cache_hit")),
             "result_hash": result.get("result_hash"), "repairs": len(out.get("attempts") or []),
-            "suggestions": list(out.get("suggestions") or []), **({"rules": out["rules"]} if out.get("rules") else {})}
+            "suggestions": list(out.get("suggestions") or []), **({"rules": out["rules"]} if out.get("rules") else {}),
+            **{k: out[k] for k in ("notes", "period", "followup") if out.get(k)}}
 
 
 def staleness(session: Session, turn: AskTurn, now: datetime | None = None) -> dict[str, Any]:
@@ -548,8 +575,7 @@ def ask_in_thread(user: User, thread_id: str, question: str, parameters: dict[st
         ctx.turn_id, ctx.thread_id, ctx.on_stage = turn_id, thread_id, stage
         with session_scope() as s:
             previous = conversations.previous_answer(s, s.get(AskThread, thread_id), seq)
-            ctx.previous_answer = ({"id": previous.id, "sql": previous.sql,
-                                    "rules": (previous.provenance or {}).get("rules", {})} if previous else None)
+            ctx.previous_answer = _previous_view(previous) if previous else None
             ctx.conversation_memory = _conversation_memory(s, user.id, workspace_id, thread_id, stage)
         if not ctx.scope.assets:
             out = {"status": "refused", "refusal": refusal("no_scope", "No selected, ready tables are in your scope.")}
@@ -577,6 +603,16 @@ def ask_in_thread(user: User, thread_id: str, question: str, parameters: dict[st
 
         record_quietly("ask_thread", workspace_id, thread_id, user.id)
     return out_turn
+
+
+def _previous_view(turn: AskTurn) -> dict[str, Any]:
+    """What a follow-up builds on: the previous answer's question, SQL, chart, period and governed query."""
+    prov = turn.provenance or {}
+    return {"id": turn.id, "question": turn.question, "sql": turn.sql, "chart": turn.chart,
+            "base_question": (prov.get("followup") or {}).get("base_question") or turn.question,
+            "narrowed": (prov.get("followup") or {}).get("narrowed") or [],
+            "answered_by": turn.answered_by, "rules": prov.get("rules", {}), "period": prov.get("period"),
+            "governance": prov.get("governance", "ad_hoc"), "semantic": prov.get("semantic")}
 
 
 def _conversation_memory(session: Session, user_id: str, workspace_id: str, thread_id: str,

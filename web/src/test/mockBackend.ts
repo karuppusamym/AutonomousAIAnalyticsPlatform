@@ -242,13 +242,23 @@ export function rulesTurn(question: string): AskTurn {
 }
 
 /** No provider key in the API process: the refusal names the key and the restart, not "no model route". */
+/** PILOT-FIX-02: an answer for a quarter the data covers only in part carries a note saying so. */
+function quarterTurn(question: string): AskTurn {
+  const base = askTurn("askt_1", question);
+  return { ...base, provenance: { ...base.provenance, period: { start: "2026-07-01", end: "2026-10-01", label: "Q3 2026" },
+    notes: ["Q3 2026 is incomplete in this data: its records run from 1 Jul 2026 to 31 Aug 2026, with none in September 2026. Read it as a partial period, not a whole one."] } };
+}
+
 function noKeyTurn(question: string): AskTurn {
   return askTurn("askt_nokey", question, {
     status: "refused", route: "generate", answered_by: null, sql: null, explanation: null, chart: null, result: null, provenance: {}, model: null,
     refusal: { kind: "no_api_key", title: "No model provider key is set for the API",
       message: "SQL generation unavailable: no API key for provider 'openrouter' (set OPENROUTER_API_KEY)",
       remedy: "Set OPENROUTER_API_KEY for the api and worker containers (docker compose reads it from your shell or the .env file at `docker compose up`), then restart them: `docker compose up -d api worker`. A key exported after the containers started is not seen by them.",
-      details: { reason: "no_api_key", env: "OPENROUTER_API_KEY", provider: "openrouter" } },
+      details: { reason: "no_api_key", env: "OPENROUTER_API_KEY", provider: "openrouter" },
+      business: { title: "This question needs an AI model",
+        message: "This question needs an AI model, which isn't turned on for this workspace. Ask your administrator.",
+        remedy: "Nothing was guessed. Questions the platform answers without a model (counts and breakdowns of a table, approved metrics, saved answers) still work." } },
     staleness: { state: "unknown", label: "Data freshness unknown", data_as_of: null },
     stages: [STAGES[0], STAGES[1], STAGES[2], STAGES[3], STAGES[4], { key: "done", text: "No model provider key is set for the API", at_ms: 30 }],
   });
@@ -304,7 +314,7 @@ function askRoute(m: string, p: string, requestBody?: string | null): MockRespon
     const q = String((requestBody ? JSON.parse(requestBody) as { question?: string } : {}).question ?? "");
     recordQuestion(q);
     const turn = /about it/i.test(q) ? clarifyTurn(q) : /^distribution of/i.test(q) ? rulesTurn(q)
-      : /consecutive weeks/i.test(q) ? noKeyTurn(q) : askTurn("askt_1", q);
+      : /consecutive weeks/i.test(q) ? noKeyTurn(q) : /q3 2026/i.test(q) ? quarterTurn(q) : askTurn("askt_1", q);
     return sse([...turn.stages.map((s) => ["stage", { turn_id: turn.id, ...s }] as [string, unknown]), ["turn", turn], ["end", { status: "done" }]]);
   }
   const inspect = /^\/ask\/turns\/([^/]+)\/inspector$/.exec(p);

@@ -108,6 +108,7 @@ class _Dataset:
     outputs: dict[str, set[str]]  # source output column (lower) -> physical "schema.table.column"
     assets: list[str]
     masked: set[str] = field(default_factory=set)  # field names the caller may not read
+    unjoined: set[str] = field(default_factory=set)  # field names that read a lookup join left out (see _base_only)
 
 
 def _parse(text: str, dialect: str) -> exp.Expression:
@@ -146,14 +147,76 @@ def _asset_for(scope: DataScope, table: exp.Table) -> str:
     raise InvalidInput(f"The dataset reads {wanted}, which is not in your authorized scope.")
 
 
+_UNCERTIFIED_JOIN = "The dataset contains joins whose cardinality has not been certified for governed metrics."
+
+
+def _base_only(source: exp.Expression) -> tuple[exp.Expression, set[str]]:
+    """A dataset whose only joins are LEFT JOINs from its base table (the lookups an investigation's dataset adds:
+    product category, customer region) is read from the base table alone: the joins and every output that reads a
+    joined table are left out, and those outputs are returned so the fields over them are unavailable. A LEFT JOIN never
+    removes a base row, and with no join left no uncertified join reaches a governed query (ADR-0019). Any other join,
+    a join in a nested query, or an unqualified column next to a join is still refused. PILOT-FIX-05: every dataset an
+    investigation built carried such lookups, so no approved metric over it could answer governed."""
+    joins = source.args.get("joins") if isinstance(source, exp.Select) else None
+    if not joins:
+        if any(source.find_all(exp.Join)):
+            raise InvalidInput(_UNCERTIFIED_JOIN)
+        return source, set()
+    base = (source.args.get("from_") or source.args.get("from"))
+    if base is None or not isinstance(base.this, exp.Table) or any(j.side != "LEFT" or j.kind not in ("", "OUTER")
+                                                                    or not isinstance(j.this, exp.Table) for j in joins):
+        raise InvalidInput(_UNCERTIFIED_JOIN)
+    if sum(1 for _ in source.find_all(exp.Join)) != len(joins) or source.find(exp.Subquery) is not None:
+        raise InvalidInput(_UNCERTIFIED_JOIN)
+    joined = {j.this.alias_or_name for j in joins}
+    if any(not c.table for c in source.find_all(exp.Column) if not isinstance(c.parent, exp.Join)):
+        raise InvalidInput(_UNCERTIFIED_JOIN)  # an unqualified column could come from either side
+    for clause in ("where", "group", "having", "qualify", "order", "distinct"):
+        node = source.args.get(clause)
+        if node is not None and any(c.table in joined for c in node.find_all(exp.Column)):
+            raise InvalidInput(_UNCERTIFIED_JOIN)
+    kept, dropped = [], set()
+    for projection in source.expressions:
+        if isinstance(projection, exp.Star) or any(c.table in joined for c in projection.find_all(exp.Column)):
+            if isinstance(projection, exp.Star):
+                raise InvalidInput(_UNCERTIFIED_JOIN)
+            dropped.add(projection.alias_or_name.lower())
+            continue
+        kept.append(projection)
+    if not kept:
+        raise InvalidInput(_UNCERTIFIED_JOIN)
+    pruned = source.copy()
+    pruned.set("joins", None)
+    pruned.set("expressions", [k.copy() for k in kept])
+    return pruned, dropped
+
+
+def _grain_holds(grain: str, ds: _Dataset) -> bool:
+    """A declared grain the dataset itself guarantees: all rows, one row per record, or one row per the entity of the
+    single table it reads with no join (`order` on `orders`). Joins to other datasets keep it: an additive measure that
+    would cross a fan-out edge is refused separately."""
+    if grain in {"all", "overall", "record", "records", "row", "rows"}:
+        return True
+    if len(ds.assets) != 1 or any(ds.source.find_all(exp.Join)):
+        return False
+    table = _words(ds.assets[0].rsplit(".", 1)[-1])
+    return grain in {table, table[:-1] if table.endswith("s") else table, table[:-2] if table.endswith("es") else table}
+
+
+def _unavailable(ds: _Dataset, name: str) -> Exception:
+    if name in ds.unjoined:
+        return InvalidInput(f"Field {ds.name}.{name} reads a joined table, and that join is not certified for governed "
+                            "metrics.", details={"field": f"{ds.name}.{name}", "reason": "uncertified_join"})
+    return PolicyDenied(f"Field {ds.name}.{name} is masked for you by workspace policy.", details={"field": f"{ds.name}.{name}"})
+
+
 def _dataset(raw: dict[str, Any], scope: DataScope, dialect: str) -> _Dataset:
     source = _parse(raw["source"], dialect)
     if not isinstance(source, exp.Select | exp.SetOperation):
         if not isinstance(source, exp.Column | exp.Identifier | exp.Table):
             raise InvalidInput("A dataset source must be a table or a read query.")
         source = _parse("SELECT * FROM " + raw["source"], dialect)
-    if any(source.find_all(exp.Join)):
-        raise InvalidInput("The dataset contains joins whose cardinality has not been certified for governed metrics.")
+    source, unjoined = _base_only(source)
     tables = [(t, _asset_for(scope, t)) for t in source.find_all(exp.Table)]
     if not tables:
         raise InvalidInput("A dataset source must read a table.")
@@ -189,7 +252,10 @@ def _dataset(raw: dict[str, Any], scope: DataScope, dialect: str) -> _Dataset:
         expr = _parse(f["expressions"][0]["expression"], dialect)
         cols = {c.name.lower() for c in expr.find_all(exp.Column)}
         reads = set().union(*(outputs.get(c, set()) for c in cols)) if cols else set()
-        if any(_denied(scope, r) for r in reads):
+        if cols & unjoined:
+            ds.masked.add(fname)
+            ds.unjoined.add(fname)
+        elif any(_denied(scope, r) for r in reads):
             ds.masked.add(fname)
     return ds
 
@@ -419,8 +485,7 @@ class _Compilation:
                 raise InvalidInput(f"Undeclared dataset column: {node.sql()}.")
             name = node.name
             if name in ds.masked:
-                raise PolicyDenied(f"Field {ds.name}.{name} is masked for you by workspace policy.",
-                                   details={"field": f"{ds.name}.{name}"})
+                raise _unavailable(ds, name)
             if fields_first and name in ds.fields:
                 inner = _parse(ds.fields[name]["expressions"][0]["expression"], self.dialect)
                 if not (isinstance(inner, exp.Column) and inner.name == name):
@@ -437,8 +502,7 @@ class _Compilation:
     def field_expr(self, ds_name: str, fname: str) -> exp.Expression:
         ds = self.ds(ds_name)
         if fname in ds.masked:
-            raise PolicyDenied(f"Field {ds_name}.{fname} is masked for you by workspace policy.",
-                               details={"field": f"{ds_name}.{fname}"})
+            raise _unavailable(ds, fname)
         return self.expression(ds, ds.fields[fname]["expressions"][0]["expression"], self.alias_of(ds_name))
 
     def alias_of(self, ds_name: str) -> str:
@@ -468,7 +532,7 @@ class _Compilation:
         if len({tuple(d.filters) for d in definitions}) != 1:
             raise InvalidInput("These metrics have different filters. Ask for them separately.")
         for defn in definitions:
-            if defn.grain and _words(defn.grain) not in {"all", "overall"}:
+            if defn.grain and not _grain_holds(_words(defn.grain), base_ds):
                 raise InvalidInput("This metric declares a grain that this compiler cannot yet enforce.")
             if defn.dialect.upper() not in {"ANSI_SQL", self.dialect.upper()}:
                 raise InvalidInput("The metric expression dialect does not match the selected source.")
@@ -496,8 +560,7 @@ class _Compilation:
             if any(not approved & set(d.dimensions) for d in definitions):
                 raise InvalidInput(f"Dimension {ref!r} is not approved for every requested metric.")
             if fname in self.ds(ds_name).masked:
-                raise PolicyDenied(f"Field {ds_name}.{fname} is masked for you by workspace policy.",
-                                   details={"field": f"{ds_name}.{fname}"})
+                raise _unavailable(self.ds(ds_name), fname)
 
         # Joins: one path per other dataset; fan-out refused unless pre-aggregated by every additive metric.
         additive = [n for n, d in zip(q.metrics, definitions, strict=True)

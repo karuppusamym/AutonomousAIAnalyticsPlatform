@@ -881,6 +881,8 @@ export interface AskRefusal {
   message: string;
   remedy: string;
   details: { missing?: { name: string; type?: string; values?: string[] }[]; verified_query?: Dict | null; parameters?: Dict; [k: string]: unknown };
+  /** The business view of a refusal only an administrator can fix (no model turned on): plain words, no setup steps. */
+  business?: { title: string; message: string; remedy: string };
 }
 
 export interface AskProvenanceAsset {
@@ -953,6 +955,12 @@ export interface AskProvenance {
   /** Follow-up questions the Ask rules offer (e.g. the other groupings of a distribution). */
   suggestions?: string[];
   rules?: Dict;
+  /** What a reader must know beside the numbers: an incomplete period, an approved metric not used. */
+  notes?: string[];
+  /** The period the question named, [start, end). */
+  period?: { start: string; end: string; label: string } | null;
+  /** What a follow-up added to the previous answer (PILOT-FIX-02). */
+  followup?: { mode: "include" | "exclude"; column: string | null; values?: unknown[]; period?: { start: string; end: string; label: string } } | null;
 }
 
 export interface AskStaleness {
