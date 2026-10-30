@@ -58,6 +58,25 @@ def test_edit_phrasings_still_map_to_edit_ops(text, op):
     assert ops and ops[0]["op"] == op
 
 
+@pytest.mark.parametrize("text", ["add a filter for region", "Add a filter control on region.", "add region as a filter",
+                                  "let viewers filter by region"])
+def test_a_filter_request_adds_a_control_not_a_chart_question(text):
+    # VALUE-05 rehearsal: "add a filter for assignment group" went to the question path and was refused
+    ops, _ = rule_ops(DashboardDoc.model_validate(sample()), text)
+    assert ops == [{"op": "dashboard.add_filter", "field": "region", "operator": "in", "value": None}]
+
+
+def test_a_filter_control_matches_a_longer_field_name_only_when_it_is_the_only_one():
+    d = DashboardDoc.model_validate(sample())
+    ops, _ = rule_ops(d, "add a filter for incid")
+    assert ops == []  # "incidents" is not "incid_…"
+    renamed = d.model_copy(update={"charts": [c.model_copy(update={"fields": [f.model_copy(update={"name": "region_name"})
+                                                                              if f.name == "region" else f for f in c.fields]})
+                                              for c in d.charts]})
+    ops, _ = rule_ops(renamed, "add a filter for region")
+    assert ops[0]["field"] == "region_name"
+
+
 def test_a_new_chart_request_needs_no_model():
     skips = []
     router = SimpleNamespace(mode=lambda p, c=None: "auto", record_skip=lambda *a, **k: skips.append(k["reason"]),
@@ -249,6 +268,21 @@ def test_without_metrics_the_catalog_rules_plan_the_tiles():
     assert [t.question for t in plan.kpis][:2] == ["how many incidents", "average resolution hours"]
     assert "incidents per month" in {t.question for t in plan.charts}
     assert "count of incidents by priority" in {t.question for t in plan.charts}
+
+
+def test_a_table_the_prompt_names_beats_tables_only_glossary_synonyms_reach():
+    # VALUE-05 rehearsal: synonyms put "change" and "team" in the topic, the three tables tied and the alphabet chose
+    tables = [drafts.Table("a.change_request", "change request", drafts.tokens("change request"), "start_date",
+                           ["type", "assignment_group_name"], ["risk"]),
+              drafts.Table("a.team_targets", "team targets", drafts.tokens("team targets"), None,
+                           ["assignment_group", "region"], ["sla_target_hours"]),
+              drafts.Table("b.incidents", "incidents", drafts.tokens("incidents incident"), "opened_at",
+                           ["priority", "assignment_group_name"], ["reassignment_count"])]
+    ctx = incident_context(metrics=[], tables=tables, synonyms={"sla": {"change"}, "desk": {"team"}})
+    plan = drafts.plan_draft("weekly incident operations: SLA by priority for the service desk", ctx)
+    assert plan.grounded_on == "catalog"
+    assert plan.kpis[0].question == "how many incidents"
+    assert {t.group for t in plan.kpis + plan.charts} >= {"b.incidents"}
 
 
 def test_a_topic_nothing_matches_gets_a_clarifying_reply():

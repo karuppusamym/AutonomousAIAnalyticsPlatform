@@ -234,9 +234,17 @@ def plan_semantic(metrics: list[Metric], topic: set[str]) -> tuple[list[Tile], l
     return kpis, charts, filters
 
 
-def plan_catalog(tables: list[Table], topic: set[str]) -> tuple[list[Tile], list[Tile], list[str]]:
-    scored = sorted(((len(t.words & topic), t) for t in tables), key=lambda p: (-p[0], p[1].fq))
-    matched = [(s, t) for s, t in scored if s > 0][:2]
+def _table_score(t: Table, topic: set[str], typed: set[str]) -> float:
+    """Words the person typed outweigh glossary synonyms, and typed words naming the table's columns break ties: a
+    synonym that happens to name another table must not push the table the prompt names out of the draft."""
+    columns = {w for c in (*t.categorical, *t.numeric, t.time_column or "") for w in tokens(c)}
+    return len(t.words & topic) + len(t.words & typed) + 0.25 * len(columns & typed)
+
+
+def plan_catalog(tables: list[Table], topic: set[str], typed: set[str] | None = None) -> tuple[list[Tile], list[Tile], list[str]]:
+    typed = topic if typed is None else typed
+    scored = sorted(((_table_score(t, topic, typed), t) for t in tables if t.words & topic), key=lambda p: (-p[0], p[1].fq))
+    matched = scored[:2]
     kpis: list[Tile] = []
     charts: list[Tile] = []
     filters: list[str] = []
@@ -292,7 +300,7 @@ def plan_draft(prompt: str, ctx: PlanContext, *, order: list[str] | None = None)
         kpis, charts, filters = plan_semantic(ctx.metrics, topic)
         grounded = "semantic_all"
     if not kpis and not charts:  # a topic the metric layer does not name is never answered with unrelated metrics
-        kpis, charts, filters = plan_catalog(ctx.tables, topic)
+        kpis, charts, filters = plan_catalog(ctx.tables, topic, tokens(prompt))
         grounded = "catalog" if (kpis or charts) else "none"
     rank = {tid: i for i, tid in enumerate(order or [])}
 

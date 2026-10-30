@@ -11,7 +11,7 @@ import pytest
 from analystos.contracts.report_doc import ContentRef, ReportDoc, Section, TextBlock
 from analystos.core.ids import stable_hash
 from analystos.reports import render
-from analystos.reports.design import CatalogItem, design, rule_ops
+from analystos.reports.design import CatalogItem, design, match_content, rule_ops
 from analystos.reports.document import (
     HELD_NOTE,
     ReportEnv,
@@ -113,6 +113,16 @@ def test_rules_ask_instead_of_guessing():
     assert ops[0]["ref"] == ref("c_all")  # the title closest to what was said wins
     ops, notes = rule_ops(blank(), "make the appendix shorter", catalog=CATALOG)
     assert ops == [] and "which section" in notes[0]
+
+
+def test_items_with_one_name_use_the_newest_instead_of_asking_an_unanswerable_question():
+    # VALUE-05 rehearsal: one measure verified in three investigations offered "say which" between identical names
+    same = [CatalogItem(ref=ref(f"c_{i}"), title="Late Delivery Rate", kind="kpi", where=f"investigation run_{i}") for i in (3, 2, 1)]
+    ops, notes = rule_ops(blank(), "include the late delivery rate kpi", catalog=same)
+    assert ops[0]["ref"] == ref("c_3") and notes == ["3 items are called “Late Delivery Rate”; used the newest (investigation run_3)."]
+    twice = [*same[:1], *same[:1], CatalogItem(ref=ref("c_x"), title="Late delivery rate by channel", kind="chart", where="d")]
+    _, candidates = match_content(twice, "late delivery")
+    assert [c.title for c in candidates] == ["Late Delivery Rate"]  # the same item listed twice is offered once
 
 
 # --- ops ---------------------------------------------------------------------------------------------

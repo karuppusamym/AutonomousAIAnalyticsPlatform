@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from typing import Any
 
 from analystos.contracts.dashboard_dsl import ChartDoc, DashboardDoc
@@ -77,6 +78,16 @@ def series(chart: ChartDoc) -> tuple[str, str, list[tuple[str, float]]] | None:
     return x, y, list(totals.items())
 
 
+# A rate, average or ratio per category does not add up: its "share of the total" means nothing.
+_NOT_ADDITIVE = re.compile(r"(?:^|[_\s])(?:rate|ratio|share|pct|percent|percentage|avg|average|mean|median)(?:$|[_\s])", re.I)
+
+
+def _additive(chart: ChartDoc, y: str) -> bool:
+    if chart.encoding.aggregation in ("avg", "min", "max", "count_distinct"):
+        return False
+    return not (_NOT_ADDITIVE.search(y) or _NOT_ADDITIVE.search(_label(chart, y)))
+
+
 def _temporal(chart: ChartDoc, x: str) -> bool:
     f = chart.field(x)
     return bool(f and f.type == "temporal")
@@ -138,7 +149,11 @@ def _chart_facts(chart: ChartDoc, before: ChartDoc | None) -> tuple[list[StoryFa
     total = sum(v for _, v in points)
     ranked = sorted(points, key=lambda p: -p[1])
     top_x, top_v = ranked[0]
-    if len(ranked) >= 2 and total > 0 and all(v >= 0 for _, v in points):
+    if len(ranked) >= 2 and not _additive(chart, y):
+        facts.append(StoryFact(kind="leader", chart_id=chart.id, score=0.5, values=[_r(top_v)],
+                               text=f"{top_x or '(blank)'} has the highest {ylab} in {chart.title}: {_n(top_v)}.",
+                               how=f"largest {y} per {x} in {chart.title} (a rate or average: no share of a total)"))
+    elif len(ranked) >= 2 and total > 0 and all(v >= 0 for _, v in points):
         share = _r(top_v / total * 100, 1)
         facts.append(StoryFact(kind="leader", chart_id=chart.id, score=0.4 + share / 100,
                                values=[_r(top_v), share, _r(total)],

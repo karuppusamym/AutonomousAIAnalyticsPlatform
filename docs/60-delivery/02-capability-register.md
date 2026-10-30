@@ -1235,3 +1235,16 @@ passed all 3 tests over REST:
 * the dashboard story → a report document; a pinned report refreshed on a schedule fire into a final `report` snapshot.
 
 Not verified: a live delivery to email or a webhook, and model wording (`always` mode) against a real model.
+
+## 2026-10-30 — VALUE-05 analyst pilot kit and rehearsal (real pilot pending)
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| Pilot kit | [`pilot/`](pilot/README.md): one-page owner plan with thresholds from the evaluation plan, 12 task cards (Ask, investigation, dashboard and report by conversation, scheduled digest), timing sheet and observation form mapped one-to-one onto the scorecard, analyst invite and briefing, check-in and review agendas, data and privacy note, coordinator answer key | Walked once by an agent; not used by analysts yet |
+| Scorecard for conversational work | Migration `0075_pilot_review_subjects`: `pilot_review.subject_type` / `subject_id` (investigation run, own Ask conversation, builder dashboard, report document, scheduled digest that has run), `review_minutes`, `interventions`; `run_id` optional. `services/investigation_value.py` `save_review` / `pilot_subjects`, `GET …/pilot-reviews/subjects`; summary split `by_feature`. `PilotScorecard.tsx` "What was assessed" | `tests/unit/test_investigation_value.py` (scoping, privacy of Ask conversations, lineage per subject, per-feature split, contract); `web/src/test/investigationValue.test.tsx`; recorded 15 rehearsal assessments live |
+| Readiness for the cards | `services/pilot.py`: `conversation.definitions` (approved metrics / verified queries) and `pilot.rehearsal` (every task-card feature rehearsed in the workspace) | `tests/unit/test_pilot_readiness.py`; live: all three demo workspaces not ready (owners, SSO, live connector certification; definitions missing in the ServiceNow and process-mining workspaces) |
+| Fixes from the rehearsal | `dashboards/drafts.py` (typed words outweigh glossary synonyms), `dashboards/design.py` (filter-control phrasings), `reports/design.py` (identical names use the newest; plain note for invalid model ops), `reports/story.py` (no share of a total for rates and averages) | Regression tests in `test_dashboard_conversation.py`, `test_report_documents.py`, `test_data_story.py`; re-run live after each fix |
+
+Rehearsal evidence: [`evidence/value-05-pilot-rehearsal-20261030.md`](evidence/value-05-pilot-rehearsal-20261030.md). Every
+record is `evidence_kind = rehearsal` with machine timings; no analyst time, accuracy or usefulness is claimed. Open
+problems are tracker rows PILOT-FIX-01…08.

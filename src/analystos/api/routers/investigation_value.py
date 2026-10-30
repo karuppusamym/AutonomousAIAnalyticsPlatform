@@ -61,6 +61,14 @@ def reviews(workspace_id: str, user: User = Depends(current_user), session: Sess
             "limit": 1000, "at_limit": len(data) == 1000}
 
 
+@router.get("/pilot-reviews/subjects")
+def review_subjects(workspace_id: str, subject_type: str = "investigation", user: User = Depends(current_user),
+                    session: Session = Depends(db, scope="function")):
+    """What the caller may assess for a pilot task card: investigations, own Ask conversations, dashboards,
+    report documents or scheduled digests."""
+    return svc.pilot_subjects(session, user, workspace_id, subject_type)
+
+
 @router.post("/pilot-reviews")
 def create_review(workspace_id: str, body: PilotReviewIn, user: User = Depends(current_user),
                   session: Session = Depends(db, scope="function")):

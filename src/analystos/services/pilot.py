@@ -2,6 +2,8 @@
 
 Owners are recorded on the workspace and on each source (`owners` JSON: {"business": {...}, "technical": {...}}).
 Readiness reads records and evidence files only: no query runs, no connection is opened, no model is asked.
+VALUE-05 adds what the conversational task cards need: reviewed definitions for Ask and dashboards by conversation,
+and a rehearsal of every feature on the cards before real analysts start.
 """
 from __future__ import annotations
 
@@ -9,14 +11,15 @@ import re
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from analystos.connectors.certification import EVIDENCE_DIR, certification
+from analystos.contracts.investigation import PILOT_SUBJECTS
 from analystos.contracts.pilot import OWNER_ROLES, OwnersIn, PilotCheck, PilotReadiness
 from analystos.core.errors import InvalidInput
 from analystos.core.ids import utcnow
-from analystos.db.models import Source, User, Workspace
+from analystos.db.models import PilotReview, SemanticMetric, Source, User, VerifiedQuery, Workspace
 from analystos.events.bus import emit
 from analystos.governance.audit import audit
 from analystos.governance.policy import get_workspace, load_in_workspace, require_role, scoped_loader
@@ -109,6 +112,38 @@ def _identity_check(ws: Workspace) -> PilotCheck:
                       reason="groups map to roles: " + ", ".join(f"{g.group} -> {g.role}" for g in grants))
 
 
+# Plain names for the features on the pilot task cards (docs/60-delivery/pilot/02-task-cards.md).
+FEATURE_LABEL = {"investigation": "investigation", "ask": "Ask", "dashboard": "dashboard by conversation",
+                 "report": "report by conversation", "digest": "scheduled digest"}
+
+
+def _definitions_check(session: Session, ws: Workspace) -> PilotCheck:
+    """Ask and dashboards by conversation answer from approved metrics and verified queries first; without any,
+    the pilot would only measure generated SQL."""
+    metrics = session.scalar(select(func.count()).select_from(SemanticMetric)
+                             .where(SemanticMetric.workspace_id == ws.id, SemanticMetric.status == "approved")) or 0
+    queries = session.scalar(select(func.count()).select_from(VerifiedQuery)
+                             .where(VerifiedQuery.workspace_id == ws.id, VerifiedQuery.status == "active")) or 0
+    if metrics or queries:
+        return PilotCheck(check="conversation.definitions", subject="workspace", status="pass",
+                          reason=f"{metrics} approved metric{'s' * (metrics != 1)}, {queries} verified quer{'ies' if queries != 1 else 'y'}")
+    return PilotCheck(check="conversation.definitions", subject="workspace", status="missing",
+                      reason="no approved metric or verified query: Ask and dashboards by conversation have no reviewed definitions to answer from",
+                      remediation="approve the pilot's key metrics (Catalog → Metrics) or save a checked Ask answer as a verified query")
+
+
+def _rehearsal_check(session: Session, ws: Workspace) -> PilotCheck:
+    done = set(session.scalars(select(PilotReview.subject_type).where(PilotReview.workspace_id == ws.id,
+                                                                      PilotReview.evidence_kind == "rehearsal").distinct()))
+    missing = [FEATURE_LABEL[f] for f in PILOT_SUBJECTS if f not in done]
+    if not missing:
+        return PilotCheck(check="pilot.rehearsal", subject="workspace", status="pass",
+                          reason="every task-card feature has a recorded rehearsal: " + ", ".join(FEATURE_LABEL.values()))
+    return PilotCheck(check="pilot.rehearsal", subject="workspace", status="missing",
+                      reason="not rehearsed here yet: " + ", ".join(missing),
+                      remediation="walk the task cards once and record each as a rehearsal in the pilot scorecard")
+
+
 def readiness(session: Session, user: User, workspace_id: str, *, evidence_dir: Path | None = None) -> PilotReadiness:
     require_role(session, user, workspace_id, "viewer")
     ws = get_workspace(session, workspace_id)
@@ -142,6 +177,7 @@ def readiness(session: Session, user: User, workspace_id: str, *, evidence_dir: 
             checks.append(PilotCheck(check="connector.health", subject=subject, status="pass",
                                      reason=f"discovered {src.last_discovered_at:%Y-%m-%d %H:%M} UTC, status {src.status}"))
     checks.append(_identity_check(ws))
+    checks += [_definitions_check(session, ws), _rehearsal_check(session, ws)]
     drill = latest_drill(evidence_dir)
     if drill is None:
         checks.append(PilotCheck(check="recovery.drill", subject="platform", status="missing", reason="no recovery drill on record",
