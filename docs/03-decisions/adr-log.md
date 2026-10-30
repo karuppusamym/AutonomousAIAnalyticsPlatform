@@ -29,7 +29,7 @@ This is acceptable if the owner prefers it; the specs apply unchanged.
 
 ---
 
-## ADR-002 Temporal + typed playbooks; no LangGraph — Accepted (2026-10-27) (supersedes v1 ADR-003)
+## ADR-002 Temporal + typed playbooks; no LangGraph — Accepted (2026-10-27), superseded in part by ADR-015 (2026-10-29) (supersedes v1 ADR-003)
 
 **Decision.** Every run (conversational escalation, goal, proactive) is a Temporal workflow that
 interprets a versioned, published playbook. Agents are typed steps. The `lite` profile uses the
@@ -42,8 +42,8 @@ LangGraph would add a second checkpoint store and does not supply durable schedu
 **Costs.** Temporal is an operational dependency in `standard` and above. Mitigation: the lite profile
 runs without it, and Temporal Cloud is an option.
 
-**Under review.** [ADR-015](#adr-015-langgraph-as-an-optional-third-orchestrator-backend--proposed-2026-10-27-would-supersede-adr-002)
-(Proposed) would supersede this entry's "no LangGraph" clause.
+**Superseded in part.** [ADR-015](#adr-015-langgraph-as-an-optional-third-orchestrator-backend--accepted-2026-10-29-supersedes-adr-002-in-part)
+(Accepted 2026-10-29) supersedes this entry's "no LangGraph" clause. Temporal stays the default for `standard` and above.
 
 ---
 
@@ -232,10 +232,10 @@ ADR for every cross-cutting change, and the tracker plus evidence as the single 
 
 ---
 
-## ADR-015 LangGraph as an optional third orchestrator backend — Proposed (2026-10-27) (would supersede ADR-002)
+## ADR-015 LangGraph as an optional third orchestrator backend — Accepted (2026-10-29) (supersedes ADR-002 in part)
 
-**Status.** Proposed, awaiting an owner decision. Nothing is built. If accepted, ADR-002 becomes
-*Superseded by ADR-015*: its decision stands except the clause "no LangGraph".
+**Status.** Proposed 2026-10-27; accepted by the owner 2026-10-29. Build tracked as ORC-T1..T7. ADR-002 is
+*superseded in part*: its decision stands except the clause "no LangGraph".
 
 **Context.** The owner asked for the run orchestrator to be a deployment choice that includes LangGraph,
 next to Temporal and the local runner. ADR-002 and spec v4 §17 (open question 5) declined LangGraph for two
@@ -257,7 +257,7 @@ Schedules and monitors do not depend on the orchestrator. They run in `analystos
 process under lite) with claim-then-execute. So ADR-002's "no durable scheduling" objection does not
 apply to an orchestrator *backend*. It applies only if LangGraph were to replace Temporal.
 
-**Decision (if accepted).**
+**Decision.**
 
 1. `ANALYSTOS_ORCHESTRATOR` becomes `Literal["temporal", "local", "langgraph"]`. The profile defaults
    don't change: lite → `local`, standard/scale → `temporal`. `langgraph` is never a default. Selecting
