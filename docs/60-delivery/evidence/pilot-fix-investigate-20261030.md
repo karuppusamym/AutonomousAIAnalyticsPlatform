@@ -25,8 +25,18 @@ Reference values are direct read-only SQL.
 ## C11: custom question in Retail (`run_e5059aad5b9a`, 83 s)
 
 Meaning review passed on the owner definitions recorded in the rehearsal. Of four verified findings, two were confirmed on
-the held-out rows and now quote all rows. One example: West late-delivery rate 14.8% vs South 6.8%, n 6,000 (discovery 15.0% vs 7.3%, n 4,200).
-The other two end with the discovery-rows note. I did not check C11's numbers against SQL in this pass.
+the held-out rows and now quote all rows. The other two end with the discovery-rows note.
+
+| Finding | Sentence | Discovery figures | Direct SQL (all orders) |
+|---|---|---|---|
+| I-1 late delivery by customer region (confirmed) | West 14.8% vs South 6.8%, n 6,000 | 15.0% vs 7.3%, n 4,200 | West 14.8% (1,366), South 6.8% (1,555) |
+| I-4 returns by channel, Electronics (confirmed) | Marketplace 27.5% vs Store 5.9%, n 1,477 | 29.2% vs Web 5.8%, n 1,018 | Marketplace 27.5% (280), Store 5.9% (454) |
+| I-2 returns by category (not confirmed: discovery note) | Electronics 10.7% vs Sports 5.3% | same | Electronics 10.1%, Sports 5.8%, Clothing 5.7%: an analyst's check differs, as the note says |
+
+## Repeated after merging develop ede8ec4 (migration 0076 on the clone)
+
+C03 `run_258e5aedf545` (67 s) and C11 `run_cdd380af281f` (38 s) gave the same data facts, comparison sentence, findings and
+figures as above.
 
 ## Checks
 
