@@ -62,6 +62,10 @@ def start_api(port: int, log: Path) -> subprocess.Popen:
     raise SystemExit("the API did not become healthy")
 
 
+def _retaken(step: dict, before: dict) -> bool:
+    return (step["claim_version"] or 0) > (before[step["key"]]["claim_version"] or 0)
+
+
 def kill_tree(proc: subprocess.Popen) -> None:
     """A hard kill of the process and its children: no lifespan shutdown, no drained tasks."""
     if sys.platform == "win32":
@@ -152,8 +156,10 @@ def main() -> int:
         "a_step_was_running_at_the_kill": bool(running),
         "startup_released_the_dead_claims": "released" in resumed_log and "claim" in resumed_log,
         "startup_resumed_the_run": rid in resumed_log and "resumed" in resumed_log,
-        "killed_steps_were_retaken_under_a_new_claim": bool(released) and all(
-            (r["claim_version"] or 0) > (before_kill[r["key"]]["claim_version"] or 0) for r in released),
+        # A step seen RUNNING just before the kill either was killed (its claim was released and retaken: a higher
+        # claim version) or finished in the instant before the kill (its one attempt under the original claim).
+        "killed_steps_were_retaken_under_a_new_claim": any(_retaken(r, before_kill) for r in released) and all(
+            _retaken(r, before_kill) or (r["attempts"] == 1 and r["status"] == "COMPLETED") for r in released),
         "run_completed": final["status"] in ("COMPLETED", "COMPLETED_WITH_LIMITATIONS"),
         "every_step_terminal": all(t["status"] in ("COMPLETED", "SKIPPED", "FAILED", "CANCELLED", "INVALIDATED")
                                    for t in final["tasks"]),

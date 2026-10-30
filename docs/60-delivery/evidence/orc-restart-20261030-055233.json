@@ -1,0 +1,379 @@
+{
+  "started_at": "2026-10-30T05:52:33.302512+00:00",
+  "workspace": "ws_b109e9c54367",
+  "run": "run_fc2787c85157",
+  "orchestrator": "langgraph",
+  "installation": {
+    "backend": "langgraph",
+    "durable": false,
+    "needs_worker": false,
+    "parks": true,
+    "run_driver": "api",
+    "available": true,
+    "reason": null
+  },
+  "timeline": [
+    {
+      "t": 14.3,
+      "event": "api started",
+      "orchestrator": "langgraph"
+    },
+    {
+      "t": 18.7,
+      "event": "run started",
+      "run": "run_fc2787c85157"
+    },
+    {
+      "t": 54.2,
+      "event": "api killed",
+      "running": [
+        "relationships",
+        "profile"
+      ]
+    },
+    {
+      "t": 86.6,
+      "event": "api restarted",
+      "orchestrator": "langgraph"
+    },
+    {
+      "t": 88.5,
+      "event": "status",
+      "status": "RUNNING"
+    },
+    {
+      "t": 308.0,
+      "event": "status",
+      "status": "WAITING_USER"
+    },
+    {
+      "t": 308.1,
+      "event": "approved",
+      "action": "publish_dashboard",
+      "code": 200
+    },
+    {
+      "t": 310.2,
+      "event": "status",
+      "status": "RUNNING"
+    },
+    {
+      "t": 329.0,
+      "event": "status",
+      "status": "COMPLETED"
+    }
+  ],
+  "running_at_kill": [
+    "relationships",
+    "profile"
+  ],
+  "before_kill": {
+    "context": {
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1
+    },
+    "metadata": {
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1
+    },
+    "relationships": {
+      "status": "RUNNING",
+      "attempts": 1,
+      "claim_version": 1
+    },
+    "profile": {
+      "status": "RUNNING",
+      "attempts": 1,
+      "claim_version": 1
+    },
+    "quality": {
+      "status": "NEW",
+      "attempts": 0,
+      "claim_version": 0
+    },
+    "hypotheses": {
+      "status": "NEW",
+      "attempts": 0,
+      "claim_version": 0
+    },
+    "insights": {
+      "status": "NEW",
+      "attempts": 0,
+      "claim_version": 0
+    },
+    "verify": {
+      "status": "NEW",
+      "attempts": 0,
+      "claim_version": 0
+    },
+    "dataset": {
+      "status": "NEW",
+      "attempts": 0,
+      "claim_version": 0
+    },
+    "semantic": {
+      "status": "NEW",
+      "attempts": 0,
+      "claim_version": 0
+    },
+    "visualize": {
+      "status": "NEW",
+      "attempts": 0,
+      "claim_version": 0
+    },
+    "publish_request": {
+      "status": "NEW",
+      "attempts": 0,
+      "claim_version": 0
+    },
+    "publish": {
+      "status": "NEW",
+      "attempts": 0,
+      "claim_version": 0
+    },
+    "finalize": {
+      "status": "NEW",
+      "attempts": 0,
+      "claim_version": 0
+    }
+  },
+  "killed_steps_after": [
+    {
+      "key": "relationships",
+      "status": "COMPLETED",
+      "attempts": 2,
+      "claim_version": 3
+    },
+    {
+      "key": "profile",
+      "status": "COMPLETED",
+      "attempts": 2,
+      "claim_version": 3
+    }
+  ],
+  "final_status": "COMPLETED",
+  "final_error": null,
+  "tasks": [
+    {
+      "key": "context",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "metadata",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "relationships",
+      "status": "COMPLETED",
+      "attempts": 2,
+      "claim_version": 3,
+      "error": null
+    },
+    {
+      "key": "profile",
+      "status": "COMPLETED",
+      "attempts": 2,
+      "claim_version": 3,
+      "error": null
+    },
+    {
+      "key": "quality",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "hypotheses",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "insights",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "test:H-1",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "test:H-2",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "test:H-3",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "test:H-4",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "test:H-5",
+      "status": "FAILED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": "invalid_input: The query failed in the source: invalid input syntax for type double precision: \"Firewall Cluster\""
+    },
+    {
+      "key": "test:H-6",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "test:H-7",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "test:H-8",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "test:H-9",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "test:H-10",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "verify",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "test:H-11",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "test:H-12",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "test:H-13",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "test:H-14",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "dataset",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "followups:1",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "semantic",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "followups:2",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "visualize",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "publish_request",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "publish",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    },
+    {
+      "key": "finalize",
+      "status": "COMPLETED",
+      "attempts": 1,
+      "claim_version": 1,
+      "error": null
+    }
+  ],
+  "checks": {
+    "backend_before_and_after": true,
+    "a_step_was_running_at_the_kill": true,
+    "startup_released_the_dead_claims": true,
+    "startup_resumed_the_run": true,
+    "killed_steps_were_retaken_under_a_new_claim": true,
+    "run_completed": true,
+    "every_step_terminal": true
+  }
+}
