@@ -25,6 +25,7 @@ def test_guided_context_actions_and_pilot_are_scoped_and_persisted(control_db, m
             s.add(Source(id=sid, workspace_id=wid, name="Test incidents", kind="csv", config={}, status="ready", staging_schema="s"))
             s.add(SourceAsset(id=aid, workspace_id=wid, source_id=sid, schema_name="s", name="incident", source_name="incident", kind="table", selected=True))
             s.add(SourceColumn(asset_id=aid, name="made_sla", ordinal=1, data_type="boolean"))
+            s.add(SourceColumn(asset_id=aid, name="opened_at", ordinal=2, data_type="timestamp", semantic_type="datetime"))  # the period applies to it
             s.add(AnalysisRun(id=rid, workspace_id=wid, objective="SLA evidence", status="COMPLETED", requested_by=user["id"]))
             s.add(Insight(id=iid, workspace_id=wid, run_id=rid, code="F1", title="SLA association", finding="Recorded test evidence", verified=True))
             s.add(VerificationRecord(id=new_id("vr"), workspace_id=wid, run_id=rid, subject_type="insight", subject_id=iid,
@@ -38,7 +39,8 @@ def test_guided_context_actions_and_pilot_are_scoped_and_persisted(control_db, m
         templates = client.get(base + "/investigation-templates", headers=headers)
         assert templates.status_code == 200 and len(templates.json()) == 4
         started = client.post(base + "/guided-investigations", headers=headers, json={"template_id": "sla_change",
-                "period": "Q3 2026", "comparison": "Q2 2026", "decision": "Choose a team to review", "source_ids": [sid]})
+                "period": {"start": "2026-07-01", "end": "2026-09-30", "label": "Q3 2026"}, "comparison_mode": "custom",
+                "baseline": {"start": "2026-04-01", "end": "2026-06-30"}, "decision": "Choose a team to review", "source_ids": [sid]})
         assert started.status_code == 200, started.text
         assert started.json()["origin"]["guided_template"]["version"] == 1
         assert started.json()["origin"]["reviewed_context"]["version"] == saved.json()["version"]
