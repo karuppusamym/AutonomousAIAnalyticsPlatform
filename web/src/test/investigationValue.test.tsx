@@ -77,3 +77,27 @@ it("keeps rehearsal benefits out of the real analyst pilot score", async () => {
   expect(within(within(panel).getByRole("region", { name: "Rehearsal results" })).getByText(/45/)).toBeTruthy();
   expect(within(within(panel).getByRole("region", { name: "Real pilot results" })).getByText(/No assessments recorded/)).toBeTruthy();
 });
+
+it("records a conversational dashboard assessment with review time and step-ins, split by feature", async () => {
+  const fetch = mockFetch();
+  renderAt(`/w/${WS}`);
+  const panel = await screen.findByRole("region", { name: "Pilot scorecard" });
+  fireEvent.click(within(panel).getByRole("button", { name: "Record an assessment" }));
+  const form = within(panel).getByRole("form", { name: "Pilot assessment" });
+  fireEvent.change(within(form).getByLabelText("What was assessed"), { target: { value: "dashboard" } });
+  const item = within(form).getByLabelText("Dashboard by conversation assessed");
+  await within(item).findByRole("option", { name: /Weekly SLA overview/ });
+  fireEvent.change(item, { target: { value: "art_dash" } });
+  fireEvent.change(within(form).getByLabelText("Task measured"), { target: { value: "Draft the weekly SLA dashboard" } });
+  fireEvent.change(within(form).getByLabelText("Manual baseline (minutes)"), { target: { value: "90" } });
+  fireEvent.change(within(form).getByLabelText("Assisted time including review (minutes)"), { target: { value: "30" } });
+  fireEvent.change(within(form).getByLabelText("Of which checking and correcting (minutes)"), { target: { value: "12" } });
+  fireEvent.change(within(form).getByLabelText("Times you had to step in"), { target: { value: "2" } });
+  fireEvent.click(within(form).getByRole("button", { name: "Save assessment" }));
+  expect(await within(panel).findByText(/Assessment saved/)).toBeTruthy();
+  expect(bodyOf(calls(fetch, "POST", /\/pilot-reviews$/)[0][1])).toMatchObject({ subject_type: "dashboard", subject_id: "art_dash", run_id: null,
+    review_minutes: 12, interventions: 2, evidence_kind: "rehearsal" });
+  const rehearsal = within(panel).getByRole("region", { name: "Rehearsal results" });
+  expect(within(within(rehearsal).getByRole("table", { name: "Results by feature" })).getByText("Dashboard by conversation")).toBeTruthy();
+  expect(within(within(panel).getByRole("region", { name: "Real pilot results" })).getByText(/No assessments recorded/)).toBeTruthy();
+});

@@ -58,6 +58,18 @@ def test_facts_are_computed_from_the_previews_and_the_version_diff():
     assert s.shows.startswith("Operations shows 1 KPI (Open incidents) and 2 charts")
 
 
+def test_a_rate_per_category_names_the_highest_without_a_share_of_a_total():
+    # VALUE-05 rehearsal: "Marketplace leads ... with 0.10 late delivery rate (34.9% of 0.28)" summed three rates
+    doc = dashboard([["2026-09-21", 100], ["2026-09-28", 110]], [["Marketplace", 0.0995], ["Store", 0.0992], ["Web", 0.0859]], 1)
+    doc = doc.model_copy(update={"charts": [c.model_copy(update={"title": "Late delivery rate by channel", "fields": [
+        f.model_copy(update={"name": "late_delivery_rate", "label": "late delivery rate"}) if f.name == "backlog" else f
+        for f in c.fields], "encoding": c.encoding.model_copy(update={"y": ["late_delivery_rate"]}),
+        "preview": {**c.preview, "columns": ["region", "late_delivery_rate"]}}) if c.id == "by_region" else c for c in doc.charts]})
+    leader = next(f for f in build_story(doc, version=1).facts if f.kind == "leader")
+    assert leader.text == "Marketplace has the highest late delivery rate in Late delivery rate by channel: 0.10."
+    assert "%" not in leader.text and len(leader.values) == 1
+
+
 def test_every_template_number_is_one_its_fact_carries():
     s = build_story(NOW, version=4, before=BEFORE, previous_version=3)
     for f in [*s.facts, *s.changes]:

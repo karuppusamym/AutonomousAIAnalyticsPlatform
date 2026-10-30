@@ -126,7 +126,18 @@ def match_content(catalog: list[CatalogItem], phrase: str, kind: str | None = No
     best = [c for score, c in scored if score == scored[0][0]]
     if len(best) == 1:
         return best[0], []
-    return None, [c for _, c in scored[:5]]
+    if len({(_norm(c.title), c.kind) for c in best}) == 1:
+        # Same name and kind (e.g. one measure from several investigations): naming it again cannot choose, so the
+        # newest wins (the catalog is newest first) and the caller says which was used.
+        return best[0], best[1:]
+    seen: set[tuple[str, str]] = set()
+    distinct = [c for _, c in scored if (c.title, c.where) not in seen and not seen.add((c.title, c.where))]
+    return None, distinct[:5]
+
+
+def _newest_note(item: CatalogItem, others: list[CatalogItem]) -> str:
+    return (f"{len(others) + 1} items are called “{item.title}”; used the newest"
+            + (f" ({item.where})" if item.where else "") + ".")
 
 
 def _kind_of(word: str | None) -> str | None:
@@ -158,6 +169,8 @@ def rule_ops(doc: ReportDoc, text: str, *, focus: str | None = None, catalog: li
         item, candidates = match_content(catalog, title)
         if item is not None:
             ops.append({"op": "block.add", "section_id": sid, "ref": item.ref})
+            if candidates:
+                notes.append(_newest_note(item, candidates))
         elif candidates:
             notes.append("Several things match; say which to include: " + "; ".join(f"“{c.title}”" for c in candidates))
         elif catalog:
@@ -227,7 +240,7 @@ def rule_ops(doc: ReportDoc, text: str, *, focus: str | None = None, catalog: li
         sid = _target_section(doc, m["section"], focus)
         if sid is None:
             return [], ["add a section first, e.g. “add a section on EMEA backlog”"]
-        return [{"op": "block.add", "section_id": sid, "ref": item.ref}], notes
+        return [{"op": "block.add", "section_id": sid, "ref": item.ref}], [*notes, *([_newest_note(item, candidates)] if candidates else [])]
     return [], notes
 
 
@@ -298,7 +311,10 @@ def design(doc: ReportDoc, text: str, *, router: Any = None, call_ctx: Any = Non
                         ops.extend(parse_ops([item]))
                     except ValueError as exc:
                         dropped.append(str(exc)[:160])
-                model_notes = [*notes, *(f"dropped an invalid proposed op: {d}" for d in dropped)]
+                model_notes = list(notes)
+                if dropped:  # code refused them: say so plainly, keep the parser detail in the log
+                    log.info("report_design dropped %d invalid proposed op(s): %s", len(dropped), dropped)
+                    model_notes.append(f"{len(dropped)} suggested change{'s were' if len(dropped) > 1 else ' was'} invalid and skipped.")
                 if data.get("question"):
                     model_notes.append(str(data["question"])[:300])
                 if ops or not raw:

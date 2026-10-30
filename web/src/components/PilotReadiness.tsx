@@ -7,6 +7,7 @@ const TONE: Record<PilotCheck["status"], string> = { pass: "success", missing: "
 const CHECK_LABEL: Record<string, string> = {
   "owner.business": "Business owner", "owner.technical": "Technical owner", "connector.certified": "Connector certified live",
   "connector.health": "Connection", "identity.sso": "Single sign-on", "recovery.drill": "Recovery drill",
+  "conversation.definitions": "Reviewed definitions for Ask and dashboards", "pilot.rehearsal": "Task cards rehearsed",
 };
 
 /** Form values for the two named owners; empty name and email clear a role. */

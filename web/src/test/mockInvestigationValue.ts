@@ -27,15 +27,25 @@ export function investigationValueRoute(method: string, path: string, body: stri
     actions = [...actions.filter((a) => a.id !== saved.id), saved];
     return { status: 200, body: saved };
   }
+  // The router passes the path without its query string, so every subject type lists this one item.
+  if (method === "GET" && path === root + "/pilot-reviews/subjects") return { status: 200, body: [{ id: "art_dash", label: "Weekly SLA overview", status: "version 2, draft" }] };
   if (method === "GET" && path === root + "/pilot-reviews") {
-    const summary = (kind: string) => {
-      const group = reviews.filter((r) => r.evidence_kind === kind); const reviewed = group.filter((r) => r.accuracy !== "not_reviewed");
+    const measures = (group: PilotReview[]) => {
+      const reviewed = group.filter((r) => r.accuracy !== "not_reviewed");
       const baseline = group.reduce((n, r) => n + r.baseline_minutes, 0); const saved = group.reduce((n, r) => n + r.baseline_minutes - r.assisted_minutes, 0);
-      return { assessments: group.length, reviewers: new Set(group.map((r) => r.reviewer_id)).size, investigations: new Set(group.map((r) => r.run_id)).size,
+      return { assessments: group.length, reviewers: new Set(group.map((r) => r.reviewer_id)).size,
         minutes_saved: saved, time_saved_fraction: baseline ? saved / baseline : null, accuracy_reviewed: reviewed.length,
         correct_fraction: reviewed.length ? reviewed.filter((r) => r.accuracy === "correct").length / reviewed.length : null,
         average_usefulness: group.length ? group.reduce((n, r) => n + r.usefulness, 0) / group.length : null,
-        would_use_again_fraction: group.length ? group.filter((r) => r.would_use_again).length / group.length : null };
+        would_use_again_fraction: group.length ? group.filter((r) => r.would_use_again).length / group.length : null,
+        interventions: group.reduce((n, r) => n + (r.interventions ?? 0), 0) };
+    };
+    const summary = (kind: string) => {
+      const group = reviews.filter((r) => r.evidence_kind === kind);
+      const features = [...new Set(group.map((r) => r.subject_type ?? "investigation"))];
+      return { ...measures(group), investigations: new Set(group.filter((r) => r.run_id).map((r) => r.run_id)).size,
+        subjects: new Set(group.map((r) => r.subject_id ?? r.run_id)).size,
+        by_feature: Object.fromEntries(features.map((f) => [f, measures(group.filter((r) => (r.subject_type ?? "investigation") === f))])) };
     };
     return { status: 200, body: { reviews, summary: { real_pilot: summary("real_pilot"), rehearsal: summary("rehearsal") }, self_reported: true, at_limit: false } };
   }

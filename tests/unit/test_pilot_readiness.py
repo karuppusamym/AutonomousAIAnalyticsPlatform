@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from analystos.contracts.pilot import NamedOwner, OwnersIn
 from analystos.core.errors import Forbidden, InvalidInput, NotFound
-from analystos.db.models import AuditEvent, RunEvent, Source, User, WorkspaceMember
+from analystos.db.models import AuditEvent, PilotReview, RunEvent, SemanticMetric, Source, User, WorkspaceMember
 from analystos.security import oidc
 from analystos.services import pilot
 from analystos.services.workspaces import create_workspace
@@ -20,6 +20,7 @@ OMAR = {"name": "Omar Data", "email": "omar@pilot.test"}
 @pytest.fixture
 def world(sqlite_db):
     s = sqlite_db()
+    PilotReview.__table__.create(s.bind, checkfirst=True)
     owner = User(id="usr_owner", email="owner@x.test", name="owner", password_hash="!", is_admin=False, attributes={})
     analyst = User(id="usr_analyst", email="analyst@x.test", name="analyst", password_hash="!", is_admin=False, attributes={})
     s.add_all([owner, analyst])
@@ -100,6 +101,20 @@ def test_readiness_lists_every_gap_where_it_is(world, tmp_path):
     assert again.status == "fail" and "stays readable" in again.reason
 
 
+def _rehearse(s, ws_id, user_id):
+    s.add(SemanticMetric(id="met", workspace_id=ws_id, name="breach_rate", version=1, status="approved", definition={},
+                         expression="avg(x)", normalized_expression="avg(x)", proposed_by=user_id, proposed_via="user",
+                         content_hash="h"))
+    for i, kind in enumerate(("investigation", "ask", "dashboard", "report", "digest")):
+        s.add(PilotReview(id=f"prv{i}", workspace_id=ws_id, subject_type=kind, subject_id=f"subject{i}", reviewer_id=user_id,
+                          evidence_kind="rehearsal", task="card", baseline_minutes=10, assisted_minutes=5, accuracy="correct",
+                          usefulness=4, would_use_again=True))
+    s.add(PilotReview(id="prv_real", workspace_id=ws_id, subject_type="ask", subject_id="x", reviewer_id=user_id,
+                      evidence_kind="real_pilot", task="card", baseline_minutes=10, assisted_minutes=5, accuracy="correct",
+                      usefulness=4, would_use_again=True))
+    s.flush()
+
+
 def test_readiness_is_ready_only_when_nothing_is_missing(world, tmp_path, monkeypatch):
     from analystos.core.config import get_settings
 
@@ -120,8 +135,13 @@ def test_readiness_is_ready_only_when_nothing_is_missing(world, tmp_path, monkey
     get_settings.cache_clear()
     try:
         evidence = _evidence(tmp_path, kinds=("csv", "postgres"))
+        gaps = {c.check: c for c in pilot.readiness(s, owner, ws.id, evidence_dir=evidence).checks if c.status != "pass"}
+        assert set(gaps) == {"conversation.definitions", "pilot.rehearsal"}
+        assert "Ask, dashboard by conversation, report by conversation, scheduled digest" in gaps["pilot.rehearsal"].reason
+        _rehearse(s, ws.id, owner.id)
         r = pilot.readiness(s, owner, ws.id, evidence_dir=evidence)
         assert r.verdict == "ready", [c for c in r.checks if c.status != "pass"]
+        assert next(c for c in r.checks if c.check == "conversation.definitions").reason == "1 approved metric, 0 verified queries"
         assert "pilot-analysts -> analyst" in next(c for c in r.checks if c.check == "identity.sso").reason
         (evidence / "2026-09-28-recovery-drill.md").write_text("# Recovery drill\n\n**Result: FAILED**\n", encoding="utf-8")
         again = pilot.readiness(s, owner, ws.id, evidence_dir=evidence)
