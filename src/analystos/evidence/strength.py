@@ -111,11 +111,23 @@ WEAK_NOTE = "The effect only just clears the minimum size that counts, so this i
 UNCONFIRMED_NOTE = "It is not yet confirmed on separate data: treat it as a lead worth checking, not an established fact."
 
 
-def qualify(text: str, *, confirmed: bool, strength: str | None) -> str:
-    """The finding's sentence with what a reader must not skip: a weak or unconfirmed finding is not stated
-    as an established fact. Plain words, no numbers (the numbers guard is unaffected); idempotent."""
+# PILOT-FIX-06: which rows the sentence's figures describe, so an analyst's full-table check knows what to compare.
+ALL_ROWS_NOTE = ("These figures cover every record in scope; the pattern was found on the discovery rows and confirmed "
+                 "on the rows held back.")
+DISCOVERY_NOTE = ("These figures come from the discovery rows only, not every record: the rest are held back to "
+                  "confirm findings, so a check on the full table will differ slightly.")
+
+
+def qualify(text: str, *, confirmed: bool, strength: str | None, scope: str | None = None) -> str:
+    """The finding's sentence with what a reader must not skip: which rows its figures describe (`scope`:
+    "all_rows" or "discovery"; None when the test read every row), and a weak or unconfirmed finding is not
+    stated as an established fact. Plain words, no numbers (the numbers guard is unaffected); idempotent."""
     out = text.rstrip()
-    for note, applies in ((WEAK_NOTE, strength == "weak"), (UNCONFIRMED_NOTE, not confirmed)):
+    for note, other in ((ALL_ROWS_NOTE, "discovery"), (DISCOVERY_NOTE, "all_rows")):
+        if scope == other:  # a re-verified finding whose scope changed keeps one scope note
+            out = out.replace(f" {note}", "").replace(note, "").rstrip()
+    for note, applies in ((ALL_ROWS_NOTE, scope == "all_rows"), (DISCOVERY_NOTE, scope == "discovery"),
+                          (WEAK_NOTE, strength == "weak"), (UNCONFIRMED_NOTE, not confirmed)):
         if applies and note not in out:
             out = f"{out} {note}"
     return out

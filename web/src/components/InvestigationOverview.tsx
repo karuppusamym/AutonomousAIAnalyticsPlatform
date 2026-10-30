@@ -4,6 +4,7 @@ import { caveatsOf } from "../lib/board";
 import { TERMINAL_RUN } from "../lib/status";
 import { to } from "../routes";
 import { Markdown } from "./Markdown";
+import { RequestedPeriod } from "./RequestedPeriod";
 import { StatusBadge } from "./ui";
 
 /** A stale or rejected result must never be promoted by the executive summary. */
@@ -87,6 +88,7 @@ export function InvestigationOverview({ run, onExplore, onPlan, onApprovals, onC
           </div>
         </aside>
       </div>
+      <RequestedPeriod run={run} />
       {caveats.length > 0 && <details className="investigation-limitations"><summary>Limitations to keep in mind ({caveats.length})</summary>
         <ul>{caveats.map((c) => <li key={c}>{c}</li>)}</ul></details>}
       <p className="small muted investigation-disclaimer">Verification describes the recorded checks. An association alone does not establish a cause.</p>

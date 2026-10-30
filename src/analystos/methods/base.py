@@ -274,7 +274,7 @@ def column_type(d: Derivation | None, semantic: str | None = None) -> ColumnType
         return "boolean"
     if d.type == "duration_hours":
         return "numeric"
-    if d.type in ("bucket", "hour_of_day", "day_of_week"):
+    if d.type in ("bucket", "hour_of_day", "day_of_week", "period"):
         return "categorical"
     if d.type == "date_trunc":
         return "datetime"

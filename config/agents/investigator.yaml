@@ -2,7 +2,7 @@
 apiVersion: analystos/v1
 kind: Agent
 id: agent.investigator
-version: 1.1.0
+version: 1.2.0
 summary: Investigation / Hypothesis Agent
 entry: python:analystos.agents.investigator:generate_hypotheses
 determinism: model
@@ -30,6 +30,7 @@ spec:
   tools:
   - context.search
   - artifact.write
+  - sql.execute  # 1.2.0 (PILOT-FIX-01): two aggregates per table state a guided run's period data facts
   model_purposes:
   - hypothesis_generation
   - follow_up_generation

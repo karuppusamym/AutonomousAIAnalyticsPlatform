@@ -6143,6 +6143,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{workspace_id}/pilot-reviews/subjects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review Subjects
+         * @description What the caller may assess for a pilot task card: investigations, own Ask conversations, dashboards,
+         *     report documents or scheduled digests.
+         */
+        get: operations["review_subjects_api_workspaces__workspace_id__pilot_reviews_subjects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{workspace_id}/pilot-reviews/{review_id}": {
         parameters: {
             query?: never;
@@ -9567,6 +9588,24 @@ export interface components {
             /** Version */
             version?: string | null;
         };
+        /**
+         * DateRange
+         * @description Inclusive calendar dates; `label` is the reader's own name for it ("Q3 2026"), shown, never parsed.
+         */
+        DateRange: {
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Label */
+            label?: string | null;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+        };
         /** DefinitionDraftIn */
         DefinitionDraftIn: {
             /** Key */
@@ -9662,6 +9701,10 @@ export interface components {
          *       date_trunc      -> date_trunc(grain, column)
          *       hour_of_day     -> extract(hour from column)
          *       day_of_week     -> extract(dow from column)
+         *       period          -> the `label` of the window in `value` that holds `column` (a list of 2 to 4
+         *                          {label, start, end} windows, ISO dates, `end` exclusive, in time order and not
+         *                          overlapping); NULL outside every window. A guided investigation compares its
+         *                          baseline with its requested period through it (PILOT-FIX-01).
          *
          *     via: the column(s) live in a related table, reached through the spec's join whose `from_column`
          *     is `via` (customer region through `customer_id`); None reads the spec's own asset.
@@ -9697,7 +9740,7 @@ export interface components {
              * @default column
              * @enum {string}
              */
-            type?: "column" | "duration_hours" | "later_than" | "after_hours" | "bucket" | "equals" | "is_true" | "date_trunc" | "hour_of_day" | "day_of_week";
+            type?: "column" | "duration_hours" | "later_than" | "after_hours" | "bucket" | "equals" | "is_true" | "date_trunc" | "hour_of_day" | "day_of_week" | "period";
             /** Value */
             value?: unknown;
             /** Via */
@@ -10088,10 +10131,19 @@ export interface components {
             /** Groups */
             groups?: string[];
         };
-        /** GuidedInvestigationIn */
+        /**
+         * GuidedInvestigationIn
+         * @description PILOT-FIX-01: the period and its baseline are typed date ranges, applied as filters and compared by code
+         *     (`services.periods`); free text named them before and the run analysed all history.
+         */
         GuidedInvestigationIn: {
-            /** Comparison */
-            comparison: string;
+            baseline?: components["schemas"]["DateRange"] | null;
+            /**
+             * Comparison Mode
+             * @default previous_period
+             * @enum {string}
+             */
+            comparison_mode?: "previous_period" | "same_period_last_year" | "custom" | "none";
             /** Decision */
             decision: string;
             /**
@@ -10099,8 +10151,7 @@ export interface components {
              * @default All records in the selected source
              */
             focus?: string;
-            /** Period */
-            period: string;
+            period: components["schemas"]["DateRange"];
             /** Source Ids */
             source_ids?: string[] | null;
             /** Template Id */
@@ -10764,7 +10815,11 @@ export interface components {
             /** Workspace Name */
             workspace_name: string;
         };
-        /** PilotReviewIn */
+        /**
+         * PilotReviewIn
+         * @description An investigation is named by `run_id`; an Ask conversation, builder dashboard, report document or
+         *     scheduled digest by `subject_id`. `assisted_minutes` includes `review_minutes` (checking and correcting).
+         */
         PilotReviewIn: {
             /**
              * Accuracy
@@ -10781,12 +10836,27 @@ export interface components {
              */
             evidence_kind: "rehearsal" | "real_pilot";
             /**
+             * Interventions
+             * @default 0
+             */
+            interventions?: number;
+            /**
              * Notes
              * @default
              */
             notes?: string;
+            /** Review Minutes */
+            review_minutes?: number | null;
             /** Run Id */
-            run_id: string;
+            run_id?: string | null;
+            /** Subject Id */
+            subject_id?: string | null;
+            /**
+             * Subject Type
+             * @default investigation
+             * @enum {string}
+             */
+            subject_type?: "investigation" | "ask" | "dashboard" | "report" | "digest";
             /** Task */
             task: string;
             /** Usefulness */
@@ -25680,6 +25750,42 @@ export interface operations {
                 "application/json": components["schemas"]["PilotReviewIn"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_subjects_api_workspaces__workspace_id__pilot_reviews_subjects_get: {
+        parameters: {
+            query?: {
+                subject_type?: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

@@ -74,28 +74,96 @@ def visible_facts(assertions: list[dict], scope: Any) -> list[dict]:
     return [a for a in assertions if allowed(a)]
 
 
+def _ranges(body: GuidedInvestigationIn) -> tuple[tuple, tuple | None]:
+    from analystos.services import periods
+
+    current = (body.period.start, body.period.end)
+    custom = (body.baseline.start, body.baseline.end) if body.baseline else None
+    return current, periods.baseline_for(*current, body.comparison_mode, custom)
+
+
 def template_question(body: GuidedInvestigationIn) -> tuple[dict, str]:
+    from analystos.services import periods
+
     template = next((t for t in templates() if t["id"] == body.template_id), None)
     if template is None:
         raise InvalidInput("unknown investigation template")
-    question = (f"{template['question']} Requested period: {body.period}. Comparison baseline: {body.comparison}. "
+    current, baseline = _ranges(body)
+    names = periods.labels(current, *([baseline] if baseline else []))
+
+    def said(rng: tuple, name: str) -> str:
+        # Canonical label and ISO dates only: the reader's own label ("September 2026") stays in the constraint, so
+        # nothing reads the dates back out of words. The platform applies them as filters (`services.periods`).
+        return f"{name} ({rng[0].isoformat()} to {rng[1].isoformat()})"
+
+    compare = f"Comparison baseline: {said(baseline, names[1])}." if baseline else "No comparison baseline."
+    question = (f"{template['question']} Requested period: {said(current, names[0])}, applied as a date filter. {compare} "
                 f"Focus: {body.focus}. Decision this should support: {body.decision}. "
                 "Use only available authorized data; explicitly report unavailable periods, measures or fields. "
                 "Do not invent financial impact or make external changes.")
     return template, question
 
 
+def guided_sources(session: Session, user: User, workspace_id: str, template: dict, body: GuidedInvestigationIn) -> list[str] | None:
+    """The source a guided investigation reads. The caller's choice when given; else the only source; else the
+    one source whose tables the template's domain pack fits (with a date column for the period). Asks only when
+    that still leaves several, or none."""
+    from analystos.capabilities import packs
+    from analystos.services import periods
+
+    if body.source_ids:
+        return body.source_ids
+    scope = resolve_scope(session, session.merge(user), workspace_id)
+    by_source: dict[str, list[str]] = {}
+    for asset, source in scope.asset_sources.items():
+        by_source.setdefault(source, []).append(asset)
+    if len(by_source) <= 1:
+        return None
+    pack = next((p for p in packs.installed() if p.id == template.get("pack")), None)
+    fitting = list(by_source)
+    if pack is not None:
+        fitting = [s for s in by_source if pack.applies_to([a.rsplit(".", 1)[-1] for a in by_source[s]],
+                                                            [c for a in by_source[s] for c in scope.columns.get(a) or []])]
+    if len(fitting) > 1:
+        hints = packs.hints().event_start
+        cols = periods.time_columns(session, scope, hints)
+        dated = [s for s in fitting if any(cols.get(a, {}).get("column") for a in by_source[s])]
+        fitting = dated or fitting
+    if len(fitting) == 1:
+        return fitting
+    from analystos.db.models import Source
+
+    names = sorted(str(session.get(Source, s).name if session.get(Source, s) else s) for s in (fitting or by_source))
+    raise InvalidInput(f"this workspace has several sources that fit '{template['title']}' ({', '.join(names)}): "
+                       "choose which one to read")
+
+
 def start_guided(user: User, workspace_id: str, body: GuidedInvestigationIn) -> AnalysisRun:
+    """The period and baseline become `run.constraints["period"]` (plan-hash bound; `services.periods`): every test
+    reads only the requested period, and comparison tests read baseline and period."""
+    from analystos.capabilities import packs
     from analystos.db.base import session_scope
-    from analystos.services.runs import create_run
+    from analystos.services import periods
+    from analystos.services.runs import start_run_request
 
     template, objective = template_question(body)
+    current, baseline = _ranges(body)
     with session_scope() as session:
         require_role(session, user, workspace_id, "analyst")
-        context = reviewed_context(session, user, workspace_id, body.source_ids)
-    return create_run(user, workspace_id, objective=objective, source_ids=body.source_ids,
-                      origin={"type": "user", "guided_template": {**template, "inputs": body.model_dump(mode="json")},
-                              "reviewed_context": context})
+        source_ids = guided_sources(session, user, workspace_id, template, body)
+        context = reviewed_context(session, user, workspace_id, source_ids)
+        scope = resolve_scope(session, session.merge(user), workspace_id, source_ids=source_ids)
+        columns = periods.time_columns(session, scope, packs.hints().event_start)
+    if scope.assets and not any(c.get("column") for c in columns.values()):
+        raise InvalidInput("none of the selected tables has a date column, so the requested period cannot be applied")
+    period = periods.constraint(*current, mode=body.comparison_mode, baseline=baseline, columns=columns,
+                                period_label=body.period.label, baseline_label=body.baseline.label if body.baseline else None)
+    inputs = body.model_dump(mode="json") | {"source_ids": source_ids}
+    run, _ = start_run_request(user, workspace_id, objective=objective, source_ids=source_ids,
+                               origin={"type": "user", "guided_template": {**template, "inputs": inputs},
+                                       "reviewed_context": context},
+                               constraints={"period": period})
+    return run
 
 
 def action_list(session: Session, user: User, workspace_id: str, run_id: str | None = None) -> list[dict]:

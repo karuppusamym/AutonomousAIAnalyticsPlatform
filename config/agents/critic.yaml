@@ -2,7 +2,7 @@
 apiVersion: analystos/v1
 kind: Agent
 id: agent.critic
-version: 1.1.0
+version: 1.2.0
 summary: REV Critic Agent
 entry: python:analystos.agents.critic:verify_insights
 determinism: model
@@ -38,7 +38,9 @@ spec:
     max_iterations: 3
   phase: mvp
   output_contract:
-    - type: experiment  # the independent second-method verification experiment, and the held-out confirmation test (P8-15)
+    # the independent second-method verification experiment, the held-out confirmation test (P8-15), and (1.2.0,
+    # PILOT-FIX-06) the confirmed finding's figures on every row, so its sentence matches a full-table check
+    - type: experiment
       schema:
         type: object
         required: [method, params, result, query_ids, role]
@@ -47,4 +49,4 @@ spec:
           params: {type: object}
           result: {type: object}
           query_ids: {type: array, items: {type: string}}
-          role: {enum: [primary, verification, holdout]}
+          role: {enum: [primary, verification, holdout, full_data]}

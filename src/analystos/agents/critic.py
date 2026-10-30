@@ -46,6 +46,7 @@ from analystos.llm.cache import estimate_tokens
 from analystos.llm.config import family
 from analystos.registries.hypotheses import spec_hash
 from analystos.runtime.context import RunContext
+from analystos.services import periods
 from analystos.services.citations import insight_citations
 from analystos.services.citations import record as record_citations
 from analystos.services.platform_settings import get as platform
@@ -188,6 +189,68 @@ def confirm_on_holdout(ctx: RunContext, st: dict, top: Any, direction: str | Non
     ctx.say(f"REV {code}: claim locked at {locked.locked_at}; held-out test ({record.partition or 'not run'}): "
             + ("supports it" if record.supported else f"does not support it ({record.reason})"), kind="decision")
     return record
+
+
+def _bound_allows_full_data(ctx: RunContext) -> bool:
+    """A run bound to a critic from before PILOT-FIX-06 declares no full-data experiment: its findings keep the
+    discovery figures and say so, instead of failing verification."""
+    try:
+        probe = methods.for_playbook("flag_by_segment").name
+        ctx.check_output("experiment", {"method": probe, "params": {}, "result": {}, "query_ids": [], "role": "full_data"})
+        return True
+    except OutputContractViolation:
+        return False
+
+
+def full_data_figures(ctx: RunContext, st: dict, holdout: HoldoutCheck) -> dict | None:
+    """PILOT-FIX-06: after the held-out rows confirmed a finding, its test runs once on every row so the sentence
+    can quote the figures an analyst's full-table check gives. Descriptive only: it runs after the verdict and the
+    confirmation are fixed and can change neither. None when it cannot run (the finding keeps its discovery
+    figures and says so)."""
+    from analystos.skills.analysis import run_analysis
+
+    spec, code = st["spec"], st["code"]
+    if not _bound_allows_full_data(ctx):
+        return None
+    try:
+        run_sql = ctx.run_sql(ctx.scope.asset_sources.get(spec.asset))
+        outcome = ctx.tools().invoke("analysis.verify", {"insight": code, "method": spec.method, "partition": "all_rows"},
+                                     lambda: run_analysis(spec, run_sql, alpha=st["alpha"], sample_rows=platform().analysis.sample_rows))
+    except AnalystOSError as exc:
+        ctx.say(f"REV {code}: the full-data figures did not run ({exc.code}); the finding keeps its discovery figures.",
+                kind="decision")
+        return None
+    result = {**_dump(outcome.stat), "full_data_of": code, "holdout_experiment_id": holdout.experiment_id}
+    query_ids = list(outcome.query_ids)
+    ctx.check_output("experiment", {"method": spec.method, "params": {"full_data_of": code}, "result": result,
+                                    "query_ids": query_ids, "role": "full_data"})
+    with session_scope() as s:
+        fexp = Experiment(id=new_id("exp"), workspace_id=ctx.workspace.id, run_id=ctx.run.id, hypothesis_id=st["hypothesis_id"],
+                          method=spec.method, params={"full_data_of": code}, result=result, query_ids=query_ids, role="full_data")
+        s.add(fexp)
+        s.flush()
+        link(s, ctx.workspace.id, ("insight", st["insight_id"]), "measured_on_all_rows_by", ("experiment", fexp.id), run_id=ctx.run.id)
+        link_queries(s, ctx.workspace.id, ("experiment", fexp.id), query_ids, run_id=ctx.run.id,
+                     assets=[spec.asset] if spec.asset else None)
+        experiment_id = fexp.id
+    return {**result, "experiment_id": experiment_id, "query_ids": query_ids}
+
+
+def full_data_text(spec_d: dict, discovery: dict, full: dict) -> tuple[str, str, list[Fact], Any] | None:
+    """(title, finding, facts, binding) quoting the full-data figures, or None when they do not tell the same
+    story (another top group, another direction, not supported) or the sentence does not bind to them."""
+    from analystos.evidence.holdout import direction_of, top_of
+
+    if not full.get("supported") or top_of(full) != top_of(discovery) or \
+            direction_of(spec_d, full) != direction_of(spec_d, discovery):
+        return None
+    method = methods.get(spec_d["method"]) if spec_d.get("method") in methods.names() else None
+    from analystos.evidence.facts import facts_from
+
+    facts = (method.facts if method is not None else facts_from)(spec_d, full, query_ids=tuple(full.get("query_ids") or ()))
+    title, finding = template_text(full, spec_d)
+    binding = bind_finding(spec_d, full, facts, title, finding, claim_label=draft_label(spec_d.get("method")))
+    return (title, finding, facts, binding) if binding.ok else None
 
 
 def _citations(session: Any, ins: Any, bundle: dict, title: str, finding: str, narrative_source: str | None) -> Any:
@@ -375,8 +438,32 @@ def verify_insights(ctx: RunContext) -> dict:
                                current=recorded or entry, holdout=holdout.model_dump(mode="json") if holdout else None)
         if holdout is not None:
             holdout = holdout.model_copy(update={"confirmed": confirmation.rule == "holdout_partition"})
+        # PILOT-FIX-06: a sentence measured on the discovery rows says so; once the held-out rows confirm it, it
+        # quotes the full-data figures instead and the discovery ones stay in the evidence (`claim.scope`).
+        scope, scope_record = None, None
+        if st["discovery"] is not None:
+            scope = "discovery"
+            scope_record = {"figures": "discovery", "discovery_n": stat_d.get("n"),
+                            "partition": ((stat_d.get("details") or {}).get("partition") or {}).get("description")}
+            full = full_data_figures(ctx, st, holdout) if deterministic_ok and confirmation.rule == "holdout_partition" else None
+            swapped = full_data_text(spec_d, stat_d, full) if full is not None else None
+            if full is not None and swapped is None:
+                ctx.say(f"REV {code}: the full-data figures tell a different story or do not bind; the finding keeps its "
+                        "discovery figures and says so.", kind="decision")
+            if swapped is not None:
+                scope_record.update(figures="all_rows", n=full.get("n"), experiment_id=full.get("experiment_id"),
+                                    discovery={"title": title, "finding": finding, "n": stat_d.get("n"),
+                                               "facts": [f.model_dump(mode="json") for f in facts],
+                                               "highlights": stat_d.get("highlights")})
+                title, finding, facts, binding = swapped
+                narrative_source, scope = "template", "all_rows"
+                ctx.say(f"REV {code}: confirmed, so the sentence now quotes all {full.get('n')} records in scope "
+                        f"(discovery figures on {stat_d.get('n')} rows kept in the evidence).", kind="decision")
         if deterministic_ok:  # a weak or unconfirmed finding is not worded as an established fact
-            finding = qualify(finding, confirmed=confirmation.passed, strength=strength.label if strength else None)
+            finding = qualify(finding, confirmed=confirmation.passed, strength=strength.label if strength else None,
+                              scope=scope)
+        elif scope:
+            finding = qualify(finding, confirmed=True, strength=None, scope=scope)
         bundle = assemble(
             spec=spec_d, stat=stat_d, second=_dump(second.stat) if second is not None else None, facts=facts,
             binding=binding, rev_checks=checks, receipts=receipts, manifest=recorded_manifest, entry=recorded or entry,
@@ -387,7 +474,7 @@ def verify_insights(ctx: RunContext) -> dict:
             claim_meta={"subject": top, "baseline": hl.get("baseline_segment"), "direction": direction,
                         "metric": (spec_d.get("outcome") or {}).get("label") or (spec_d.get("outcome") or {}).get("column"),
                         "spec_hash": spec_hash(spec_d), "title": title, "text": finding,
-                        "rendered_from": narrative_source},
+                        "rendered_from": narrative_source, **({"scope": scope_record} if scope_record else {})},
             optional=tuple(getattr(method_impl, "evidence_optional", ()) or ()),
             predictive=isinstance(hl.get("holdout_roc_auc"), int | float), strength=strength, holdout=holdout)
         if bundle.validation.missing_evidence:
@@ -419,6 +506,8 @@ def verify_insights(ctx: RunContext) -> dict:
                                                        "conflicts": [c.model_dump(mode="json") for c in cited.conflicts]}
             ins.finding = finding
             ins.narrative_source = narrative_source
+            if scope == "all_rows" and scope_record.get("n"):
+                ins.population_size = int(scope_record["n"])
             ins.verified = deterministic_ok
             ins.verification = verification
             ins.confidence = round(conf, 3)
@@ -462,4 +551,82 @@ def verify_insights(ctx: RunContext) -> dict:
         ctx.say(f"REV {code}: {'VERIFIED' if deterministic_ok else 'FAILED'} ({bundle.validation.state}; review score "
                 f"{conf:.2f}, uncalibrated); "
                 + ", ".join(f"{c['check']}={'ok' if c['passed'] else 'fail'}" for c in checks), kind="decision")
-    return {"verified": verified_codes, "failed": failed_codes}
+    comparisons = period_comparisons(ctx)
+    return {"verified": verified_codes, "failed": failed_codes, **({"period_comparison": comparisons} if comparisons else {})}
+
+
+def period_comparisons(ctx: RunContext) -> list[dict]:
+    """PILOT-FIX-01: the requested comparison (baseline vs period) stated on every row, whether or not it was
+    significant, so the reader sees its direction (C03: the breach rate fell slightly, not significantly). It runs
+    after every claim of the run was locked and tested, is descriptive only, and quotes the significance of the
+    hypothesis's own test."""
+    from analystos.agents.investigator import requested_period
+    from analystos.skills.analysis import run_analysis
+
+    period = requested_period(ctx)
+    if not period or not period.get("baseline") or not _bound_allows_full_data(ctx):
+        return []
+    by_segment = {m.name for m in (methods.for_playbook("flag_by_segment"), methods.for_playbook("measure_by_segment")) if m}
+    with session_scope() as s:
+        hyps = [(h.id, h.code, dict(h.spec), h.status) for h in s.scalars(
+            select(Hypothesis).where(Hypothesis.run_id == ctx.run.id, Hypothesis.status != "superseded").order_by(*by_code(Hypothesis.code)))]
+    out = []
+    for hid, code, spec_d, status in hyps:
+        if (spec_d.get("segment") or {}).get("type") != "period" or spec_d.get("method") not in by_segment:
+            continue
+        spec = with_constraints(AnalysisSpec.model_validate(spec_d), ctx.run.constraints)
+        what = (spec_d.get("outcome") or {}).get("label") or (spec_d.get("outcome") or {}).get("column")
+        try:
+            run_sql = ctx.run_sql(ctx.scope.asset_sources.get(spec.asset))
+            outcome = ctx.tools().invoke("analysis.verify", {"hypothesis": code, "method": spec.method, "partition": "all_rows"},
+                                         lambda spec=spec, run_sql=run_sql: run_analysis(spec, run_sql, alpha=ctx.policy.alpha,
+                                                                                       sample_rows=platform().analysis.sample_rows))
+        except AnalystOSError as exc:
+            out.append({"hypothesis": code, "outcome": what, "error": exc.code,
+                        "sentence": f"{str(what)[:1].upper()}{str(what)[1:]}: the comparison on every row did not run ({exc.code})."})
+            continue
+        stat = _dump(outcome.stat)
+        rate = spec.method == methods.for_playbook("flag_by_segment").name
+        groups = {str(g.get("segment")): g for g in stat.get("groups") or []}
+        windows = []
+        for w in periods.windows(period):
+            g = groups.get(w["label"]) or {}
+            value = g.get("rate") if rate else (g.get("full_median") if g.get("full_median") is not None else g.get("median"))
+            windows.append({"label": w["label"], "n": int(g.get("full_n") or g.get("n") or 0), "value": value})
+        query_ids = list(outcome.query_ids)
+        result = {**stat, "comparison_of": code}
+        ctx.check_output("experiment", {"method": spec.method, "params": {"comparison_of": code}, "result": result,
+                                        "query_ids": query_ids, "role": "full_data"})
+        with session_scope() as s:
+            cexp = Experiment(id=new_id("exp"), workspace_id=ctx.workspace.id, run_id=ctx.run.id, hypothesis_id=hid,
+                              method=spec.method, params={"comparison_of": code}, result=result, query_ids=query_ids, role="full_data")
+            s.add(cexp)
+            s.flush()
+            link(s, ctx.workspace.id, ("hypothesis", hid), "measured_on_all_rows_by", ("experiment", cexp.id), run_id=ctx.run.id)
+            link_queries(s, ctx.workspace.id, ("experiment", cexp.id), query_ids, run_id=ctx.run.id, assets=[spec.asset])
+            experiment_id = cexp.id
+        record = {"hypothesis": code, "outcome": what, "measure": "rate" if rate else "median", "windows": windows,
+                  "significant": status == "supported", "experiment_id": experiment_id}
+        record["sentence"] = comparison_sentence(record)
+        ctx.say(f"Requested comparison: {record['sentence']}", kind="observation", data={"period_comparison": record})
+        out.append(record)
+    return out
+
+
+def comparison_sentence(c: dict) -> str:
+    """Plain words for one requested comparison: both windows' figures on every row, the direction, and whether
+    the run's own test found the difference significant."""
+    from analystos.methods.base import fmt_pct
+
+    ws = [w for w in c["windows"] if w.get("value") is not None]
+    what = str(c.get("outcome") or "the outcome")
+    head = f"{what[:1].upper()}{what[1:]}"
+    if len(ws) < 2:
+        return f"{head}: one of the two periods has no data to compare."
+    fmt = fmt_pct if c.get("measure") == "rate" else (lambda v: f"{float(v):.1f} (median)")
+    (a, b) = ws[0], ws[-1]
+    move = "an increase" if b["value"] > a["value"] else "a decrease" if b["value"] < a["value"] else "no change"
+    verdict = ("the run's test found the difference statistically significant" if c.get("significant")
+               else "the run's test did not find the difference statistically significant")
+    return (f"{head} was {fmt(a['value'])} in {a['label']} ({a['n']:,} records) and {fmt(b['value'])} in {b['label']} "
+            f"({b['n']:,} records), {move}; {verdict} ({c.get('hypothesis')}).")

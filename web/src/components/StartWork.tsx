@@ -10,7 +10,7 @@ import { ReadinessResult } from "./Brief";
 import { Drawer } from "./Drawer";
 import { ReviewedContext } from "./ReviewedContext";
 import { optionLabel } from "../lib/format";
-import { valueApi } from "../lib/investigationValue";
+import { COMPARISON_MODES, valueApi, type ComparisonMode } from "../lib/investigationValue";
 import { ErrorBox, Field, KeyValue, Loading, Notice, TechnicalDetails, Value } from "./ui";
 
 /** The job kinds for a workspace, decided by the server for this caller (P4-04): executor, capabilities, role, data. */
@@ -25,7 +25,11 @@ function useReadiness(wsId: string, kind: string) {
   return useAsync<ReadinessAssessment>(() => api.assessReadiness(wsId, { job_kind: kind, assets: [], measures: [] }), [wsId, kind]);
 }
 
-interface Draft { kind?: JobKindId; objective?: string; sourceId?: string; contextId?: string; templateId?: string; period?: string; comparison?: string; focus?: string; decision?: string }
+interface Draft {
+  kind?: JobKindId; objective?: string; sourceId?: string; contextId?: string; templateId?: string; focus?: string; decision?: string;
+  // PILOT-FIX-01: typed dates (inclusive), not words; the server derives the baseline from the comparison mode
+  periodStart?: string; periodEnd?: string; periodLabel?: string; comparisonMode?: ComparisonMode; baselineStart?: string; baselineEnd?: string;
+}
 const draftKey = (ws: string) => `analystos.startWork.${ws}`;
 
 /** The unsent brief survives a reload or a failed start (workbench-ux §2); storage may be unavailable. */
@@ -216,7 +220,11 @@ function InvestigationForm({ kind, ws, sources, draft, update, onBack, onChooseK
   const ready = sources.filter((s) => s.status === "ready");
   const templates = useAsync(() => valueApi.templates(ws.id), [ws.id]);
   const template = templates.data?.find((t) => t.id === draft.templateId);
-  const templateIncomplete = !!draft.templateId && (!template || !draft.period?.trim() || !draft.comparison?.trim() || (draft.decision?.trim().length ?? 0) < 5);
+  const mode: ComparisonMode = draft.comparisonMode ?? "previous_period";
+  const datesOk = (a?: string, b?: string) => !!a && !!b && a <= b;
+  const periodOk = datesOk(draft.periodStart, draft.periodEnd);
+  const baselineOk = mode !== "custom" || datesOk(draft.baselineStart, draft.baselineEnd);
+  const templateIncomplete = !!draft.templateId && (!template || !periodOk || !baselineOk || (draft.decision?.trim().length ?? 0) < 5);
   const contexts = useAsync(() => analysisContexts(ws.id), [ws.id]);
   const publishedContexts = (contexts.data ?? []).filter((c, i, all) => c.status === "published" &&
     !all.slice(0, i).some((earlier) => earlier.key === c.key && earlier.status === "published"));
@@ -224,7 +232,7 @@ function InvestigationForm({ kind, ws, sources, draft, update, onBack, onChooseK
   const contextSources = context ? contextSpec(context).source_ids : [];
   const objective = draft.objective ?? "";
   const tooShort = objective.trim().length < 10;
-  const needsSource = !context && ready.length > 1 && !draft.sourceId;
+  const needsSource = !context && !template && ready.length > 1 && !draft.sourceId;  // a template picks the source it fits
   const readiness = useReadiness(ws.id, kind.id);
   const refused = readiness.data?.status === "blocked" || readiness.data?.status === "unsupported";
   useEffect(() => {
@@ -233,8 +241,10 @@ function InvestigationForm({ kind, ws, sources, draft, update, onBack, onChooseK
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (tooShort || needsSource || refused || templateIncomplete) return;
-    const run = await act.run(() => template ? valueApi.start(ws.id, { template_id: template.id, period: draft.period!.trim(),
-      comparison: draft.comparison!.trim(), focus: draft.focus?.trim() || "All records in the selected source", decision: draft.decision!.trim(),
+    const run = await act.run(() => template ? valueApi.start(ws.id, { template_id: template.id,
+      period: { start: draft.periodStart!, end: draft.periodEnd!, label: draft.periodLabel?.trim() || null },
+      comparison_mode: mode, baseline: mode === "custom" ? { start: draft.baselineStart!, end: draft.baselineEnd!, label: null } : null,
+      focus: draft.focus?.trim() || "All records in the selected source", decision: draft.decision!.trim(),
       source_ids: draft.sourceId ? [draft.sourceId] : undefined }) : api.startRun(ws.id, { objective: objective.trim(),
       source_ids: context ? contextSources : draft.sourceId ? [draft.sourceId] : undefined,
       analysis_context: context?.id }));
@@ -254,8 +264,23 @@ function InvestigationForm({ kind, ws, sources, draft, update, onBack, onChooseK
       <ErrorBox error={templates.error} onRetry={templates.reload} />
       {template && <>
         <p className="small muted">{template.description} · template v{template.version}</p>
-        <Field label="Period to investigate" htmlFor={`${id}-period`}><input id={`${id}-period`} required maxLength={200} value={draft.period ?? ""} onChange={(e) => update({ period: e.target.value })} placeholder="For example, Q3 2026" /></Field>
-        <Field label="Comparison baseline" htmlFor={`${id}-comparison`}><input id={`${id}-comparison`} required maxLength={200} value={draft.comparison ?? ""} onChange={(e) => update({ comparison: e.target.value })} placeholder="For example, Q2 2026 or peer teams" /></Field>
+        <fieldset className="date-range">
+          <legend>Period to investigate</legend>
+          <p className="small muted">Every test reads only these dates; the first and last day are included.</p>
+          <Field label="Period starts" htmlFor={`${id}-pstart`}><input id={`${id}-pstart`} type="date" required value={draft.periodStart ?? ""} onChange={(e) => update({ periodStart: e.target.value })} /></Field>
+          <Field label="Period ends" htmlFor={`${id}-pend`}><input id={`${id}-pend`} type="date" required min={draft.periodStart} value={draft.periodEnd ?? ""} onChange={(e) => update({ periodEnd: e.target.value })} aria-invalid={!!draft.periodStart && !!draft.periodEnd && !periodOk} /></Field>
+          <Field label="Name for this period (optional)" htmlFor={`${id}-plabel`}><input id={`${id}-plabel`} maxLength={80} value={draft.periodLabel ?? ""} onChange={(e) => update({ periodLabel: e.target.value })} placeholder="For example, Q3 2026" /></Field>
+        </fieldset>
+        <Field label="Compare with" htmlFor={`${id}-mode`} hint="The baseline is worked out from the period's dates, unless you choose your own.">
+          <select id={`${id}-mode`} value={mode} onChange={(e) => update({ comparisonMode: e.target.value as ComparisonMode })}>
+            {COMPARISON_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+        </Field>
+        {mode === "custom" && <fieldset className="date-range">
+          <legend>Baseline dates</legend>
+          <Field label="Baseline starts" htmlFor={`${id}-bstart`}><input id={`${id}-bstart`} type="date" required value={draft.baselineStart ?? ""} onChange={(e) => update({ baselineStart: e.target.value })} /></Field>
+          <Field label="Baseline ends" htmlFor={`${id}-bend`}><input id={`${id}-bend`} type="date" required min={draft.baselineStart} value={draft.baselineEnd ?? ""} onChange={(e) => update({ baselineEnd: e.target.value })} /></Field>
+        </fieldset>}
         <Field label="Focus or exclusions" htmlFor={`${id}-focus`}><input id={`${id}-focus`} maxLength={500} value={draft.focus ?? ""} onChange={(e) => update({ focus: e.target.value })} placeholder="All records in the selected source" /></Field>
         <Field label="Decision this should support" htmlFor={`${id}-decision`}><input id={`${id}-decision`} required maxLength={500} value={draft.decision ?? ""} onChange={(e) => update({ decision: e.target.value })} placeholder="Which team needs operational attention?" /></Field>
         <ReviewedContext wsId={ws.id} compact />
@@ -275,9 +300,9 @@ function InvestigationForm({ kind, ws, sources, draft, update, onBack, onChooseK
       {context && <p className="small muted">Purpose: {contextSpec(context).purpose}</p>}
       {contexts.error && <p className="small warn-text">Analysis contexts could not be loaded: {contexts.error}</p>}
       {!context && ready.length > 1 && (
-        <Field label="Data" htmlFor={`${id}-src`} hint="One source per investigation in this release.">
+        <Field label="Data" htmlFor={`${id}-src`} hint={template ? "The template reads the source its tables are in; choose one only to override that." : "One source per investigation in this release."}>
           <select id={`${id}-src`} value={draft.sourceId ?? ""} onChange={(e) => update({ sourceId: e.target.value })}>
-            <option value="">Choose a source…</option>
+            <option value="">{template ? "The source this template fits" : "Choose a source…"}</option>
             {ready.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </Field>
@@ -285,7 +310,7 @@ function InvestigationForm({ kind, ws, sources, draft, update, onBack, onChooseK
       <section className="preflight" aria-labelledby={`${id}-pf`}>
         <h3 id={`${id}-pf`}>Before it starts</h3>
         <KeyValue items={[
-          ["Reads", reading.length ? reading.map((s) => s.name).join(", ") : "no source chosen yet"],
+          ["Reads", template && !draft.sourceId && ready.length > 1 ? "the source the template's tables are in" : reading.length ? reading.map((s) => s.name).join(", ") : "no source chosen yet"],
           ["Spends at most", <span key="b"><Value value={p.run_cost_budget_usd} format="usd" /> per investigation</span>],
           ["Checks", "Every finding is re-tested before it is reported; unverified results are labelled."],
           ["Needs a person for", p.publish_requires_approval === false ? "nothing outside the platform by default" : "anything published or sent outside the platform"],

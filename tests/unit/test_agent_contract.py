@@ -77,7 +77,7 @@ def test_admin_api_and_rows_derive_from_the_manifest_never_the_row(sqlite_db):
         row.spec = {**row.spec, "tools": ["superset.publish"], "name": "Edited", "verification_required": True}
     with session_scope() as s:
         shown = _admin_agents(s)
-        assert get_agent_spec(s, "investigator").tools == ["context.search", "artifact.write"]
+        assert get_agent_spec(s, "investigator").tools == ["context.search", "artifact.write", "sql.execute"]
     snap = registry.current()
     assert set(shown) == {m.id.split(".", 1)[1] for m in snap.list("Agent")}
     for m in snap.list("Agent"):
@@ -98,7 +98,7 @@ def test_admin_api_and_rows_derive_from_the_manifest_never_the_row(sqlite_db):
         admin.patch_agent("investigator", admin.EnabledPatch(spec={"tools": ["superset.publish"]}), admin_user, s)
     with session_scope() as s:
         out = admin.patch_agent("investigator", admin.EnabledPatch(enabled=False), admin_user, s)
-    assert out["enabled"] is False and out["tools"] == ["context.search", "artifact.write"]
+    assert out["enabled"] is False and out["tools"] == ["context.search", "artifact.write", "sql.execute"]
     registry.reload(entry_points=False)
 
 

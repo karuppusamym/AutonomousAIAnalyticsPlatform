@@ -96,7 +96,7 @@ class RateBySegment(AnalysisMethod):
         stat.highlights.update({"outcome": sb.describe(spec.outcome), "segment_by": sb.describe(spec.segment)})
         order = {g["segment"]: g.get("order") for g in groups}
         stat.groups.sort(key=lambda g: seg_sort_key(spec.segment, order.get(g["segment"]), g["segment"]))
-        if stat.groups and spec.segment is not None and (spec.segment.type in ("bucket", "hour_of_day", "day_of_week")):
+        if stat.groups and spec.segment is not None and (spec.segment.type in ("bucket", "hour_of_day", "day_of_week", "period")):
             # ordered segments: also quote the first bucket as the natural reference level
             ref = stat.groups[0]
             top_rate = stat.highlights.get("top_rate")

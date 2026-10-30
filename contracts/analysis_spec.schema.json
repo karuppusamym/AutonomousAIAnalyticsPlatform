@@ -1,7 +1,7 @@
 {
   "$defs": {
     "Derivation": {
-      "description": "A column or a safe derived expression over one column (or two for durations).\n\ntype:\n  column          -> the raw column\n  duration_hours  -> (end - start) in hours; `column` is start, `end_column` is end\n  later_than      -> TRUE when `end_column` is later than `column` by more than `tolerance_hours`\n                     (delivered after promised, resolved after due); NULL when either is NULL\n  after_hours     -> TRUE when hour(column) outside [start_hour, end_hour) or weekend\n  bucket          -> numeric column bucketed by `edges` (labels like \"0\", \"1\", \"2\", \"3+\")\n  equals          -> TRUE when column = value (boolean outcome from a categorical)\n  is_true         -> column interpreted as boolean\n  date_trunc      -> date_trunc(grain, column)\n  hour_of_day     -> extract(hour from column)\n  day_of_week     -> extract(dow from column)\n\nvia: the column(s) live in a related table, reached through the spec's join whose `from_column`\nis `via` (customer region through `customer_id`); None reads the spec's own asset.",
+      "description": "A column or a safe derived expression over one column (or two for durations).\n\ntype:\n  column          -> the raw column\n  duration_hours  -> (end - start) in hours; `column` is start, `end_column` is end\n  later_than      -> TRUE when `end_column` is later than `column` by more than `tolerance_hours`\n                     (delivered after promised, resolved after due); NULL when either is NULL\n  after_hours     -> TRUE when hour(column) outside [start_hour, end_hour) or weekend\n  bucket          -> numeric column bucketed by `edges` (labels like \"0\", \"1\", \"2\", \"3+\")\n  equals          -> TRUE when column = value (boolean outcome from a categorical)\n  is_true         -> column interpreted as boolean\n  date_trunc      -> date_trunc(grain, column)\n  hour_of_day     -> extract(hour from column)\n  day_of_week     -> extract(dow from column)\n  period          -> the `label` of the window in `value` that holds `column` (a list of 2 to 4\n                     {label, start, end} windows, ISO dates, `end` exclusive, in time order and not\n                     overlapping); NULL outside every window. A guided investigation compares its\n                     baseline with its requested period through it (PILOT-FIX-01).\n\nvia: the column(s) live in a related table, reached through the spec's join whose `from_column`\nis `via` (customer region through `customer_id`); None reads the spec's own asset.",
       "properties": {
         "type": {
           "default": "column",
@@ -15,7 +15,8 @@
             "is_true",
             "date_trunc",
             "hour_of_day",
-            "day_of_week"
+            "day_of_week",
+            "period"
           ],
           "title": "Type",
           "type": "string"

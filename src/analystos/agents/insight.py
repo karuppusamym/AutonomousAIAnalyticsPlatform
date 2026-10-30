@@ -242,6 +242,10 @@ def build_insights(ctx: RunContext) -> dict:
         facts = {**facts_for(stat, spec), **{k: impact[k] for k in ("affected_records", "excess_events") if k in impact}}
         prepared.append((hid, code, statement, spec, stat, eid, qids, impact, typed, facts))
     narratives = draft_narratives(ctx, prepared)
+    from analystos.agents.common import task_output
+
+    period_facts = {t.get("asset"): list(t.get("facts") or [])
+                    for t in (task_output(ctx.run.id, "hypotheses").get("period") or {}).get("tables") or []}
     for hid, code, _statement, spec, stat, eid, qids, impact, typed, facts in prepared:
         title, finding = template_text(stat, spec)
         source, action = "template", None
@@ -267,6 +271,7 @@ def build_insights(ctx: RunContext) -> dict:
             caveats.append(f"Measured on the discovery rows only ({part.get('description')} for a separate confirmation check).")
         if spec.get("filters"):
             caveats.append("Scoped to: " + ", ".join(f"{f['column']} {f['op']} {f.get('value')}" for f in spec["filters"]))
+        caveats += period_facts.get(spec.get("asset"), [])  # PILOT-FIX-01: incomplete period, future-dated rows
         population = population_for(spec.get("asset"), ctx.scope.asset_sources.get(spec.get("asset") or "")).caveat()
         if population:  # a sampled or truncated snapshot: say which population the finding describes (P4-C12)
             caveats.append(population)

@@ -102,6 +102,16 @@ def standing_note(facts: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def period_note(run_id: str) -> str:
+    """A guided run's requested comparison on every row and its period data facts (empty when it has none)."""
+    from analystos.agents.common import task_output
+
+    comparisons = task_output(run_id, "verify").get("period_comparison") or []
+    data_facts = (task_output(run_id, "hypotheses").get("period") or {}).get("facts") or []
+    lines = [f"- {c['sentence']}" for c in comparisons if c.get("sentence")] + [f"- Data fact: {f}" for f in data_facts]
+    return ("**Requested period**\n" + "\n".join(lines)) if lines else ""
+
+
 def finalize(ctx: RunContext) -> dict:
     with session_scope() as s:
         insights = list(s.scalars(select(Insight).where(Insight.run_id == ctx.run.id, Insight.status == "verified")
@@ -121,6 +131,8 @@ def finalize(ctx: RunContext) -> dict:
         summary_md = "\n".join(f"- **{f['title']}** — {f['finding']}" for f in facts) or "- No finding passed verification."
     if standing_note(facts):  # deterministic, after any model wording: the summary never states a lead as fact
         summary_md = f"{summary_md.rstrip()}\n\n{standing_note(facts)}"
+    if period_note(ctx.run.id):  # PILOT-FIX-01: the requested period, its comparison and data facts, deterministic
+        summary_md = f"{summary_md.rstrip()}\n\n{period_note(ctx.run.id)}"
     with session_scope() as s:
         run = s.get(AnalysisRun, ctx.run.id)
         tasks = {t.key: t for t in s.scalars(select(RunTask).where(RunTask.run_id == ctx.run.id))}

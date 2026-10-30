@@ -314,7 +314,8 @@ def run_gates(run_id: str, step_key: str, gates: list[Any]) -> list[dict[str, An
 
 
 def run_limitations(session: Session, run: Any) -> list[str]:
-    """Every gate's issues and limitations recorded on the run's steps, for the Evidence objects."""
+    """Every gate's issues and limitations recorded on the run's steps, and a guided run's period data facts
+    (PILOT-FIX-01: incomplete period, empty months, future-dated rows), for the Evidence objects."""
     from analystos.db.models import RunTask
 
     out: list[str] = []
@@ -322,6 +323,9 @@ def run_limitations(session: Session, run: Any) -> list[str]:
         for r in (out_ or {}).get("checks") or []:
             if isinstance(r, Mapping):
                 out += [f"{r.get('check')}: {x}" for x in [*(r.get("issues") or []), *(r.get("limitations") or [])]]
+        period = (out_ or {}).get("period")
+        if isinstance(period, Mapping):
+            out += [f"period: {x}" for x in period.get("facts") or [] if isinstance(x, str)]
     return list(dict.fromkeys(out))
 
 

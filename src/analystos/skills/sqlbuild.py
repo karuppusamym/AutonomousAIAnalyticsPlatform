@@ -30,6 +30,9 @@ bucket          CASE on edges -> string-sortable   same
                 padded like "05-10" when edges
                 have more digits) + numeric order
 equals/is_true  CASE -> 1 / 0 / NULL                same (no boolean type needed)
+period          CASE on [start, end) windows ->    same (DATETIME2 literals)
+                the window's label (+ order),
+                NULL outside every window
 =============== ================================== ===================================================
 
 trino: EXTRACT(EPOCH ..) is written TO_UNIXTIME(..) by the generator; the day of week is EXTRACT(DOW ..) % 7
@@ -74,7 +77,8 @@ from analystos.core.errors import InvalidInput
 DIALECTS = ("postgres", "tsql", "duckdb", "trino")
 NO_EXACT_PERCENTILE = frozenset({"trino"})  # PERCENTILE_CONT would become APPROX_PERCENTILE
 BOOLEAN_DERIVATIONS = frozenset({"after_hours", "equals", "is_true", "later_than"})
-TIME_DERIVATIONS = frozenset({"duration_hours", "later_than", "after_hours", "date_trunc", "hour_of_day", "day_of_week"})
+TIME_DERIVATIONS = frozenset({"duration_hours", "later_than", "after_hours", "date_trunc", "hour_of_day", "day_of_week",
+                              "period"})
 BASE_ALIAS = "t"  # the spec's own table when the query joins related ones
 JOIN_PREFIX = "j_"
 
@@ -355,6 +359,19 @@ def bucket_exprs(d: Derivation, dialect: str) -> tuple[exp.Expression, exp.Expre
     return case(lab_whens, lit(labels[-1])), case(ord_whens, num(len(edges) - 1))
 
 
+def period_exprs(d: Derivation, dialect: str) -> tuple[exp.Expression, exp.Expression]:
+    """(label CASE, order CASE) for a period derivation: the window holding the timestamp, NULL outside them."""
+    labels: list[tuple[exp.Expression, exp.Expression]] = []
+    order: list[tuple[exp.Expression, exp.Expression]] = []
+    for i, w in enumerate(d.value or []):
+        ts = cast(_dcol(d, d.column), "timestamp", dialect)
+        inside = exp.And(this=exp.GTE(this=ts, expression=cast(lit(w["start"]), "timestamp", dialect)),
+                         expression=exp.LT(this=ts.copy(), expression=cast(lit(w["end"]), "timestamp", dialect)))
+        labels.append((inside, lit(w["label"])))
+        order.append((inside.copy(), num(i)))
+    return case(labels, exp.Null()), case(order, exp.Null())
+
+
 def _dcol(d: Derivation, name: str) -> exp.Column:
     """A derivation's source column, qualified with its join alias when it is read through `via`."""
     c = col(name)
@@ -424,16 +441,19 @@ def _derive(d: Derivation, dialect: str) -> exp.Expression:
         return hour_expr(ts_expr(d.column, dialect), dialect)
     if t == "day_of_week":
         return dow_expr(ts_expr(d.column, dialect), dialect)
+    if t == "period":
+        return period_exprs(d, dialect)[0]
     raise InvalidInput(f"unsupported derivation type {t!r}")
 
 
 def time_period_expr(d: Derivation, dialect: str, default_grain: str = "month") -> exp.Expression:
-    """A spec's `time`: a date_trunc derivation is used as-is; a raw column is truncated to `grain` or month."""
-    if d.type == "date_trunc":
+    """A spec's `time`: a date_trunc or period derivation is used as-is (period labels sort in time order,
+    `services.periods`); a raw column is truncated to `grain` or month."""
+    if d.type in ("date_trunc", "period"):
         return derive(d, dialect)
     if d.type == "column":
         return trunc_expr(ts_expr(d.column, dialect), d.grain or default_grain, dialect)
-    raise InvalidInput("`time` must be a column or date_trunc derivation")
+    raise InvalidInput("`time` must be a column, date_trunc or period derivation")
 
 
 def describe(d: Derivation | None) -> str:
@@ -757,8 +777,8 @@ def _joined_aggregate(asset: str, dialect: str, *, dimensions: list[tuple[str, D
 def segment_cols(spec: AnalysisSpec, dialect: str) -> tuple[list[tuple[str, exp.Expression]], bool]:
     if spec.segment is None:
         raise InvalidInput(f"{spec.method} requires a `segment`")
-    if spec.segment.type == "bucket":
-        lab, order = bucket_exprs(spec.segment, dialect)
+    if spec.segment.type in ("bucket", "period"):
+        lab, order = (bucket_exprs if spec.segment.type == "bucket" else period_exprs)(spec.segment, dialect)
         return [("segment", lab), ("segment_order", order)], True
     return [("segment", derive(spec.segment, dialect))], False
 

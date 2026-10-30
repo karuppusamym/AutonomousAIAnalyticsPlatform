@@ -2,7 +2,20 @@ import { request, type Assertion, type VerificationState } from "../api";
 
 export interface InvestigationTemplate { id: string; version: number; title: string; description: string; question: string }
 export interface ReviewedContext { version: number; content_hash: string | null; facts: Assertion[]; open_questions: number }
-export interface GuidedInput { template_id: string; period: string; comparison: string; focus: string; decision: string; source_ids?: string[] }
+/** Inclusive calendar dates (YYYY-MM-DD); `label` is the reader's own name for the range, shown, never parsed. */
+export interface DateRange { start: string; end: string; label?: string | null }
+export type ComparisonMode = "previous_period" | "same_period_last_year" | "custom" | "none";
+export const COMPARISON_MODES: { id: ComparisonMode; label: string }[] = [
+  { id: "previous_period", label: "The period just before" },
+  { id: "same_period_last_year", label: "The same period last year" },
+  { id: "custom", label: "Dates I choose" },
+  { id: "none", label: "No comparison" },
+];
+/** PILOT-FIX-01: the period and baseline are typed date ranges; the server applies them as filters and compares them. */
+export interface GuidedInput {
+  template_id: string; period: DateRange; comparison_mode: ComparisonMode; baseline?: DateRange | null;
+  focus: string; decision: string; source_ids?: string[];
+}
 export interface ActionInput {
   title: string; next_step: string; owner_id: string | null; due_date: string | null; impact_assessment: string;
   success_measure: string; open_questions: string; status: "proposed" | "in_progress" | "done" | "dismissed"; resolution_note: string;

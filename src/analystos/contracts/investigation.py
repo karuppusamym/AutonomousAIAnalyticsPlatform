@@ -5,14 +5,44 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class DateRange(BaseModel):
+    """Inclusive calendar dates; `label` is the reader's own name for it ("Q3 2026"), shown, never parsed."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    start: date
+    end: date
+    label: str | None = Field(default=None, max_length=80)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> "DateRange":
+        if self.end < self.start:
+            raise ValueError("a date range ends on or after its start")
+        if (self.end - self.start).days > 3660:
+            raise ValueError("a date range spans at most ten years")
+        return self
+
+
+ComparisonMode = Literal["previous_period", "same_period_last_year", "custom", "none"]
+
+
 class GuidedInvestigationIn(BaseModel):
+    """PILOT-FIX-01: the period and its baseline are typed date ranges, applied as filters and compared by code
+    (`services.periods`); free text named them before and the run analysed all history."""
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     template_id: str
-    period: str = Field(min_length=3, max_length=200)
-    comparison: str = Field(min_length=3, max_length=200)
+    period: DateRange
+    comparison_mode: ComparisonMode = "previous_period"
+    baseline: DateRange | None = None  # only with comparison_mode "custom"
     focus: str = Field(default="All records in the selected source", min_length=3, max_length=500)
     decision: str = Field(min_length=5, max_length=500)
     source_ids: list[str] | None = None
+
+    @model_validator(mode="after")
+    def _baseline_mode(self) -> "GuidedInvestigationIn":
+        if self.comparison_mode == "custom" and self.baseline is None:
+            raise ValueError("a custom comparison needs the baseline dates")
+        if self.comparison_mode != "custom" and self.baseline is not None:
+            raise ValueError("baseline dates are given only with comparison_mode 'custom'")
+        return self
 
 
 class InvestigationActionIn(BaseModel):

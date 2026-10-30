@@ -57,13 +57,16 @@ def review(**patch):
 def test_each_guided_template_preserves_the_requested_question_and_does_not_invent_impact():
     assert {t["id"] for t in svc.templates()} >= {"data_quality", "sla_change", "recurring_incidents"}
     for t in svc.templates():
-        template, question = svc.template_question(GuidedInvestigationIn(template_id=t["id"], period="Q3 2026",
-                        comparison="Q2 2026", decision="Choose the team to review"))
+        template, question = svc.template_question(GuidedInvestigationIn(
+            template_id=t["id"], period={"start": "2026-07-01", "end": "2026-09-30", "label": "Q3 2026"},
+            decision="Choose the team to review"))
         assert template["version"] == 1
-        assert "Q3 2026" in question and "Q2 2026" in question
+        assert "2026 Q3 (2026-07-01 to 2026-09-30)" in question and "2026 Q2 (2026-04-01 to 2026-06-30)" in question
+        assert "Q3 2026" not in question  # the reader's own label is kept out of the words other steps read
         assert "Do not invent financial impact" in question
     with pytest.raises(InvalidInput):
-        svc.template_question(GuidedInvestigationIn(template_id="unknown", period="Q3 2026", comparison="Q2 2026", decision="Choose a team"))
+        svc.template_question(GuidedInvestigationIn(template_id="unknown", period={"start": "2026-07-01", "end": "2026-09-30"},
+                                                    decision="Choose a team"))
 
 
 def test_reviewed_context_excludes_suggestions_other_assets_and_denied_columns():

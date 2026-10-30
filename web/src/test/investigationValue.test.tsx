@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { setExpertView } from "../lib/expert";
-import { cleanup, fireEvent, screen, within } from "@testing-library/react";
-import { session } from "../api";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { RequestedPeriod } from "../components/RequestedPeriod";
+import { session, type RunDetail } from "../api";
 import { bodyOf, calls, mockFetch, renderAt } from "./harness";
 import { resetMockState, RUN, USER, WS } from "./mockBackend";
 
@@ -17,12 +18,34 @@ it("starts a guided investigation with an explicit period, baseline and decision
   await within(form).findByRole("option", { name: "Explain an SLA increase" });
   fireEvent.change(within(form).getByLabelText("Guided investigation"), { target: { value: "sla_change" } });
   expect((within(form).getByRole("button", { name: "Start investigation" }) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.change(within(form).getByLabelText("Period to investigate"), { target: { value: "Q3 2026" } });
-  fireEvent.change(within(form).getByLabelText("Comparison baseline"), { target: { value: "Q2 2026" } });
+  fireEvent.change(within(form).getByLabelText("Period starts"), { target: { value: "2026-07-01" } });
+  fireEvent.change(within(form).getByLabelText("Period ends"), { target: { value: "2026-09-30" } });
+  fireEvent.change(within(form).getByLabelText("Name for this period (optional)"), { target: { value: "Q3 2026" } });
   fireEvent.change(within(form).getByLabelText("Decision this should support"), { target: { value: "Choose the team to review" } });
+  fireEvent.change(within(form).getByLabelText("Compare with"), { target: { value: "custom" } });
+  expect((within(form).getByRole("button", { name: "Start investigation" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(within(form).getByLabelText("Baseline starts"), { target: { value: "2026-04-01" } });
+  fireEvent.change(within(form).getByLabelText("Baseline ends"), { target: { value: "2026-06-30" } });
   fireEvent.click(within(form).getByRole("button", { name: "Start investigation" }));
   await screen.findByRole("heading", { name: "The answer, with the evidence" });
-  expect(bodyOf(calls(fetch, "POST", /\/guided-investigations$/)[0][1])).toMatchObject({ template_id: "sla_change", period: "Q3 2026", comparison: "Q2 2026", decision: "Choose the team to review" });
+  expect(bodyOf(calls(fetch, "POST", /\/guided-investigations$/)[0][1])).toMatchObject({ template_id: "sla_change",
+    period: { start: "2026-07-01", end: "2026-09-30", label: "Q3 2026" }, comparison_mode: "custom",
+    baseline: { start: "2026-04-01", end: "2026-06-30" }, decision: "Choose the team to review" });
+});
+
+it("shows the requested period, its baseline and the data facts on the run (PILOT-FIX-01)", () => {
+  const run = { constraints: { period: { current: { label: "2026 Q3", requested: "Q3 2026" }, baseline: { label: "2026 Q2", requested: "1 Apr 2026 to 30 Jun 2026" },
+    columns: { "src.incident": "opened_at" } } },
+    tasks: [{ key: "hypotheses", output: { period: { tables: [{ asset: "src.incident", windows: { current: { label: "2026 Q3", rows: 3421 }, baseline: { label: "2026 Q2", rows: 5029 } },
+      facts: ["incident: the requested period 2026 Q3 is incomplete: the data ends on 2026-08-31"] }] } } },
+      { key: "verify", output: { period_comparison: [{ hypothesis: "H-1", sentence: "Missed SLA was 14.2% in 2026 Q2 (5,029 records) and 13.5% in 2026 Q3 (3,421 records), a decrease" }] } }] } as unknown as RunDetail;
+  render(<RequestedPeriod run={run} />);
+  const panel = screen.getByRole("region", { name: "Requested period" });
+  expect(within(panel).getByText(/2026 Q3 \(Q3 2026\)/)).toBeTruthy();
+  expect(within(panel).getByText(/2026 Q2 \(1 Apr 2026 to 30 Jun 2026\)/)).toBeTruthy();
+  expect(within(panel).getByText(/incident.opened_at/)).toBeTruthy();
+  expect(within(within(panel).getByRole("note", { name: "Data facts about the period" })).getByText(/is incomplete/)).toBeTruthy();
+  expect(within(panel).getByText(/14.2% in 2026 Q2 \(5,029 records\) and 13.5% in 2026 Q3/)).toBeTruthy();
 });
 
 it("saves reviewed context through the existing versioned brief with If-Match", async () => {

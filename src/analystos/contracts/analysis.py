@@ -42,13 +42,17 @@ class Derivation(BaseModel):
       date_trunc      -> date_trunc(grain, column)
       hour_of_day     -> extract(hour from column)
       day_of_week     -> extract(dow from column)
+      period          -> the `label` of the window in `value` that holds `column` (a list of 2 to 4
+                         {label, start, end} windows, ISO dates, `end` exclusive, in time order and not
+                         overlapping); NULL outside every window. A guided investigation compares its
+                         baseline with its requested period through it (PILOT-FIX-01).
 
     via: the column(s) live in a related table, reached through the spec's join whose `from_column`
     is `via` (customer region through `customer_id`); None reads the spec's own asset.
     """
 
     type: Literal["column", "duration_hours", "later_than", "after_hours", "bucket", "equals", "is_true",
-                  "date_trunc", "hour_of_day", "day_of_week"] = "column"
+                  "date_trunc", "hour_of_day", "day_of_week", "period"] = "column"
     column: str
     end_column: str | None = None
     value: Any = None
@@ -63,9 +67,43 @@ class Derivation(BaseModel):
     def columns(self) -> list[str]:
         return [c for c in (self.column, self.end_column) if c]
 
+    @model_validator(mode="after")
+    def _period_windows(self) -> Derivation:
+        if self.type == "period":
+            self.value = period_windows(self.value)
+        return self
+
     @model_serializer(mode="wrap")
     def _compat(self, handler: Any):  # unannotated: the serialization schema stays the model's
         return _omit(handler(self), tolerance_hours=0.0, via=None)
+
+
+MAX_PERIOD_WINDOWS = 4
+
+
+def period_windows(value: Any) -> list[dict[str, str]]:
+    """The checked windows of a `period` derivation: labelled, ISO-dated, end-exclusive, in time order."""
+    import datetime as _dt
+
+    if not isinstance(value, list) or not 2 <= len(value) <= MAX_PERIOD_WINDOWS:
+        raise ValueError(f"a period derivation needs 2 to {MAX_PERIOD_WINDOWS} windows in `value`")
+    out: list[dict[str, str]] = []
+    for w in value:
+        if not isinstance(w, dict) or set(w) != {"label", "start", "end"}:
+            raise ValueError("each period window is {label, start, end}")
+        try:
+            start, end = _dt.date.fromisoformat(str(w["start"])), _dt.date.fromisoformat(str(w["end"]))
+        except ValueError as exc:
+            raise ValueError("period window dates must be ISO dates (YYYY-MM-DD)") from exc
+        label = str(w["label"]).strip()
+        if not label or len(label) > 60 or start >= end:
+            raise ValueError("a period window needs a short label and start before end")
+        if out and start < _dt.date.fromisoformat(out[-1]["end"]):
+            raise ValueError("period windows must be in time order and must not overlap")
+        if label in {x["label"] for x in out}:
+            raise ValueError("period window labels must differ")
+        out.append({"label": label, "start": start.isoformat(), "end": end.isoformat()})
+    return out
 
 
 class Filter(BaseModel):

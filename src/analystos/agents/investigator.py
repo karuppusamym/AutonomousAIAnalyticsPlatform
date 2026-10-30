@@ -26,6 +26,7 @@ from analystos.decisions import Question
 from analystos.events.bus import emit
 from analystos.runtime.context import RunContext
 from analystos.runtime.engine import add_task
+from analystos.services import periods
 from analystos.services.platform_settings import get as platform
 from analystos.skills import hypothesis_templates as tmpl
 from analystos.skills import lookups as lk
@@ -133,8 +134,15 @@ def semantic_types(ctx: RunContext) -> dict[str, dict[str, str]]:
     return out
 
 
+def requested_period(ctx: Any) -> dict[str, Any] | None:
+    """A guided run's typed period and baseline (`run.constraints["period"]`, PILOT-FIX-01), or None."""
+    return (getattr(getattr(ctx, "run", None), "constraints", None) or {}).get("period")
+
+
 def with_constraints(spec: AnalysisSpec, constraints: dict[str, Any]) -> AnalysisSpec:
-    """Apply user-redirect filters (persisted on the run) to a spec for its asset."""
+    """Apply the run's persisted constraints to a spec for its asset: user-redirect filters, and a guided run's
+    requested period (`services.periods.apply`; idempotent, so a spec accepted with it is unchanged)."""
+    spec = periods.apply(spec, (constraints or {}).get("period"))
     extra = [Filter(column=f["column"], op=f["op"], value=f.get("value"), origin="user_redirect")
              for f in constraints.get("filters", []) if f.get("asset") in (None, spec.asset)]
     if not extra:
@@ -484,6 +492,11 @@ def _accept(ctx: RunContext, proposals: list[dict[str, Any]], types, *, origin: 
         if origin == "carried" and population_changed:
             rejected.append({"statement": p.get("statement"), "reason": "reviewed population changed: generate a new test instead of replaying this claim"})
             continue
+        try:  # PILOT-FIX-01: a guided run's typed period bounds every test (code, not the proposal, decides)
+            spec = periods.apply(spec, requested_period(ctx))
+        except InvalidInput as exc:
+            rejected.append({"statement": p.get("statement"), "reason": exc.message})
+            continue
         errors = validate_spec(spec, ctx.scope, types, lookups)
         if errors:
             rejected.append({"statement": p.get("statement"), "reason": "; ".join(errors[:3])})
@@ -700,13 +713,22 @@ def generate_hypotheses(ctx: RunContext) -> dict:
     rejected += rej2 + rejected_llm
     source = f"llm:{model} + rules" if more else f"rules ({model})"
     del rules, rej_rules
+    # PILOT-FIX-01: the requested comparison is always tested (baseline vs period, and within-group vs mix),
+    # outside the round-1 cap the other hypotheses compete for.
+    period = requested_period(ctx)
+    compared, rej_cmp = _accept(ctx, [{**p, "origin": "heuristic"} for p in periods.comparison_proposals(period, proposed_rules)],
+                                types, origin="heuristic", seen=seen)
+    rejected += rej_cmp
     for r in rejected:
         ctx.say(f"Dropped proposal '{(r.get('statement') or '')[:100]}': {r['reason']}", kind="decision")
     by = _prioritise(ctx, accepted)
-    accepted = _round1_selection(accepted, max(platform().analysis.max_round1_hypotheses - len(carried), 3))
+    accepted = _round1_selection(accepted, max(platform().analysis.max_round1_hypotheses - len(carried) - len(compared), 3))
     for c in carried:
         c.update(priority="high", priority_score=1.0, priority_by="carried_forward")
-    accepted = carried + accepted
+    for c in compared:
+        c.update(priority="high", priority_score=0.95, priority_by="requested_comparison")
+    accepted = carried + compared + accepted
+    period_facts = period_data_facts(ctx, period)
     keys = _persist(ctx, accepted, iteration=1, round_key="hypotheses")
     with session_scope() as s:
         run = s.get(AnalysisRun, ctx.run.id, with_for_update=True)
@@ -719,7 +741,36 @@ def generate_hypotheses(ctx: RunContext) -> dict:
             kind="decision", data={"questions": (data or {}).get("questions") if isinstance(data, dict) else None,
                                    "domain_packs": pack_refs})
     return {"hypotheses": len(accepted), "tasks": keys, "rejected": rejected, "source": source, "priority_by": by,
-            "domain_packs": pack_refs, "question_coverage": coverage, "grounding": grounding}
+            "domain_packs": pack_refs, "question_coverage": coverage, "grounding": grounding,
+            **({"period": {"requested": period, "tables": period_facts,
+                           "facts": [f for t in period_facts for f in t.get("facts") or []]}} if period else {})}
+
+
+def period_data_facts(ctx: RunContext, period: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """The requested period's data facts (incomplete period, empty months, future-dated rows), read through the
+    gateway and said in the run's messages. A table that cannot be checked says so instead of failing the step."""
+    from analystos.core.errors import AnalystOSError
+
+    if not period:
+        return []
+    cur, base = period["current"], period.get("baseline")
+    ctx.say(f"Requested period {cur['label']} ({cur['requested']})" + (f", compared with {base['label']} ({base['requested']})"
+                                                                         if base else ", no comparison baseline")
+            + "; every test reads only these dates: " + ", ".join(
+                f"{a.rsplit('.', 1)[-1]}.{c}" for a, c in sorted((period.get("columns") or {}).items()) if c) + ".",
+            kind="decision")
+    out = []
+    for asset in sorted(period.get("columns") or {}):
+        one = {**period, "columns": {asset: period["columns"][asset]}}
+        try:
+            out += periods.data_facts(one, lambda a: ctx.run_sql(ctx.scope.asset_sources.get(a)))
+        except AnalystOSError as exc:
+            out.append({"asset": asset, "column": period["columns"][asset], "windows": {},
+                        "facts": [f"{asset.rsplit('.', 1)[-1]}: the requested period's data could not be checked ({exc.code})."]})
+    for t in out:
+        for fact in t.get("facts") or []:
+            ctx.say(f"Data fact: {fact}", kind="observation", data={"asset": t["asset"], "period_fact": True})
+    return out
 
 
 def replay_hypotheses(ctx: RunContext, settings: dict[str, Any]) -> dict:

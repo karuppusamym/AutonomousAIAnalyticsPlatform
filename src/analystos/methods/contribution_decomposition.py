@@ -138,8 +138,9 @@ class ContributionDecomposition(AnalysisMethod):
             errors.append(f"outcome {spec.outcome.column} is not numeric")
         if spec.segment is None:
             errors.append(f"{self.name} needs a segment")
-        if spec.time is None or spec.time.type != "date_trunc" or not spec.time.grain:
-            errors.append(f"{self.name} needs time = date_trunc with a grain")
+        if spec.time is None or not ((spec.time.type == "date_trunc" and spec.time.grain) or
+                                     (spec.time.type == "period" and len(spec.time.value or []) == 2)):
+            errors.append(f"{self.name} needs time = date_trunc with a grain, or a period of two windows")
         return errors
 
     def compile(self, spec: AnalysisSpec, dialect: str, *, purpose: str = "primary", sample_rows: int = 50000) -> sb.CompiledQuery:
