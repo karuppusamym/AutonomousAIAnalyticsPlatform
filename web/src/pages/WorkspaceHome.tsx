@@ -10,6 +10,7 @@ import { StartWorkButton } from "../components/StartWork";
 import { WorkModesSettings } from "../components/WorkModes";
 import { ReviewedContext } from "../components/ReviewedContext";
 import { PilotScorecard } from "../components/PilotScorecard";
+import { WorkspaceReadiness } from "../components/PilotReadiness";
 import { Card, ErrorBox, Field, Loading, Notice, PageHeader, Stat, Value } from "../components/ui";
 import { fmtDate } from "../lib/format";
 import { useAction, useAsync, type AsyncState } from "../lib/hooks";
@@ -83,6 +84,7 @@ export function WorkspaceHomePage() {
           <AtAGlance ws={w} runs={runs.data} />
           <DataShapeCard wsId={wsId} role={w.role} />
           <ReviewedContext wsId={wsId} role={w.role} />
+          <WorkspaceReadiness wsId={wsId} role={w.role} />
           {expert && <PilotScorecard wsId={wsId} role={w.role} runs={runs.data} />}
         </>
       )}

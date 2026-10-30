@@ -108,7 +108,50 @@ class ResolutionAnswer(BaseModel):
     missing: list[str] = Field(default_factory=list, max_length=10)
     metric_proposals: list[MetricDraft] = Field(default_factory=list, max_length=5)
     filters: list["MeaningFilter"] = Field(default_factory=list, max_length=20)
+    open_terms: list["OpenTerm"] = Field(default_factory=list, max_length=25)
 
 
 class MeaningFilter(PopulationRule):
     evidence_ids: list[str] = Field(default_factory=list, max_length=20)
+
+
+class OpenTerm(BaseModel):
+    """A term the question or plan depends on that the context does not resolve (PILOT-FIX-04). A model only
+    proposes it: code checks the columns and whether the catalog could hold it before anything is asked."""
+
+    term: str = Field(max_length=200)
+    question: str = Field(default="", max_length=500)
+    availability: str = Field(default="unknown", max_length=20)  # in_data | derivable | absent | unknown
+    columns: list[str] = Field(default_factory=list, max_length=30)
+
+
+
+class MeaningQuestion(BaseModel):
+    key: str
+    term: str
+    question: str
+    kind: Literal["review", "rule", "model", "metric"]
+    state: str | None = None
+    columns: list[str] = Field(default_factory=list)
+    binding_id: str | None = None
+    reason: str | None = None
+
+
+class MeaningLimitation(BaseModel):
+    key: str
+    term: str
+    kind: Literal["absent_data", "unreviewed"]
+    statement: str
+
+
+class MeaningReview(BaseModel):
+    """One round of the meaning review: the one list asked, limitations the run carries, the pinned definitions."""
+
+    round: int = Field(ge=1)
+    questions: list[MeaningQuestion] = Field(default_factory=list)
+    limitations: list[MeaningLimitation] = Field(default_factory=list)
+    not_asked: list[MeaningQuestion] = Field(default_factory=list)
+    resolved_without_asking: list[dict] = Field(default_factory=list)
+    answered: list[str] = Field(default_factory=list)
+    pinned: list[dict] = Field(default_factory=list)
+    binding_revisions: dict[str, int] = Field(default_factory=dict)

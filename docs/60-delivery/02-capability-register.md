@@ -1,5 +1,25 @@
 # Capability register (evidence)
 
+## 2026-10-30 — Meaning review that converges; readiness in plain words (PILOT-FIX-04)
+
+From the [VALUE-05 rehearsal](evidence/value-05-pilot-rehearsal-20261030.md): card C11 took 3 meaning rounds and about 11
+owner minutes, and missing return reasons blocked the run.
+
+| Capability | Code path | Evidence |
+|---|---|---|
+| Ask once | `services/meaning_review.build`, called by `context_grounding.resolve`: review, rule, metric and model questions in one list, one per term (`key_of` merges plurals); the model's new `open_terms` (prompt `context_resolution.v1`) are checked against the catalog and authorised refs | `test_round_one_asks_every_open_term_once_and_turns_absent_data_into_a_limitation` |
+| Resolve without asking | `catalog_fields`: a term naming one selected, non-identifier field resolves `by: catalog` (grouping only, never a metric or a rule, never a term a rule says needs a definition); `map_glossary_to_catalog`: a glossary term with no mapping takes the one field of its name (metrics and rules keep their review); `resolve_known` matches singular owner terms to plural questions | `test_plain_fields_resolve_from_the_catalog…`, `test_a_glossary_term_without_a_mapping…`, `test_a_field_never_stands_in…`, `test_an_owner_definition_answers_the_plural…` |
+| Absent data is a limitation | `absent_limitation`: a "why" noun (reason, cause, satisfaction …) or a model's `absent` claim, accepted only when no selected field holds the head noun; proposed metrics with no fields for such a noun too. Carried across rounds; `finding_caveats` adds "Data limitation: …" to each finding (`agents/insight.py`), and so to reports | `test_a_model_cannot_turn_a_field_that_exists_into_a_limitation`, `test_a_proposed_metric_for_a_field_nobody_records…`, `test_finding_caveats_carry_only_absent_data` |
+| Recheck asks only what changed | `record_round` (on `POST /grounding/runs/{id}/recheck`): artifact `Meaning review round N` with asked keys, binding revisions, owner minutes; the next round asks what is still open, every code-raised gate question (reviewed-definition state, rules such as the reporting period), and model terms an answer caused (changed binding, its wording); other new model questions are recorded as not reviewed | Unit `test_recheck_asks_only_what_an_answer_changed`, `test_a_conflict_an_answer_creates…`; Postgres `tests/integration/test_meaning_review_rounds.py` |
+| Pinned to the run | `meaning_review.pinned` (binding id + revision) in the run's grounding; hypothesis mapping receipts unchanged; `GET /grounding/runs/{id}` returns `rounds` | Integration test above |
+| UI | `ContextGrounding.tsx::MeaningReviewPanel`: "N meanings to confirm, all at once", "What the data cannot show", "Understood without asking", round and owner time; columns, ids and revisions behind Show expert tools | `web/src/test/meaningReview.test.tsx` |
+| Readiness in plain words | `contracts/pilot.PilotCheck`: `action`, `who`, `screen`; `services/pilot.py` fills them; the API path or script stays in `remediation` (expert view only). `PilotReadiness.tsx::GapAction` links to Members & policy, Sources, Metrics or the scorecard | `test_every_gap_says_in_plain_words…`; web readiness tests |
+| Readiness for analysts | `WorkspaceReadiness` on the workspace home (any role, read-only, collapsed): verdict and each gap with who does it; owner-only screens not linked for others | `web/src/test/meaningReview.test.tsx` |
+| C11 re-walk | Rehearsal data copy, recorded model answers replayed, no model call | [evidence/pilot-fix-04-meaning-rewalk-20261030.md](evidence/pilot-fix-04-meaning-rewalk-20261030.md): 1 round, 1 owner definition (was 3 and 5), reasons recorded as a limitation |
+
+Not shown: real owner time, a model call under the new `open_terms` prompt, and the re-walked run's findings. `web/openapi.json`
+was not regenerated; the web extends `PilotCheck` by hand.
+
 ## 2026-10-29 — Release pipeline, kind proof install, gVisor compute pods (FND-004, S07-T1)
 
 | Capability | Code path | Evidence |

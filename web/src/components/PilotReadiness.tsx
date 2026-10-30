@@ -1,6 +1,9 @@
 import { useId, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { api, type Owners, type PilotCheck } from "../api";
+import { useExpertView } from "../lib/expert";
 import { useAction, useAsync } from "../lib/hooks";
+import { roleAtLeast, to } from "../routes";
 import { Card, ErrorBox, Field, Loading, Notice, Tag } from "./ui";
 
 const TONE: Record<PilotCheck["status"], string> = { pass: "success", missing: "warning", fail: "danger" };
@@ -9,6 +12,39 @@ const CHECK_LABEL: Record<string, string> = {
   "connector.health": "Connection", "identity.sso": "Single sign-on", "recovery.drill": "Recovery drill",
   "conversation.definitions": "Reviewed definitions for Ask and dashboards", "pilot.rehearsal": "Task cards rehearsed",
 };
+
+const WHO: Record<NonNullable<PilotCheck["who"]>, string> = {
+  workspace_owner: "A workspace owner", editor: "An editor or owner of this workspace", analyst: "An analyst",
+  platform_admin: "Your platform administrator",
+};
+const SCREEN: Record<NonNullable<PilotCheck["screen"]>, { label: string; href?: (ws: string) => string; minimum?: "owner" | "editor" }> = {
+  members_policy: { label: "Open Members & policy", href: to.governance, minimum: "owner" },
+  sources: { label: "Open Sources", href: to.sources },
+  metrics: { label: "Open Metrics", href: (ws) => to.data(ws, "metrics") },
+  scorecard: { label: "The pilot scorecard is on the Overview with Show expert tools on." },
+};
+
+/** "source:src_1 (ServiceNow)" → "ServiceNow source"; the record id is expert detail. */
+export function subjectLabel(subject: string): string {
+  const m = /^source:[^ ]+ \((.*)\)$/.exec(subject);
+  if (m) return `${m[1]} source`;
+  return subject === "workspace" ? "This workspace" : subject === "platform" ? "The platform" : subject;
+}
+
+/** What to do about a gap, in plain words, with a link to the screen that fixes it when the viewer can open it. */
+export function GapAction({ wsId, check, role }: { wsId: string; check: PilotCheck; role?: string | null }) {
+  const expert = useExpertView();
+  const screen = check.screen ? SCREEN[check.screen] : undefined;
+  const canOpen = screen && (!screen.minimum || roleAtLeast(role, screen.minimum));
+  return (
+    <div className="small">
+      {check.action ?? check.remediation}
+      {check.who && <span className="muted"> · {WHO[check.who]} does this.</span>}
+      {canOpen && (screen.href ? <> <Link to={screen.href(wsId)}>{screen.label}</Link></> : <span className="muted"> {screen.label}</span>)}
+      {expert && check.action && check.remediation && <div className="muted mono">{check.remediation}</div>}
+    </div>
+  );
+}
 
 /** Form values for the two named owners; empty name and email clear a role. */
 export function ownersBody(f: Record<string, string>): { body: { business?: { name: string; email: string } | null; technical?: { name: string; email: string } | null }; problems: string[] } {
@@ -62,6 +98,7 @@ function OwnersForm({ label, owners, onSave }: { label: string; owners: Owners |
  * single sign-on and the recovery drill — with owners editable in place (workspace owners only).
  */
 export function PilotReadiness({ wsId, owners, canEdit }: { wsId: string; owners: Owners | undefined; canEdit: boolean }) {
+  const expert = useExpertView();
   const r = useAsync(() => api.pilotReadiness(wsId), [wsId]);
   const sources = useAsync(() => (canEdit ? api.listSources(wsId) : Promise.resolve([])), [wsId, canEdit]);
   const [wsOwners, setWsOwners] = useState<Owners | undefined>(owners);
@@ -73,14 +110,14 @@ export function PilotReadiness({ wsId, owners, canEdit }: { wsId: string; owners
     <Card title="Pilot readiness" label="Pilot readiness"
       actions={<Tag tone={r.data.verdict === "ready" ? "success" : "warning"}>{r.data.verdict === "ready" ? "Ready" : `${gaps.length} to resolve`}</Tag>}>
       <table className="table" aria-label="Pilot readiness checks">
-        <thead><tr><th>Check</th><th>Where</th><th>Status</th><th>Why</th></tr></thead>
+        <thead><tr><th>Check</th><th>Where</th><th>Status</th><th>Why and what to do</th></tr></thead>
         <tbody>
           {r.data.checks.map((c, i) => (
             <tr key={`${c.check}-${c.subject}-${i}`}>
               <td>{CHECK_LABEL[c.check] ?? c.check}</td>
-              <td className="small">{c.subject}</td>
+              <td className="small">{expert ? c.subject : subjectLabel(c.subject)}</td>
               <td><Tag tone={TONE[c.status]}>{c.status}</Tag></td>
-              <td className="small">{c.reason}{c.remediation && c.status !== "pass" ? <div className="muted">{c.remediation}</div> : null}</td>
+              <td className="small">{c.reason}{c.status !== "pass" && (c.action || c.remediation) ? <GapAction wsId={wsId} check={c} role="owner" /> : null}</td>
             </tr>
           ))}
         </tbody>
@@ -97,5 +134,37 @@ export function PilotReadiness({ wsId, owners, canEdit }: { wsId: string; owners
         </details>
       )}
     </Card>
+  );
+}
+
+/**
+ * "Is this workspace ready?" for everyone who works here (rehearsal 2026-10-30: readiness lived only on the
+ * owner page). Read-only: the verdict and each gap as a plain action, who does it, and where — no editing here.
+ */
+export function WorkspaceReadiness({ wsId, role }: { wsId: string; role?: string | null }) {
+  const r = useAsync(() => api.pilotReadiness(wsId), [wsId]);
+  if (r.error) return null;  // a summary, not a blocker: the owner page shows the error
+  if (!r.data || !Array.isArray(r.data.checks)) return null;
+  const gaps = r.data.checks.filter((c) => c.status !== "pass");
+  const ready = r.data.verdict === "ready";
+  return (
+    <details className="card workspace-readiness" aria-label="Is this workspace ready?">
+      <summary>
+        Is this workspace ready for the pilot?{" "}
+        <Tag tone={ready ? "success" : "warning"}>{ready ? "Ready" : `Not yet: ${gaps.length} to do`}</Tag>
+      </summary>
+      <div className="card-body">
+        {ready
+          ? <p className="small">Owners are named, the data connection works and the reviewed definitions are in place.</p>
+          : <ul className="list" aria-label="What the pilot still needs">
+              {gaps.map((c, i) => (
+                <li key={`${c.check}-${c.subject}-${i}`}>
+                  <strong>{CHECK_LABEL[c.check] ?? c.check}</strong> <span className="small muted">({subjectLabel(c.subject)})</span>
+                  <GapAction wsId={wsId} check={c} role={role} />
+                </li>
+              ))}
+            </ul>}
+      </div>
+    </details>
   );
 }

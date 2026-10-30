@@ -80,8 +80,13 @@ export interface Owners {
   business?: NamedOwner;
   technical?: NamedOwner;
 }
-export type PilotCheck = Schemas["PilotCheck"];
-export type PilotReadiness = Schemas["PilotReadiness"];
+/** Plain-words fields added after the last openapi.json export: what to do, who does it, the screen for it. */
+export type PilotCheck = Schemas["PilotCheck"] & {
+  action?: string | null;
+  who?: "workspace_owner" | "editor" | "analyst" | "platform_admin" | null;
+  screen?: "members_policy" | "sources" | "metrics" | "scorecard" | null;
+};
+export type PilotReadiness = Omit<Schemas["PilotReadiness"], "checks"> & { checks: PilotCheck[] };
 
 export interface Member {
   user_id: string;

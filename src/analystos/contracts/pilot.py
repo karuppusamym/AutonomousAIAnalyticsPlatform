@@ -36,8 +36,12 @@ class PilotCheck(BaseModel):
     subject: str  # "workspace" or "source:<id> (<name>)" or "platform"
     status: Literal["pass", "missing", "fail"]
     reason: str
-    remediation: str | None = None
+    remediation: str | None = None  # the technical step (paths, scripts, settings): expert detail
     evidence: str | None = None  # a file path or record id backing a pass
+    # Plain wording for the page (PILOT-FIX readiness friction): what to do, who can do it, and the screen for it.
+    action: str | None = None
+    who: Literal["workspace_owner", "editor", "analyst", "platform_admin"] | None = None
+    screen: Literal["members_policy", "sources", "metrics", "scorecard"] | None = None
 
 
 class PilotReadiness(BaseModel):
