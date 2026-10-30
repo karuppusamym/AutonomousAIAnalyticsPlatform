@@ -3,14 +3,31 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from analystos.artifacts.registry import link
-from analystos.contracts.investigation import GuidedInvestigationIn, InvestigationActionIn, PilotReviewIn
-from analystos.core.errors import Conflict, InvalidInput, PreconditionFailed
+from analystos.contracts.investigation import (
+    PILOT_SUBJECTS,
+    GuidedInvestigationIn,
+    InvestigationActionIn,
+    PilotReviewIn,
+)
+from analystos.core.errors import Conflict, InvalidInput, NotFound, PreconditionFailed
 from analystos.core.ids import new_id
-from analystos.db.models import AnalysisRun, Insight, InvestigationAction, PilotReview, User, WorkspaceMember
+from analystos.db.models import (
+    AnalysisRun,
+    Artifact,
+    AskThread,
+    AskTurn,
+    Insight,
+    InvestigationAction,
+    PilotReview,
+    Schedule,
+    ScheduleRun,
+    User,
+    WorkspaceMember,
+)
 from analystos.events.bus import emit
 from analystos.evidence.verification import insight_states
 from analystos.governance.audit import audit
@@ -134,56 +151,138 @@ def save_action(session: Session, user: User, workspace_id: str, insight_id: str
     return action
 
 
+FINISHED_RUN = {"COMPLETED", "FAILED", "CANCELLED", "REJECTED"}
+# Builder dashboards and report documents are artifacts; lineage keys them by their artifact type.
+ARTIFACT_SUBJECTS = {"dashboard": "dashboard", "report": "report_document"}
+
+
+def _pilot_subject(session: Session, user: User, workspace_id: str, body: PilotReviewIn) -> tuple[str, str]:
+    """Load what the assessment measures (analyst role, this workspace) and return its lineage node.
+    Failures and refusals count: only work still in progress is refused, so the score is not survivor-biased."""
+    kind, ref = body.subject_type, body.subject_id
+    if kind == "investigation":
+        run = load_in_workspace(session, AnalysisRun, body.run_id, workspace_id, user=user, minimum="analyst", label="run")
+        session.refresh(run, with_for_update=True)
+        has_findings = bool(session.scalar(select(Insight.id).where(Insight.run_id == run.id).limit(1)))
+        if run.status not in FINISHED_RUN and not (run.status == "WAITING_USER" and has_findings):
+            raise Conflict("evaluate a finished investigation, or one with findings awaiting approval")
+        return "run", run.id
+    if kind == "ask":
+        thread = load_in_workspace(session, AskThread, ref, workspace_id, user=user, minimum="analyst", label="conversation")
+        if thread.user_id != user.id:  # Ask conversations are private to their creator
+            raise NotFound("conversation not found")
+        if not session.scalar(select(AskTurn.id).where(AskTurn.thread_id == thread.id, AskTurn.status != "running").limit(1)):
+            raise Conflict("evaluate a conversation with at least one answered, refused or clarified question")
+        return "ask_thread", thread.id
+    if kind in ARTIFACT_SUBJECTS:
+        label = "dashboard" if kind == "dashboard" else "report"
+        art = load_in_workspace(session, Artifact, ref, workspace_id, user=user, minimum="analyst", label=label)
+        if art.type != ARTIFACT_SUBJECTS[kind]:
+            raise NotFound(f"{label} not found")
+        return art.type, art.id
+    schedule = load_in_workspace(session, Schedule, ref, workspace_id, user=user, minimum="analyst", label="schedule")
+    if not session.scalar(select(ScheduleRun.id).where(ScheduleRun.schedule_id == schedule.id,
+                                                       ScheduleRun.status.in_(("succeeded", "failed", "skipped"))).limit(1)):
+        raise Conflict("evaluate a scheduled digest after it has run at least once (Run now is fine)")
+    return "schedule", schedule.id
+
+
 @scoped_loader
 def save_review(session: Session, user: User, workspace_id: str, body: PilotReviewIn,
                 review_id: str | None = None, revision: int | None = None) -> PilotReview:
-    run = load_in_workspace(session, AnalysisRun, body.run_id, workspace_id, user=user, minimum="analyst", label="run")
-    session.refresh(run, with_for_update=True)
-    has_findings = bool(session.scalar(select(Insight.id).where(Insight.run_id == run.id).limit(1)))
-    if run.status not in {"COMPLETED", "FAILED", "CANCELLED", "REJECTED"} and not (run.status == "WAITING_USER" and has_findings):
-        raise Conflict("evaluate a finished investigation, or one with findings awaiting approval")
+    node = _pilot_subject(session, user, workspace_id, body)
     review = None
     if review_id:
         review = load_in_workspace(session, PilotReview, review_id, workspace_id, user=user, minimum="analyst", label="pilot review")
         session.refresh(review, with_for_update=True)
         if review.reviewer_id != user.id:
             raise InvalidInput("only the original reviewer can change their assessment")
-        if review.run_id != body.run_id or review.evidence_kind != body.evidence_kind:
-            raise InvalidInput("the investigation and assessment type cannot change")
+        if (review.subject_type, review.subject_id, review.evidence_kind) != (body.subject_type, body.subject_id, body.evidence_kind):
+            raise InvalidInput("what was assessed and the assessment type cannot change")
         if review.revision != revision:
             raise PreconditionFailed("this assessment changed; reload before saving")
     else:
-        if session.scalar(select(PilotReview.id).where(PilotReview.run_id == run.id, PilotReview.reviewer_id == user.id,
-                                                       PilotReview.evidence_kind == body.evidence_kind)):
-            raise Conflict("you already assessed this investigation; edit that assessment instead")
+        same = select(PilotReview.id).where(PilotReview.workspace_id == workspace_id, PilotReview.subject_type == body.subject_type,
+                                            PilotReview.subject_id == body.subject_id, PilotReview.reviewer_id == user.id,
+                                            PilotReview.evidence_kind == body.evidence_kind)
+        if body.subject_type != "investigation":  # one conversation or dashboard may serve several task cards
+            same = same.where(PilotReview.task == body.task)
+        if session.scalar(same):
+            raise Conflict("you already assessed this; edit that assessment instead")
     values = body.model_dump()
     if review is None:
         review = PilotReview(id=new_id("prv"), workspace_id=workspace_id, reviewer_id=user.id, revision=1, **values)
         session.add(review)
         session.flush()
-        link(session, workspace_id, ("run", run.id), "evaluated_by", ("pilot_review", review.id), run_id=run.id)
+        link(session, workspace_id, node, "evaluated_by", ("pilot_review", review.id), run_id=body.run_id)
     else:
         for key, value in values.items():
             setattr(review, key, value)
         review.revision += 1
-    emit(workspace_id, "pilot.review_saved", {"review_id": review.id, "evidence_kind": review.evidence_kind, "revision": review.revision},
-         run_id=run.id, actor=f"user:{user.id}", session=session)
+    emit(workspace_id, "pilot.review_saved", {"review_id": review.id, "evidence_kind": review.evidence_kind,
+                                              "subject_type": review.subject_type, "revision": review.revision},
+         run_id=body.run_id, actor=f"user:{user.id}", session=session)
     audit(f"user:{user.id}", "pilot.review_saved", workspace_id=workspace_id, target=review.id, session=session)
     return review
 
 
+def pilot_subjects(session: Session, user: User, workspace_id: str, subject_type: str, limit: int = 100) -> list[dict]:
+    """What an analyst may assess, newest first: {id, label, status}. Ask conversations are the caller's own."""
+    require_role(session, user, workspace_id, "analyst")
+    if subject_type == "investigation":
+        runs = session.scalars(select(AnalysisRun).where(AnalysisRun.workspace_id == workspace_id)
+                               .order_by(AnalysisRun.created_at.desc()).limit(limit))
+        return [{"id": r.id, "label": r.objective, "status": r.status.lower()} for r in runs]
+    if subject_type == "ask":
+        threads = list(session.scalars(select(AskThread).where(AskThread.workspace_id == workspace_id, AskThread.user_id == user.id,
+                                                               AskThread.archived.is_(False))
+                                       .order_by(AskThread.updated_at.desc()).limit(limit)))
+        counts = dict(session.execute(select(AskTurn.thread_id, func.count()).where(AskTurn.thread_id.in_([t.id for t in threads]))
+                                      .group_by(AskTurn.thread_id)).all()) if threads else {}
+        return [{"id": t.id, "label": t.title, "status": f"{counts.get(t.id, 0)} questions"} for t in threads]
+    if subject_type in ARTIFACT_SUBJECTS:
+        arts = session.scalars(select(Artifact).where(Artifact.workspace_id == workspace_id,
+                                                      Artifact.type == ARTIFACT_SUBJECTS[subject_type])
+                               .order_by(Artifact.updated_at.desc()).limit(limit))
+        return [{"id": a.id, "label": str((a.content or {}).get("title") or a.name), "status": f"version {a.version}, {a.status}"}
+                for a in arts]
+    if subject_type == "digest":
+        schedules = list(session.scalars(select(Schedule).where(Schedule.workspace_id == workspace_id)
+                                         .order_by(Schedule.created_at.desc()).limit(limit)))
+        last = {sid: status for sid, status in session.execute(
+            select(ScheduleRun.schedule_id, ScheduleRun.status).where(ScheduleRun.schedule_id.in_([x.id for x in schedules]))
+            .order_by(ScheduleRun.started_at))} if schedules else {}
+        return [{"id": x.id, "label": x.name, "status": f"last run {last[x.id]}" if x.id in last else "not run yet"}
+                for x in schedules]
+    raise InvalidInput("unknown assessment subject")
+
+
+def _measures(group: list) -> dict:
+    reviewed = [r for r in group if r.accuracy != "not_reviewed"]
+    baseline = sum(r.baseline_minutes for r in group)
+    saved = sum(r.baseline_minutes - r.assisted_minutes for r in group)
+    timed_review = [r.review_minutes for r in group if getattr(r, "review_minutes", None) is not None]
+    return {"assessments": len(group), "reviewers": len({r.reviewer_id for r in group}),
+            "minutes_saved": saved, "time_saved_fraction": saved / baseline if baseline else None,
+            "accuracy_reviewed": len(reviewed),
+            "correct_fraction": sum(r.accuracy == "correct" for r in reviewed) / len(reviewed) if reviewed else None,
+            "average_usefulness": sum(r.usefulness for r in group) / len(group) if group else None,
+            "would_use_again_fraction": sum(r.would_use_again for r in group) / len(group) if group else None,
+            "review_minutes": sum(timed_review) if timed_review else None,
+            "interventions": sum(getattr(r, "interventions", 0) or 0 for r in group)}
+
+
+def _subject(r) -> str:
+    return getattr(r, "subject_type", None) or "investigation"
+
+
 def summarize_reviews(reviews: list[PilotReview]) -> dict:
+    """Real pilot observations and rehearsals never mix; each is also split by what was assessed."""
     result = {}
     for kind in ("real_pilot", "rehearsal"):
         group = [r for r in reviews if r.evidence_kind == kind]
-        reviewed = [r for r in group if r.accuracy != "not_reviewed"]
-        baseline = sum(r.baseline_minutes for r in group)
-        saved = sum(r.baseline_minutes - r.assisted_minutes for r in group)
-        result[kind] = {"assessments": len(group), "reviewers": len({r.reviewer_id for r in group}),
-                        "investigations": len({r.run_id for r in group}), "minutes_saved": saved,
-                        "time_saved_fraction": saved / baseline if baseline else None,
-                        "accuracy_reviewed": len(reviewed),
-                        "correct_fraction": sum(r.accuracy == "correct" for r in reviewed) / len(reviewed) if reviewed else None,
-                        "average_usefulness": sum(r.usefulness for r in group) / len(group) if group else None,
-                        "would_use_again_fraction": sum(r.would_use_again for r in group) / len(group) if group else None}
+        result[kind] = {**_measures(group),
+                        "investigations": len({r.run_id for r in group if r.run_id}),
+                        "subjects": len({(_subject(r), getattr(r, "subject_id", None) or r.run_id) for r in group}),
+                        "by_feature": {f: _measures(g) for f in PILOT_SUBJECTS if (g := [r for r in group if _subject(r) == f])}}
     return result

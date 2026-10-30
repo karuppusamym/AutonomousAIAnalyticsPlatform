@@ -158,3 +158,82 @@ def test_a_plan_awaiting_approval_is_not_a_finished_pilot_task(world):
         s.commit()
         with pytest.raises(Conflict):
             svc.save_review(s, s.get(User, "owner"), "ws", review())
+
+
+# ---------------------------------------------------------------- VALUE-05: conversational deliverables in the pilot
+def subject(kind, ref, **patch):
+    return review(**{"subject_type": kind, "run_id": None, "subject_id": ref, **patch})
+
+
+@pytest.fixture
+def conversational(world):
+    from datetime import UTC, datetime
+
+    from analystos.db.models import Artifact, AskThread, AskTurn, Schedule, ScheduleRun
+
+    with world() as s:
+        s.add(AskThread(id="thr", workspace_id="ws", user_id="analyst", title="Breaches by priority"))
+        s.add(AskThread(id="thr_owner", workspace_id="ws", user_id="owner", title="Owner only"))
+        s.add_all([AskTurn(id="turn", thread_id="thr", workspace_id="ws", user_id="analyst", question="breaches?", status="refused"),
+                   AskTurn(id="turn_o", thread_id="thr_owner", workspace_id="ws", user_id="owner", question="x", status="answered")])
+        for aid, kind in (("dash", "dashboard"), ("doc", "report_document"), ("chart", "chart")):
+            s.add(Artifact(id=aid, workspace_id="ws", type=kind, name=f"{kind}:{aid}", content={"title": aid.title()}, content_hash="h"))
+        s.add(Artifact(id="foreign_dash", workspace_id="foreign", type="dashboard", name="x", content={}, content_hash="h"))
+        s.add(Schedule(id="sch", workspace_id="ws", name="Monday digest", kind="report", cron="0 8 * * 1", owner_id="owner"))
+        s.commit()
+        yield world, s, ScheduleRun, datetime.now(UTC)
+
+
+def test_conversational_deliverables_are_assessed_with_their_own_lineage_and_split_by_feature(conversational):
+    world, s, ScheduleRun, now = conversational
+    analyst = s.get(User, "analyst")
+    saved = [svc.save_review(s, analyst, "ws", subject("ask", "thr", accuracy="incorrect", interventions=2)),
+             svc.save_review(s, analyst, "ws", subject("dashboard", "dash", review_minutes=5)),
+             svc.save_review(s, analyst, "ws", subject("report", "doc", evidence_kind="real_pilot"))]
+    with pytest.raises(Conflict):  # a digest that never ran has nothing to assess yet
+        svc.save_review(s, analyst, "ws", subject("digest", "sch"))
+    s.add(ScheduleRun(id="sr", schedule_id="sch", workspace_id="ws", fire_key="k", scheduled_for=now, trigger="manual", status="succeeded"))
+    s.flush()
+    saved.append(svc.save_review(s, analyst, "ws", subject("digest", "sch")))
+    s.commit()
+    assert saved[0].run_id is None and saved[0].subject_id == "thr"
+    edges = {(e.from_type, e.from_id) for e in s.scalars(select(LineageEdge).where(LineageEdge.relation == "evaluated_by"))}
+    assert edges == {("ask_thread", "thr"), ("dashboard", "dash"), ("report_document", "doc"), ("schedule", "sch")}
+    summary = svc.summarize_reviews(saved)
+    assert summary["real_pilot"]["assessments"] == 1 and set(summary["real_pilot"]["by_feature"]) == {"report"}
+    rehearsal = summary["rehearsal"]
+    assert set(rehearsal["by_feature"]) == {"ask", "dashboard", "digest"} and rehearsal["investigations"] == 0
+    assert rehearsal["subjects"] == 3 and rehearsal["interventions"] == 2 and rehearsal["review_minutes"] == 5
+    assert rehearsal["by_feature"]["ask"]["correct_fraction"] == 0
+
+
+def test_conversational_subjects_stay_private_scoped_and_typed(conversational):
+    world, s, *_ = conversational
+    analyst = s.get(User, "analyst")
+    with pytest.raises(NotFound):  # another person's Ask conversation
+        svc.save_review(s, analyst, "ws", subject("ask", "thr_owner"))
+    with pytest.raises(NotFound):  # another workspace's dashboard
+        svc.save_review(s, analyst, "ws", subject("dashboard", "foreign_dash"))
+    with pytest.raises(NotFound):  # a chart is not a report
+        svc.save_review(s, analyst, "ws", subject("report", "chart"))
+    with pytest.raises(Forbidden):
+        svc.save_review(s, s.get(User, "viewer"), "ws", subject("dashboard", "dash"))
+    first = svc.save_review(s, analyst, "ws", subject("dashboard", "dash", task="Draft a weekly SLA dashboard"))
+    svc.save_review(s, analyst, "ws", subject("dashboard", "dash", task="Refine it by conversation"))
+    with pytest.raises(Conflict):
+        svc.save_review(s, analyst, "ws", subject("dashboard", "dash", task="Refine it by conversation"))
+    with pytest.raises(InvalidInput):  # what was assessed cannot change on edit
+        svc.save_review(s, analyst, "ws", subject("report", "doc", task="Draft a weekly SLA dashboard"), first.id, 1)
+    assert [x["id"] for x in svc.pilot_subjects(s, analyst, "ws", "ask")] == ["thr"]
+    assert [(x["id"], x["label"]) for x in svc.pilot_subjects(s, analyst, "ws", "dashboard")] == [("dash", "Dash")]
+    assert svc.pilot_subjects(s, analyst, "ws", "digest")[0]["status"] == "not run yet"
+    with pytest.raises(Forbidden):
+        svc.pilot_subjects(s, s.get(User, "viewer"), "ws", "dashboard")
+
+
+@pytest.mark.parametrize("patch", [{"run_id": None}, {"subject_type": "dashboard"},
+                                  {"subject_type": "ask", "run_id": None},
+                                  {"review_minutes": 30, "assisted_minutes": 20}, {"interventions": -1}])
+def test_pilot_contract_names_exactly_one_subject_and_keeps_review_inside_assisted_time(patch):
+    with pytest.raises(ValidationError):
+        review(**patch)

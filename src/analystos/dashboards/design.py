@@ -51,6 +51,13 @@ _METRIC = re.compile(r"\b(?:add|show|bind|plot)\s+(?:the\s+)?(?:kpi|metric)\s+(?
                      r"(?:\s+(?:as\s+an?\s+(?P<viz>\w+)))?(?:\s+by\s+(?P<dims>[\w, ]+?))?\s*$", _I)
 _PUBLISH = re.compile(r"\bpublish\b(?:\s+(?:it|this|the dashboard))?(?:\s+to\s+(?P<dest>superset|preview))?"
                       r"(?:\s+(?:for|to)\s+(?P<aud>[\w ]+?))?\s*$", _I)
+# A filter control the viewer sets (no preset value): "add a filter for region", "add region as a filter", "let viewers
+# filter by region". Read before _ADD_Q, which would otherwise ask the question path for a chart called "filter …".
+_FILTER_CONTROL = re.compile(r"^\s*(?:please\s+)?(?:(?:add|include|create|give (?:me|us|viewers))\s+(?:an?\s+|the\s+)?"
+                             r"(?:filter|slicer)(?:\s+(?:control|box|dropdown))?\s+(?:for|on|by)\s+(?P<f1>[\w ]+?)|"
+                             r"(?:add|include|use)\s+(?:the\s+)?(?P<f2>[\w ]+?)\s+as\s+an?\s+(?:filter|slicer)|"
+                             r"let\s+(?:viewers|people|users|me|us)\s+filter\s+(?:it\s+|the\s+dashboard\s+)?(?:by|on)\s+"
+                             r"(?P<f3>[\w ]+?))\s*[?.!]*$", _I)
 # CONV-01: "add resolution time by priority", "plot incidents per month as a line chart", "show me open incidents by
 # category". The rest of the sentence is a question for the governed Ask path, never a field name the rules guess.
 _ADD_Q = re.compile(rf"^\s*(?:please\s+)?(?:add|include|insert|put|create|plot|graph|chart|visuali[sz]e|draw)\s+"
@@ -106,6 +113,13 @@ def _field_name(doc: DashboardDoc, phrase: str, chart_ids: list[str] | None = No
     return None
 
 
+def _only_field_like(doc: DashboardDoc, phrase: str) -> str | None:
+    """The one field whose name starts with what was said ("assignment group" -> assignment_group_name), else None."""
+    want = _norm(phrase).replace(" ", "_")
+    found = {f.name for c in doc.charts for f in c.fields if _norm(f.name).replace(" ", "_").startswith(want + "_")}
+    return found.pop() if len(found) == 1 else None
+
+
 def rule_ops(doc: DashboardDoc, text: str, *, focus: str | None = None,
              metrics: dict[str, int] | None = None) -> tuple[list[dict[str, Any]], list[str]]:
     """Ops the rules read from `text` and notes (why a phrase was not mapped)."""
@@ -131,6 +145,14 @@ def rule_ops(doc: DashboardDoc, text: str, *, focus: str | None = None,
         if not targets:
             return [], ["no chart over time to compare"]
         return [{"op": "query.extend_period", "chart_ids": targets, "compare": "yoy" if m["yoy"] else "pop"}], notes
+    if (m := _FILTER_CONTROL.match(text)) is not None:
+        said = (m["f1"] or m["f2"] or m["f3"]).strip()
+        fname = _field_name(doc, said) or _only_field_like(doc, said)
+        if fname is None:
+            return [], [f"no chart has a field '{said}'"]
+        scope = [c.id for c in doc.charts if c.field(fname)]
+        return [{"op": "dashboard.add_filter", "field": fname, "operator": "in", "value": None,
+                 **({"scope": scope} if len(scope) != len(doc.charts) else {})}], notes
     if (m := _ADD_Q.match(text)) is not None and len(m["q"].split()) >= 1 and m["q"].lower() not in ("it", "this", "that"):
         kind = _TYPES.get((m["type"] or m["type2"] or "").lower())
         return [{"op": "chart.from_question", "question": m["q"].strip()[:500], **({"type": kind} if kind else {})}], notes
