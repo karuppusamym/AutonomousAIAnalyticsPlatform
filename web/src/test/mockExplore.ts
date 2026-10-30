@@ -67,13 +67,18 @@ export function exploreRoute(m: string, action: string, json: Record<string, unk
     const all = [...saved, ...filters];
     let n = 0;
     const tiles = [...doc.charts.map((c) => {
-      // a metric chart is filtered by any dimension of its metric (the semantic compiler adds the predicate)
-      const applies = filters.filter((f) => f.source !== c.id && (c.dataset_ref.kind === "metric" || c.fields.some((x) => canon(x.name) === canon(f.field))));
+      // a metric chart is filtered by any dimension of its metric (the semantic compiler adds the predicate); a chart
+      // over the same table as a chart that shows the field is filtered inside its own query (PILOT-FIX-03)
+      const shows = (x: typeof c, f: Filter) => x.fields.some((y) => canon(y.name) === canon(f.field));
+      const sameTable = (f: Filter) => doc.charts.some((o) => shows(o, f) && (o.provenance?.sources ?? []).some((src) => (c.provenance?.sources ?? []).includes(src)));
+      const applies = filters.filter((f) => f.source !== c.id && (c.dataset_ref.kind === "metric" || shows(c, f) || sameTable(f)));
       const own = filters.some((f) => f.source === c.id);
       const savedHere = saved.filter((f) => c.fields.some((x) => x.name === f.field));
       if (!applies.length && !(json.refresh_saved && savedHere.length)) {
         const names = filters.filter((f) => f.source !== c.id).map((f) => label(f.field)).join(", ");
-        return { id: c.id, kind: "chart", status: own ? "source" : "not_filtered", ...(own || !names ? {} : { reason: `This chart has no ${names} field.` }) };
+        const table = c.provenance?.sources[0]?.split(".").pop()?.replace(/_/g, " ");
+        return { id: c.id, kind: "chart", status: own ? "source" : "not_filtered",
+          ...(own || !names ? {} : { reason: table ? `This chart reads ${table}, which has no ${names} field.` : `This chart has no ${names} field.` }) };
       }
       const k = share(all, c.id);
       const rows = (c.preview?.rows ?? []).map((r) => {

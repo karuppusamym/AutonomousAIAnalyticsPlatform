@@ -1883,6 +1883,8 @@ export interface ScheduleConfig {
   exclude?: string[];
   /** N-3: approved delivery destinations a produced report is sent to. */
   deliver_to?: string[];
+  /** CONV-05 / PILOT-FIX-07: builder dashboards whose summary each successful run saves and delivers. */
+  digest_dashboards?: string[];
   [k: string]: unknown;
 }
 

@@ -351,3 +351,45 @@ def test_build_lists_failed_tiles_and_adds_filter_controls():
     assert kpi_row == [0, 3] and all(i.y == 0 for i in doc.layout.items if i.ref.startswith("kpi_"))
     assert doc.filters and doc.filters[0].field == "incidents.priority" and doc.filters[0].value is None
     assert validate_dashboard(doc.model_dump(mode="json"))[1] == []
+
+
+# ------------------------------------------------------------------------------------ coded numbers (rehearsal C04)
+def _col(name, semantic_type, role, distinct, data_type="integer", is_key=False):
+    return SimpleNamespace(name=name, semantic_type=semantic_type, semantics={"semantic_role": role},
+                           profile={"distinct": distinct}, is_key=is_key, data_type=data_type)
+
+
+# The incident table's catalog as the rehearsal crawled it (src ServiceNow demo, 2026-10-30).
+INCIDENT_COLUMNS = [
+    _col("category", "categorical", "dimension", 5, "text"), _col("impact", "numeric", "dimension", 3),
+    _col("made_sla", "boolean", "flag", 2, "boolean"), _col("opened_at", "datetime", "timestamp", 19987, "timestamp"),
+    _col("priority", "numeric", "dimension", 5), _col("reassignment_count", "numeric", "measure", 10),
+    _col("reopen_count", "numeric", "measure", 4), _col("state", "numeric", "dimension", 5),
+    _col("sys_id", "id", "identifier", 20000, "text", is_key=True), _col("urgency", "numeric", "dimension", 3),
+]
+
+
+def test_a_coded_integer_is_a_grouping_in_a_draft_never_an_average_kpi():
+    times, cats, nums = drafts.classify(INCIDENT_COLUMNS)
+    assert times == ["opened_at"]
+    assert {"priority", "state", "impact", "urgency"} <= set(cats) and "category" in cats
+    assert nums == ["reassignment_count", "reopen_count"]  # counts stay measures
+    assert cats.index("category") < cats.index("priority")  # text groupings first, coded numbers after
+    table = drafts.Table("itsm.incident", "incident", drafts.tokens("incident"), times[0], cats[:12], nums[:6])
+    plan = drafts.plan_draft("weekly incident operations dashboard", incident_context(metrics=[], tables=[table]))
+    titles = [t.title for t in [*plan.kpis, *plan.charts]]
+    assert not any("priority" in t.lower() and t.lower().startswith("average") for t in titles), titles
+    assert "Incident by category" in titles
+    # a grouping the prompt names comes first, so a coded column the person asked about is never crowded out
+    named = drafts.plan_draft("incident operations: resolution by priority and urgency", incident_context(metrics=[], tables=[table]))
+    assert [t.title for t in named.charts if " by " in t.title][:2] == ["Incident by priority", "Incident by urgency"]
+
+
+def test_a_code_column_in_a_result_is_an_ordinal_grouping_and_an_aggregate_of_codes_stays_a_measure():
+    fields = infer_fields(["priority", "avg_resolution_hours"], [[1, 5.5], [2, 13.9], [3, 37.0], [4, 71.8], [5, 112.8]])
+    assert [f.type for f in fields] == ["ordinal", "quantitative"]
+    kind, encoding, _ = recommend(fields, [[1, 5.5], [2, 13.9], [3, 37.0], [4, 71.8], [5, 112.8]])
+    assert kind == "bar" and encoding.x == "priority" and encoding.y == ["avg_resolution_hours"]
+    assert [f.type for f in infer_fields(["avg_priority"], [[2.9]])] == ["quantitative"]
+    assert [f.type for f in infer_fields(["avg_priority", "n"], [[3, 10], [2, 4]])] == ["quantitative", "quantitative"]
+    assert [f.type for f in infer_fields(["reopen_count", "n"], [[0, 10], [1, 4]])] == ["quantitative", "quantitative"]

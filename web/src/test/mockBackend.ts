@@ -342,7 +342,8 @@ export const BUILD_APPROVAL = "apr_build";
  * the vitest cases that change it), so no test sees another's state.
  */
 const state = { planned: false, buildApproval: "pending", proposed: [] as SemanticMetric[], decided: {} as Record<string, string>,
-  workModes: ["analysis", "engineering", "ml"] as string[], conversation: [] as Record<string, unknown>[] };
+  workModes: ["analysis", "engineering", "ml"] as string[], conversation: [] as Record<string, unknown>[],
+  scheduleConfig: {} as Schedule["config"], scheduleRevision: 1 };
 
 export function resetMockState(): void {
   resetDrafts();
@@ -355,6 +356,8 @@ export function resetMockState(): void {
   state.buildApproval = "pending";
   state.proposed = [];
   state.decided = {};
+  state.scheduleConfig = {};
+  state.scheduleRevision = 1;
   resetKnowledgeState();
   resetWave1();
   resetWave2();
@@ -813,6 +816,14 @@ export function mockBackend(method: string, path: string, requestBody?: string |
       plan_hash: RUN_ROW.plan_hash, playbook: null, error: null, complexity: null, budget: null, limitations: null,
       steps: [], events_url: `/v2/runs/${RUN}/events`, created_at: RUN_ROW.created_at, finished_at: RUN_ROW.finished_at });
   }
+  // schedule edits replace `config` wholesale, as the API does (PILOT-FIX-07 attaches dashboard summaries this way)
+  if (m === "PATCH" && p === `/schedules/${SCHEDULE.id}`) {
+    const body = requestBody ? JSON.parse(requestBody) as Partial<Schedule> : {};
+    if (body.config) state.scheduleConfig = body.config;
+    state.scheduleRevision += 1;
+    return json({ ...SCHEDULE, ...(body.enabled != null ? { enabled: body.enabled } : {}), config: state.scheduleConfig,
+      revision: state.scheduleRevision });
+  }
   if (m === "POST" && p === "/auth/login") {
     const body = requestBody ? JSON.parse(requestBody) as { password?: string } : {};
     if (body.password !== "ChangeMe123!") return json({ error: { code: "unauthorized", message: "invalid credentials", details: {} } }, 401);
@@ -909,7 +920,7 @@ export function mockBackend(method: string, path: string, requestBody?: string |
     ["GET", `/insights/${INSIGHT_VOID_ID}`, { ...INSIGHT_DETAIL, ...voidInsight(INSIGHT_ROW), queries: [], experiments: [] }],
     ["GET", `${W}/alerts`, [ALERT]],
     ["GET", `${W}/monitors`, [MONITOR, ...mlMonitors()]],
-    ["GET", `${W}/schedules`, [SCHEDULE]],
+    ["GET", `${W}/schedules`, [{ ...SCHEDULE, config: state.scheduleConfig, revision: state.scheduleRevision }]],
     ["GET", `${W}/catalog`, CATALOG],
     ["GET", `${W}/crawls`, []],
     ["GET", `${W}/assets`, []],

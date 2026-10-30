@@ -14,9 +14,16 @@ Overrides:
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 HIGH_CARDINALITY = 20
+# A number that names a category (priority 1-5, state 1-7) is a dimension: averaging it means nothing.
+MAX_CODES = 20
+CODE_ROLES = frozenset({"code", "dimension", "flag"})
+CODE_TYPES = frozenset({"code", "category", "categorical", "ordinal", "boolean"})
+CODE_WORDS = frozenset({"priority", "status", "state", "level", "severity", "urgency", "impact", "tier", "grade", "rank",
+                        "code", "type", "class", "category", "stage", "phase", "band", "bucket"})
 TOP_N_LIMIT = 15
 PIE_MAX = 5
 TREEMAP_MIN = 13
@@ -83,6 +90,20 @@ def recommend_chart(intent: str, dimension_semantic_type: str | None, cardinalit
     elif it == "correlation":
         why = "correlation matrix: heatmap"
     return {"chart_type": chart, "rationale": why, "limit": limit, "series_by_metric": series}
+
+
+def is_coded_number(name: str, *, semantic_type: str | None = None, role: str | None = None,
+                    distinct: int | None = None) -> bool:
+    """A numeric column that is a code (priority, status, level, ...): few distinct values and either the catalog
+    says it is a code or dimension, or its name reads like one. Such a column is grouped by, never averaged; a
+    count or measure role (a repeat count) or more than `MAX_CODES` values keeps it a measure."""
+    if distinct is not None and distinct > MAX_CODES:
+        return False
+    if (role or "").lower() in ("measure", "amount", "duration", "percent"):
+        return False
+    if (role or "").lower() in CODE_ROLES or (semantic_type or "").lower() in CODE_TYPES:
+        return True
+    return bool(set(re.split(r"[^a-z0-9]+", name.rsplit(".", 1)[-1].lower())) & CODE_WORDS)
 
 
 def choose_chart(intent: str, dimension_semantic_type: str | None, cardinality: int | None, n_metrics: int = 1) -> tuple[str, str]:

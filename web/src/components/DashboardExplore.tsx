@@ -254,7 +254,7 @@ export function TileStatus({ explore, id, drilled }: { explore: Explore; id: str
   return (
     <>
       <span title={t.reason}><Tag tone={tone}>{text}</Tag></span>
-      {t.reason && (tone === "warning" ? <span className="warn-text small">{t.reason}</span> : <span className="sr-only">{t.reason}</span>)}
+      {t.reason && <span className={tone === "warning" ? "warn-text small" : "muted small"}>{t.reason}</span>}
       {expert && t.query_id && <span className="muted small"><code>{t.query_id}</code>{t.cache_hit ? " (cache)" : ""}</span>}
     </>
   );

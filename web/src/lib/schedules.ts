@@ -186,6 +186,8 @@ export interface ScheduleFormState {
   crawlMode: "" | "full" | "incremental";
   crawlInclude: string;
   crawlExclude: string;
+  // any kind: builder dashboards whose summary (digest) each successful run saves and delivers (CONV-05)
+  digestDashboards: string[];
 }
 
 export function emptyScheduleForm(timezone = browserTimeZone()): ScheduleFormState {
@@ -193,7 +195,7 @@ export function emptyScheduleForm(timezone = browserTimeZone()): ScheduleFormSta
     name: "", kind: "reanalysis", preset: "weekly_monday_0700", cron: CRON_PRESETS[0].cron, timezone,
     objective: "", refreshFirst: true, publish: "skip", includeReport: true,
     reportKind: "weekly_summary", formats: ["html", "pdf", "xlsx"], runId: "", monitorIds: [], sourceIds: [],
-    crawlMode: "", crawlInclude: "", crawlExclude: "",
+    crawlMode: "", crawlInclude: "", crawlExclude: "", digestDashboards: [],
   };
 }
 
@@ -227,11 +229,17 @@ export function formFromSchedule(s: Schedule): ScheduleFormState {
     crawlMode: kind === "crawl" && (c.mode === "full" || c.mode === "incremental") ? c.mode : "",
     crawlInclude: kind === "crawl" ? (c.include ?? []).join(", ") : "",
     crawlExclude: kind === "crawl" ? (c.exclude ?? []).join(", ") : "",
+    digestDashboards: digestDashboards(c),
   };
 }
 
 /** The kind-specific `config` object sent to the API. */
 export function buildScheduleConfig(f: ScheduleFormState): ScheduleConfig {
+  const cfg = kindConfig(f);
+  return f.digestDashboards.length ? { ...cfg, digest_dashboards: [...f.digestDashboards] } : cfg;
+}
+
+function kindConfig(f: ScheduleFormState): ScheduleConfig {
   switch (f.kind) {
     case "reanalysis": {
       const cfg: ScheduleConfig = { refresh_first: f.refreshFirst, publish: f.publish };
@@ -283,6 +291,7 @@ export function validateScheduleForm(f: ScheduleFormState): ScheduleFormErrors {
 
 const MANAGED_KEYS = new Set([
   "objective", "refresh_first", "publish", "report", "kind", "formats", "run_id", "monitor_ids", "source_ids", "mode", "include", "exclude",
+  "digest_dashboards",
 ]);
 
 /**
@@ -292,4 +301,21 @@ const MANAGED_KEYS = new Set([
 export function mergeScheduleConfig(original: ScheduleConfig | undefined, built: ScheduleConfig): ScheduleConfig {
   const kept = Object.fromEntries(Object.entries(original ?? {}).filter(([k]) => !MANAGED_KEYS.has(k)));
   return { ...kept, ...built };
+}
+
+/** The builder dashboards whose summary a schedule sends with each successful run (`config.digest_dashboards`). */
+export function digestDashboards(config: ScheduleConfig | undefined): string[] {
+  const ids = (config ?? {}).digest_dashboards;
+  return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : [];
+}
+
+/**
+ * The schedule's whole config with `dashboardId`'s summary added or removed. PATCH replaces `config`, so every other
+ * key (destinations, pins, report settings) is kept as it is; an empty list removes the key.
+ */
+export function withDigest(config: ScheduleConfig | undefined, dashboardId: string, on: boolean): ScheduleConfig {
+  const current = digestDashboards(config);
+  const next = on ? [...new Set([...current, dashboardId])] : current.filter((id) => id !== dashboardId);
+  const { digest_dashboards: _old, ...rest } = config ?? {};
+  return next.length ? { ...rest, digest_dashboards: next } : rest;
 }

@@ -53,6 +53,9 @@ _PIN = re.compile(r"\b(?:pin|attach|add)\s+(?:it|this|the report)?\s*(?:to|on)\s
                   r"\b(?:deliver|send|refresh)\s+(?:it|this|the report)\s+(?:with|on|by)\s+(?:the\s+)?(?P<name2>.+?)"
                   r"(?:\s+schedule)?\s*\.?$", _I)
 _MOVE_INTO = re.compile(r"\bmove\s+(?:the\s+)?(?P<what>.+?)\s+(?:in)?to\s+(?:the\s+)?(?P<section>[\w ]+?)\s+section\s*\.?$", _I)
+_DRAFT = re.compile(r"^\s*(?:please\s+)?(?:(?:write|draft|add|give me|create|generate|compose)\s+(?:me\s+)?"
+                    r"(?:a|an|the|my)?\s*(?:[\w-]+\s+){0,3}?summary\b(?!\s+(?:section|text\s+to|to\b))|"
+                    r"(?:summari[sz]e|sum up)\s+(?:it|this|the report|the findings|everything)\b)", _I)
 _INCLUDE = re.compile(r"^\s*(?:please\s+)?(?:include|add|insert|put|show|bring in|use|attach)\s+(?:in\s+)?(?P<what>.+?)"
                       r"(?:\s+(?:in|into|to|under|within)\s+(?:the\s+)?(?P<section>[\w ]+?)\s+section)?\s*\.?$", _I)
 
@@ -284,11 +287,39 @@ def _summary(doc: ReportDoc, catalog: list[CatalogItem], schedules: dict[str, st
             "schedules": schedules or {}}
 
 
+def draft_summary(doc: ReportDoc, text: str, *, router: Any = None, call_ctx: Any = None) -> DesignResult | None:
+    """"Write a short summary": the summary drafted by code from the report's verified blocks (PILOT-FIX-08), worded
+    by templates unless the `data_story` purpose is `always`; a `text.set` the engine numbers-guards again."""
+    from analystos.reports import summary
+
+    if not _DRAFT.match(text) or _ADD_SECTION.match(text):
+        return None
+    d = summary.draft(doc, limit=summary.wanted_length(text))
+    if not d.sentences:
+        return DesignResult([], "none", ["There is nothing verified to summarise yet: add a KPI, chart or finding first, "
+                                         "or set the text yourself (“set the summary text to: …”)."])
+    d = summary.reword(d, router=router, call_ctx=call_ctx)
+    sid = find_section(doc, "summary")
+    ops: list[dict[str, Any]] = []
+    if sid is None:
+        sid = unique_id(doc, "summary")
+        ops += [{"op": "section.add", "title": "Summary", "section_id": sid}, {"op": "section.move", "section_id": sid,
+                                                                               "direction": "top"}]
+    ops.append({"op": "text.set", "section_id": sid, "markdown": d.markdown})
+    where = "a model's wording, numbers checked" if d.wording == "llm_small" else "template sentences"
+    notes = [f"Drafted the summary from the report's verified figures ({len(d.sentences)} "
+             f"sentence{'s' if len(d.sentences) != 1 else ''}, {where}); rewrite it with “set the summary text to: …”.", *d.notes]
+    return DesignResult(parse_ops(ops), d.wording, notes)
+
+
 def design(doc: ReportDoc, text: str, *, router: Any = None, call_ctx: Any = None, focus: str | None = None,
            catalog: list[CatalogItem] | None = None, schedules: dict[str, str] | None = None) -> DesignResult:
     """Run the ladder. Without a router (or with the purpose off) the rules decide alone."""
     from analystos.core.errors import AnalystOSError
 
+    drafted = draft_summary(doc, text, router=router, call_ctx=call_ctx)
+    if drafted is not None:
+        return drafted
     raw, notes = rule_ops(doc, text, focus=focus, catalog=catalog, schedules=schedules)
     mode = router.mode(PURPOSE, call_ctx) if router is not None else "off"
     if raw and mode in ("off", "auto"):
