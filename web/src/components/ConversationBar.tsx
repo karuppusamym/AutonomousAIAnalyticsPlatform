@@ -27,6 +27,7 @@ function timeWindowText(tw: ConversationState["state"]["time_window"]): string |
   if (!tw) return null;
   if (typeof tw === "string") return tw;
   const t = tw as Record<string, unknown>;
+  if (typeof t.label === "string" && t.label) return t.label;
   return [t.start, t.end].filter(Boolean).join(" – ") + (t.grain ? ` by ${String(t.grain)}` : "") || JSON.stringify(tw);
 }
 

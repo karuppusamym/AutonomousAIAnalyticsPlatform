@@ -1,4 +1,4 @@
-"""analystos CLI: migrate | provision-analytics-roles | seed | demo-seed | worker | scheduler | api | export-contracts | replay-run | packs | calibrate | knowledge | check-semantics | audit | ops"""
+"""analystos CLI: migrate | provision-analytics-roles | seed | demo-seed | worker | driver | scheduler | api | export-contracts | replay-run | packs | calibrate | knowledge | check-semantics | audit | ops"""
 from __future__ import annotations
 
 import argparse
@@ -290,7 +290,7 @@ def bi_sync(workspace_ids: list[str] | None = None) -> dict:
 
 
 # Long-running servers bind tenants per request, per run and per claimed item; demo-seed goes through the API.
-_SELF_BINDING = ("worker", "scheduler", "api", "demo-seed")
+_SELF_BINDING = ("worker", "driver", "scheduler", "api", "demo-seed")
 
 
 def certify_connector_main(argv: list[str]) -> int:
@@ -371,11 +371,13 @@ def _main(argv: list[str]) -> int:
         rest = [a for a in argv[1:] if a != "--json"]
         return check_semantics(rest, as_json="--json" in argv[1:])
     parser = argparse.ArgumentParser(prog="analystos")
-    parser.add_argument("command", choices=["migrate", "provision-analytics-roles", "seed", "worker", "scheduler", "api",
+    parser.add_argument("command", choices=["migrate", "provision-analytics-roles", "seed", "worker", "driver", "scheduler", "api",
                                             "export-contracts", "replay-run", "packs", "calibrate", "knowledge", "schedules", "audit", "context",
                                             "bi-sync", "sandbox-status", "check-semantics", "demo-seed",
                                             "certify-connector", "ops"],
-                        help="knowledge: `analystos knowledge --help` (reindex, reembed, import, export, ...); "
+                        help="driver: drive local/langgraph runs under Postgres run leases (ANALYSTOS_RUN_DRIVER=process, "
+                             "ORC-T7; --max-runs N); "
+                             "knowledge: `analystos knowledge --help` (reindex, reembed, import, export, ...); "
                              "demo-seed: `analystos demo-seed --help` (a ready demo workspace through the API); "
                              "check-semantics: `analystos check-semantics PATH... [--json]` (offline model validation); "
                              "schedules: `analystos schedules disable-demo [--all] [--workspace W] [--dry-run]`; "
@@ -391,6 +393,7 @@ def _main(argv: list[str]) -> int:
                                          "compute-ml (ADR-0022) are named alone and run without credentials")
     parser.add_argument("--conformance", action="store_true",
                         help="worker, isolated pools only: also serve the conformance probe (tests/conformance/worker)")
+    parser.add_argument("--max-runs", type=int, help="driver: runs this process drives at once (ANALYSTOS_DRIVER_MAX_RUNS)")
     parser.add_argument("--dry-run", action="store_true", help="calibrate: report without downgrading or restoring")
     parser.add_argument("--workspace", action="append", help="bi-sync: only members of this workspace (repeatable)")
     args = parser.parse_args(argv)
@@ -414,6 +417,12 @@ def _main(argv: list[str]) -> int:
         code = run_worker(args.queues, conformance=True) if args.conformance else run_worker(args.queues)
         if isinstance(code, int) and code:
             return code
+    elif args.command == "driver":
+        from analystos.observability.server import serve_metrics
+        from analystos.workflows.driver import serve
+
+        serve_metrics("driver")
+        serve(args.max_runs)
     elif args.command == "scheduler":
         from analystos.observability.server import serve_metrics
         from analystos.services.schedules import run_scheduler

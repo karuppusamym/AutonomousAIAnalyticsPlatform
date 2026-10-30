@@ -370,4 +370,4 @@ Wave D may move ahead of E when the pilot's job is engineering-first (as the tra
 4. **Donor freeze.** Should Atlas's live users (if any) migrate before the freeze, or stay on a
    frozen Atlas release?
 5. **LangGraph.** It was declined in favour of playbooks on Temporal. Revisit only if a
-   discipline's flow can't be expressed as a playbook plus `expands`.
+   discipline's flow can't be expressed as a playbook plus `expands`. *Update:* [ADR-015](../03-decisions/adr-log.md) (accepted 2026-10-29, built 2026-10-30) adds LangGraph as an optional orchestrator *backend*: a stateless driver over the same engine and Postgres state, never the flow definition; playbooks stay the only flow definition.

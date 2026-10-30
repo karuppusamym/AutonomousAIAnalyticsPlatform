@@ -38,9 +38,10 @@ export function provenancePills(turn: AskTurn): Pill[] {
   const p = turn.provenance ?? {};
   const out: Pill[] = [];
   if (turn.status === "answered") {
+    const metrics = (p.semantic?.metrics ?? []).map((m) => `${m.name} v${m.version}`).join(", ");
     out.push(p.governance === "governed"
       ? { tone: turn.evidence_status?.state === "changed" ? "warning" : "success", label: "Approved metric calculation",
-        title: "Compiled from a pinned approved definition; see the evidence for its current state" }
+        title: `Compiled from a pinned approved definition${metrics ? ` (${metrics})` : ""}; see the evidence for its current state` }
       : { tone: "neutral", label: "Ad hoc analysis", title: "This answer does not use a compiled approved metric definition" });
   }
   if (turn.answered_by === "registry") {
@@ -111,6 +112,26 @@ export function turnSuggestions(turn: AskTurn): string[] {
 
 export function refusalView(r: AskRefusal | null | undefined): RefusalView {
   return REFUSAL_VIEWS[r?.kind ?? "failed"] ?? REFUSAL_VIEWS.failed;
+}
+
+const NEEDS_MODEL = {
+  title: "This question needs an AI model",
+  message: "This question needs an AI model, which isn't turned on for this workspace. Ask your administrator.",
+  remedy: "Nothing was guessed. Questions the platform answers without a model (counts and breakdowns of a table, approved metrics, saved answers) still work.",
+};
+/** Refusals only an administrator can fix, in business words (the server sends `business`; older turns fall back here). */
+const BUSINESS_REFUSALS: Record<string, { title: string; message: string; remedy: string }> = {
+  no_api_key: NEEDS_MODEL, mode_off: NEEDS_MODEL, no_model: NEEDS_MODEL, policy_blocked: NEEDS_MODEL, residency_blocked: NEEDS_MODEL,
+  provider_cooldown: { title: "The AI model is unavailable right now",
+    message: "The AI model this workspace uses is unavailable right now. Ask your administrator.", remedy: "Nothing was guessed. Try again later." },
+};
+
+/** What a refusal says to this reader: administrators and the expert view keep the technical title and remedy
+ * (an environment variable, a restart); everyone else reads the business words and no setup steps. */
+export function refusalText(r: AskRefusal | null | undefined, technical: boolean): { title: string; message: string; remedy: string; business: boolean } {
+  const business = r ? r.business ?? BUSINESS_REFUSALS[r.kind] : undefined;
+  if (business && !technical) return { ...business, business: true };
+  return { title: r?.title ?? "Not answered", message: r?.message ?? "", remedy: r?.remedy ?? "Rephrase the question.", business: false };
 }
 
 export const PROMOTE_LABELS: Record<string, string> = {

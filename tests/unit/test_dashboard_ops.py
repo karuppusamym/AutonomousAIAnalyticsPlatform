@@ -74,6 +74,16 @@ def test_add_filter_resolves_values_and_scopes():
     assert run([{"op": "dashboard.add_filter", "field": "region", "value": "APAC", "scope": ["trend"]}], d).ok
 
 
+def test_a_second_identical_filter_control_is_refused():
+    """Rehearsal C04 re-walk: "add a filter for assignment group" on a draft that already had that control added a twin."""
+    d = doc().model_copy(update={"filters": []})
+    first = run([{"op": "dashboard.add_filter", "field": "region", "value": None}], d)
+    assert first.ok and first.doc.filters[0].value is None
+    again = run([{"op": "dashboard.add_filter", "field": "region", "value": None}], first.doc)
+    assert not again.ok and "already has a filter for region" in again.refused[0].reason
+    assert run([{"op": "dashboard.add_filter", "field": "region", "value": "APAC"}], first.doc).ok  # a value is a restriction
+
+
 def test_extend_period_creates_a_new_query_version():
     r = run([{"op": "query.extend_period", "chart_ids": ["trend"], "compare": "yoy"}])
     chart = r.doc.chart("trend")

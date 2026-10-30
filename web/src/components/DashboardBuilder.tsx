@@ -390,7 +390,7 @@ function BuilderView({ dashboard: d, role, onUpdated: updated }: {
         <BuilderGrid doc={d.document} focus={focus} onFocus={(id) => setFocus(focus === id ? null : id)} explore={explore} />
         <RowsPanel explore={explore} charts={d.document.charts} />
       </Card>
-      <ErrorBoundary label="Summary" resetKey={`${d.id}@${d.version}`}><DashboardSummary dashboard={d} /></ErrorBoundary>
+      <ErrorBoundary label="Summary" resetKey={`${d.id}@${d.version}`}><DashboardSummary dashboard={d} canEdit={canEdit} /></ErrorBoundary>
       {d.status === "published" && d.platform === "superset" && (
         <Card title="Published in Superset" label="Published dashboard in Superset">
           <EmbeddedDashboard artifactId={d.id} title={d.document.title} />

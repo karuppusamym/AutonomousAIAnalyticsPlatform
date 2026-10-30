@@ -154,3 +154,30 @@ def test_story_becomes_a_report_and_a_pinned_report_refreshes_on_a_schedule_fire
         report = s.get(Artifact, info["report_artifact_id"])
         assert report.type == "report" and report.status == "final" and report.content["kind"] == "document"
         assert report.content["source"]["report_document"] == art.id and "html" in report.content["files"]
+
+
+def test_the_schedule_screen_attaches_a_dashboard_summary_through_the_schedule_edit(world):
+    """PILOT-FIX-07: the web control sends the schedule's whole config with `digest_dashboards` added; the edit needs an
+    editor, names builder dashboards only, keeps the other keys, and the next fire saves the digest (sent nowhere
+    without a destination: delivery goes only through the schedule's approved destinations)."""
+    from analystos.core.errors import InvalidInput
+    from analystos.services import report_docs as svc
+    from analystos.services.schedules import update_schedule
+
+    with world["factory"]() as s:
+        sch = Schedule(id="sch_d", workspace_id=world["ws"], name="Monday delivery digest", kind="monitor", cron="0 7 * * 1",
+                       timezone="UTC", config={"monitor_ids": []}, owner_id="u_editor", enabled=True)
+        s.add(sch)
+        s.flush()
+        with pytest.raises(Forbidden):
+            update_schedule(s, U(s, "u_viewer"), "sch_d", {"config": {"monitor_ids": [], "digest_dashboards": [world["dash"]]}})
+        with pytest.raises(InvalidInput, match="not a builder dashboard"):
+            update_schedule(s, U(s, "u_editor"), "sch_d", {"config": {"digest_dashboards": ["art_nope"]}})
+        updated = update_schedule(s, U(s, "u_editor"), "sch_d", {"config": {"monitor_ids": [], "digest_dashboards": [world["dash"]]}})
+        assert updated.config == {"monitor_ids": [], "digest_dashboards": [world["dash"]]}
+
+        result = svc.after_schedule_fire(s, updated, type("Run", (), {"id": "srun_d"})())
+        digest = result["digests"][world["dash"]]
+        assert digest["deliveries"] == [] and "error" not in digest
+        report = s.get(Artifact, digest["report_artifact_id"])
+        assert report.type == "report" and report.status == "final" and report.content["source"]["dashboard"] == world["dash"]

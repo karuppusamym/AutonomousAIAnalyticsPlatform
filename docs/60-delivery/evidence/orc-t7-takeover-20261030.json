@@ -1,0 +1,139 @@
+{
+  "samples": [
+    {
+      "t": 0.6,
+      "holder": "MSI:17976:a68dc037",
+      "epoch": 1,
+      "status": "RUNNING"
+    },
+    {
+      "t": 11.3,
+      "holder": "MSI:28596:80e66ba6",
+      "epoch": 2,
+      "status": "RUNNING"
+    },
+    {
+      "t": 427.8,
+      "holder": null,
+      "epoch": 2,
+      "status": "WAITING_USER"
+    },
+    {
+      "t": 429.0,
+      "holder": null,
+      "epoch": 3,
+      "status": "PAUSED"
+    },
+    {
+      "t": 432.5,
+      "holder": null,
+      "epoch": 3,
+      "status": "RUNNING"
+    },
+    {
+      "t": 433.7,
+      "holder": "MSI:28596:80e66ba6",
+      "epoch": 4,
+      "status": "RUNNING"
+    },
+    {
+      "t": 493.4,
+      "holder": "MSI:28596:80e66ba6",
+      "epoch": 4,
+      "status": "COMPLETED"
+    }
+  ],
+  "run": "run_02ac61fbeb7f",
+  "killed_holder": "MSI:17976:a68dc037",
+  "killed_epoch": 1,
+  "killed_pid": 17976,
+  "running_at_kill": [
+    "relationships",
+    "profile"
+  ],
+  "claims_at_kill": {
+    "_planning": 0,
+    "context": 1,
+    "metadata": 1,
+    "relationships": 1,
+    "profile": 1,
+    "quality": 0,
+    "hypotheses": 0,
+    "insights": 0,
+    "verify": 0,
+    "dataset": 0,
+    "semantic": 0,
+    "visualize": 0,
+    "publish_request": 0,
+    "publish": 0,
+    "finalize": 0
+  },
+  "killed_at": 1793339996.536486,
+  "final_status": "COMPLETED",
+  "claims_after": {
+    "_planning": 0,
+    "context": 1,
+    "metadata": 1,
+    "relationships": 3,
+    "profile": 3,
+    "quality": 1,
+    "hypotheses": 2,
+    "insights": 1,
+    "test:H-9": 1,
+    "test:H-10": 1,
+    "verify": 1,
+    "test:H-11": 1,
+    "test:H-12": 1,
+    "test:H-13": 1,
+    "test:H-14": 1,
+    "test:H-15": 1,
+    "test:H-16": 1,
+    "test:H-17": 1,
+    "test:H-18": 1,
+    "test:H-19": 1,
+    "dataset": 1,
+    "test:H-20": 1,
+    "test:H-21": 1,
+    "test:H-22": 1,
+    "followups:1": 1,
+    "semantic": 1,
+    "followups:2": 1,
+    "visualize": 1,
+    "publish_request": 1,
+    "publish": 1,
+    "finalize": 1
+  },
+  "attempts_after": {
+    "_planning": 0,
+    "context": 1,
+    "metadata": 1,
+    "relationships": 2,
+    "profile": 2,
+    "quality": 1,
+    "hypotheses": 2,
+    "insights": 1,
+    "test:H-9": 1,
+    "test:H-10": 1,
+    "verify": 1,
+    "test:H-11": 1,
+    "test:H-12": 1,
+    "test:H-13": 1,
+    "test:H-14": 1,
+    "test:H-15": 1,
+    "test:H-16": 1,
+    "test:H-17": 1,
+    "test:H-18": 1,
+    "test:H-19": 1,
+    "dataset": 1,
+    "test:H-20": 1,
+    "test:H-21": 1,
+    "test:H-22": 1,
+    "followups:1": 1,
+    "semantic": 1,
+    "followups:2": 1,
+    "visualize": 1,
+    "publish_request": 1,
+    "publish": 1,
+    "finalize": 1
+  }
+}

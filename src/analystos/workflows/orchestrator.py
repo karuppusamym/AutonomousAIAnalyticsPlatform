@@ -1,5 +1,7 @@
-"""Start/signal runs on the configured orchestrator. `temporal` in standard/scale deployments; `local`
-runs the same engine loop in the API process (the lite profile, tests, laptops; ADR-0025)."""
+"""Start/signal runs on the configured orchestrator backend (ADR-015, `workflows/backends.py`). `temporal`
+in standard/scale deployments; `local` runs the same engine loop in the API process (the lite profile,
+tests, laptops; ADR-0025); `langgraph` drives it with a stateless LangGraph graph hosted on the same
+`LocalRuntime` machinery (`workflows/langgraph_backend.py`)."""
 from __future__ import annotations
 
 import asyncio
@@ -12,6 +14,8 @@ from analystos.core.config import get_settings
 from analystos.core.errors import UpstreamUnavailable
 from analystos.core.logging import get_logger
 from analystos.runtime import engine
+from analystos.runtime.loop import next_action, waits_for_person
+from analystos.workflows.backends import Capabilities, capabilities
 
 log = get_logger(__name__)
 _loop: asyncio.AbstractEventLoop | None = None
@@ -126,8 +130,27 @@ def workflow_id(run_id: str) -> str:
 
 
 def start_run(run_id: str) -> str:
-    settings = get_settings()
-    if settings.orchestrator == "temporal":
+    from analystos.workflows.backends import get_backend
+
+    return get_backend(get_settings()).start_run(run_id)
+
+
+def signal_run(run_id: str) -> None:
+    """Something the run waits on changed (an approval, a control, feedback). Temporal gets a `nudge`;
+    an in-process backend re-drives the run, which holds no thread while it waits (ADR-0025)."""
+    from analystos.workflows.backends import get_backend
+
+    get_backend(get_settings()).signal_run(run_id)
+
+
+class TemporalBackend:
+    """Runs are AnalysisWorkflow executions on the `analysis` queue; `analystos worker` drives them."""
+
+    name = "temporal"
+    capabilities: Capabilities = capabilities("temporal")
+
+    def start_run(self, run_id: str) -> str:
+        settings = get_settings()
         _require_temporal()
 
         async def go():
@@ -146,24 +169,57 @@ def start_run(run_id: str) -> str:
         with as_owner_of("analysis_run", run_id):  # the workflow header carries the run's tenant
             _run(go())
         return workflow_id(run_id)
-    local_runtime().submit(run_id)
-    return f"local-{run_id}"
+
+    def signal_run(self, run_id: str) -> None:
+        async def go():
+            client = await _temporal_client()
+            await client.get_workflow_handle(workflow_id(run_id)).signal("nudge")
+        try:
+            _run(go())
+        except Exception as exc:  # the workflow also re-checks state periodically
+            log.warning("signal to %s failed: %s", run_id, exc)
+
+    def resume(self, run_ids: list[str] | None = None) -> list[str]:
+        return []  # Temporal re-dispatches its own work
+
+    def health(self) -> dict:
+        return {"backend": self.name, **self.capabilities.as_dict()}
 
 
-def signal_run(run_id: str) -> None:
-    """Something the run waits on changed (an approval, a control, feedback). Temporal gets a `nudge`;
-    the local orchestrator re-drives the run, which holds no thread while it waits (ADR-0025)."""
-    if get_settings().orchestrator != "temporal":
+class InProcessBackend:
+    """`local` and `langgraph`: this platform's own processes drive runs from Postgres task state. By
+    default the API process does (`LocalRuntime`); with `ANALYSTOS_RUN_DRIVER=process`, `analystos driver`
+    processes do, under Postgres run leases (ORC-T7), and the API only records that a run wants driving."""
+
+    def __init__(self, caps: Capabilities) -> None:
+        self.name, self.capabilities = caps.name, caps
+
+    @staticmethod
+    def _leased() -> bool:
+        return getattr(get_settings(), "run_driver", "api") == "process"
+
+    def start_run(self, run_id: str) -> str:
+        self.signal_run(run_id)
+        return f"{self.name}-{run_id}"
+
+    def signal_run(self, run_id: str) -> None:
+        if self._leased():
+            from analystos.workflows.driver import wake
+
+            wake(run_id)
+            return
         local_runtime().submit(run_id)
-        return
 
-    async def go():
-        client = await _temporal_client()
-        await client.get_workflow_handle(workflow_id(run_id)).signal("nudge")
-    try:
-        _run(go())
-    except Exception as exc:  # the workflow also re-checks state periodically
-        log.warning("signal to %s failed: %s", run_id, exc)
+    def resume(self, run_ids: list[str] | None = None) -> list[str]:
+        if self._leased():
+            return []  # drivers take expired leases over themselves
+        return local_runtime().resume(run_ids)
+
+    def health(self) -> dict:
+        out = {"backend": self.name, **self.capabilities.as_dict(), "run_driver": "process" if self._leased() else "api"}
+        if _runtime is not None:
+            out["driving"] = len(_runtime.active())
+        return out
 
 
 def start_crawl_job(crawl_id: str, user_id: str) -> str | None:
@@ -172,7 +228,7 @@ def start_crawl_job(crawl_id: str, user_id: str) -> str | None:
     from analystos.tenancy.background import as_owner_of
 
     settings = get_settings()
-    if settings.orchestrator != "temporal":
+    if not capabilities(settings).remote_compute:
         return None
 
     async def go():
@@ -203,7 +259,7 @@ def run_recipe_compute(job: dict) -> dict:
         from analystos.workers.recipe import run_recipe_isolated
 
         return run_recipe_isolated(job, settings=settings)
-    if settings.orchestrator != "temporal":
+    if not capabilities(settings).remote_compute:
         return run_snapshot_job(job)
 
     async def go():
@@ -236,7 +292,7 @@ def run_ml_compute(job: dict) -> dict:
         from analystos.workers.ml import run_ml_isolated
 
         return run_ml_isolated(job, settings=settings)
-    if settings.orchestrator != "temporal":
+    if not capabilities(settings).remote_compute:
         return run_ml_job(job)
 
     async def go():
@@ -289,6 +345,8 @@ def temporal_unreachable(exc: BaseException) -> bool:
 # ------------------------------------------------------------------------------ local orchestrator
 MAX_ATTEMPTS = 3
 PARKED = ("WAITING_USER", "PAUSED")
+# A leased drive (ORC-T7) stopped because its driver no longer holds the run's lease; nothing was finished.
+LEASE_LOST = "LEASE_LOST"
 
 
 def _execute_with_retries(run_id: str, key: str, sleep: Callable[[float], None] = time.sleep) -> None:
@@ -364,24 +422,31 @@ class LocalRuntime:
             with self._lock:
                 self._release(run_id)
 
-    def drive(self, run_id: str, *, park: bool, max_seconds: float | None = None, poll: float | None = None) -> str:
+    def drive(self, run_id: str, *, park: bool, max_seconds: float | None = None, poll: float | None = None,
+              keep_going: Callable[[], bool] | None = None) -> str:
         """The control loop of the Temporal workflow. With `park`, return WAITING_USER or PAUSED instead
-        of polling a run that waits for a person. `max_seconds` bounds only the time spent not waiting."""
+        of polling a run that waits for a person. `max_seconds` bounds only the time spent not waiting.
+        `keep_going` (a leased drive, ORC-T7) is checked before every engine call that decides: once it is
+        False the drive lets started tasks finish and returns LEASE_LOST without touching the run."""
         poll = self.poll if poll is None else poll
         engine.plan_run(run_id)
         busy, last = 0.0, self.clock()
         inflight: dict[str, Future] = {}
         while True:
+            if keep_going is not None and not keep_going():
+                self._drain(inflight)
+                return LEASE_LOST
             state = engine.get_state(run_id)
+            action = next_action(state)  # the decision every driver shares (runtime/loop.py)
             now = self.clock()
-            waiting = bool(state.get("waiting_user")) or state.get("control") == "pause"
+            waiting = waits_for_person(state)
             if not waiting:
                 busy += now - last
             last = now
-            if state.get("terminal"):
+            if action.kind == "stop":
                 self._drain(inflight)
-                return state.get("status", "COMPLETED")
-            if state.get("control") == "cancel":
+                return action.outcome
+            if action.kind == "finish" and action.outcome == "CANCELLED":
                 self._drain(inflight)
                 engine.finish_run(run_id, "CANCELLED")
                 return "CANCELLED"
@@ -389,27 +454,21 @@ class LocalRuntime:
                 self._drain(inflight)
                 engine.finish_run(run_id, "FAILED", "local orchestrator timeout")
                 return "FAILED"
-            if state.get("needs_plan"):
+            if action.kind == "replan":
                 engine.plan_run(run_id)
                 continue
-            if state.get("fail"):
+            if action.kind == "finish":  # failed, done, or a budget counter used up (S06 §3.4)
                 self._drain(inflight)
-                engine.finish_run(run_id, "FAILED", state["fail"])
-                return "FAILED"
-            if state.get("done"):
-                self._drain(inflight)
-                engine.finish_run(run_id, "COMPLETED")
-                return "COMPLETED"
-            if state.get("limited"):  # a budget counter is used up (S06 §3.4)
-                self._drain(inflight)
-                outcome = "EXPIRED" if state.get("expired") else "COMPLETED_WITH_LIMITATIONS"
-                engine.finish_run(run_id, outcome, state["limited"])
-                return outcome
+                if action.error is None:
+                    engine.finish_run(run_id, action.outcome)
+                else:
+                    engine.finish_run(run_id, action.outcome, action.error)
+                return action.outcome
             for key in [k for k, f in inflight.items() if f.done()]:
                 del inflight[key]
-            if park and waiting and not inflight:
-                return "PAUSED" if state.get("control") == "pause" else "WAITING_USER"
-            ready = [k for k in state.get("ready") or [] if k not in inflight]
+            if park and action.kind == "park" and not inflight:
+                return action.outcome
+            ready = [k for k in action.keys if k not in inflight]
             if ready and self._tasks is None:
                 for key in ready:
                     _execute_with_retries(run_id, key, self.sleep)
@@ -474,8 +533,21 @@ def local_runtime() -> LocalRuntime:
     global _runtime
     with _runtime_lock:
         if _runtime is None:
-            _runtime = LocalRuntime(get_settings().local_worker_count)
+            _runtime = new_runtime(get_settings())
         return _runtime
+
+
+def new_runtime(settings) -> LocalRuntime:
+    """The in-process runtime of the configured backend: `LocalRuntime`, or the LangGraph driver on the
+    same machinery. Fails with the remedy when the backend's extra or guards are not satisfied."""
+    from analystos.workflows.backends import validate
+
+    validate(settings)
+    if capabilities(settings).extra == "langgraph":
+        from analystos.workflows.langgraph_backend import LangGraphRuntime
+
+        return LangGraphRuntime(settings.local_worker_count, recursion_limit=settings.langgraph_recursion_limit)
+    return LocalRuntime(settings.local_worker_count)
 
 
 def reset_local_runtime(runtime: LocalRuntime | None = None) -> LocalRuntime | None:
@@ -487,10 +559,16 @@ def reset_local_runtime(runtime: LocalRuntime | None = None) -> LocalRuntime | N
 
 
 def start_local_runtime() -> LocalRuntime | None:
-    """API startup: with the local orchestrator and resume on (lite), re-drive non-terminal runs and
-    start the sweeper. None when Temporal orchestrates."""
+    """API startup: with an in-process backend and resume on (lite, langgraph), re-drive non-terminal runs
+    and start the sweeper. None when Temporal orchestrates or `analystos driver` processes drive runs.
+    A selected backend whose extra or guards are missing stops startup here, with the remedy."""
     settings = get_settings()
-    if settings.orchestrator == "temporal" or not settings.resume_local_runs:
+    if not capabilities(settings).parks:
+        return None
+    from analystos.workflows.backends import validate
+
+    validate(settings)
+    if getattr(settings, "run_driver", "api") == "process" or not settings.resume_local_runs:
         return None
     runtime = local_runtime()
     try:

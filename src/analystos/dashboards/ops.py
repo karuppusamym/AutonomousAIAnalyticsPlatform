@@ -385,6 +385,8 @@ def _add_filter(doc: DashboardDoc, op: DashboardAddFilter, env: OpEnv) -> Dashbo
         fid, n = f"{base}_{n}", n + 1
     if op.value is None and op.operator not in ("eq", "in"):
         raise _Refused("a filter control without a value uses 'eq' or 'in'")
+    if op.value is None and any(f.field == op.field and f.value is None for f in doc.filters):
+        raise _Refused(f"the dashboard already has a filter for {op.field}")  # rehearsal C04: no second identical control
     flt = FilterDoc(id=fid, field=op.field, op=op.operator, value=resolved.value, scope=list(op.scope),
                     resolved={"input": op.value, "via": resolved.via, **({"note": resolved.note} if resolved.note else {})})
     return doc.model_copy(update={"filters": [*doc.filters, flt]})

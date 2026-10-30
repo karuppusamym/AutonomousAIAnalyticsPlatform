@@ -196,13 +196,16 @@ def test_a_click_filters_every_tile_bound_to_the_field_through_its_governed_path
     rp = t["c_region_priority"]
     assert rp["status"] == "filtered" and rp["filtered_by"] == ["Priority"]
     assert {(r[0], r[1]): r[2] for r in rp["preview"]["rows"]} == {k: v for k, v in counts(["region", "priority"], crit).items()}
-    assert t["c_trend"] == {"id": "c_trend", "kind": "chart", "status": "not_filtered", "reason": "This chart has no Priority field."}
+    # PILOT-FIX-03: the trend does not show priority, but it reads the same table: filtered inside its own query
+    trend = t["c_trend"]
+    assert trend["status"] == "filtered" and trend["filtered_by"] == ["Priority"]
+    assert sum(r[1] for r in trend["preview"]["rows"]) == len(crit)
     # a metric chart is filtered by a dimension it does not show: the semantic compiler adds the predicate
     metric = t["c_resolution_by_category"]
     assert metric["status"] == "filtered"
     assert {r[0]: pytest.approx(r[1]) for r in metric["preview"]["rows"]} == crit.groupby("category")["resolution_hours"].mean().to_dict()
     assert t["kpi_orders"]["status"] == "filtered" and t["kpi_orders"]["value"] == len(crit)
-    assert {c["purpose"] for c in gw.calls} == {"dashboard.cross_filter"} and len(gw.calls) == 3
+    assert {c["purpose"] for c in gw.calls} == {"dashboard.cross_filter"} and len(gw.calls) == 4
     assert all(c["actor"] == "user:usr_viewer" and c["max_rows"] == interact.MAX_PREVIEW_ROWS for c in gw.calls)
     assert out["apply"] == [{"op": "dashboard.add_filter", "field": "priority", "operator": "eq", "value": "1 - Critical",
                              "scope": ["c_by_priority", "c_region_priority"]}]
@@ -216,7 +219,10 @@ def test_two_filters_from_two_charts_each_leave_their_own_chart_unfiltered_by_th
     t = tiles(out)
     high_net = DATA[(DATA.priority == "2 - High") & (DATA.category == "Network")]
     assert t["kpi_orders"]["value"] == len(high_net)
-    assert t["c_by_priority"]["status"] == "source"  # it has no category field, and its own click does not filter it
+    # its own click does not filter it; the category click does, through the table both read
+    assert t["c_by_priority"]["status"] == "filtered" and t["c_by_priority"]["filtered_by"] == ["Category"]
+    assert {r[0]: r[1] for r in t["c_by_priority"]["preview"]["rows"]} == {
+        k[0]: v for k, v in counts(["priority"], DATA[DATA.category == "Network"]).items()}
     by_cat = t["c_resolution_by_category"]
     assert by_cat["filtered_by"] == ["Priority"]  # filtered by the other chart's click, not its own
 
@@ -271,7 +277,7 @@ def test_a_withheld_table_refuses_the_tile_and_keeps_the_others():
     out = explorer(scope=scope).view([ViewFilterIn(field="priority", value="1 - Critical", source="c_by_priority")])
     t = tiles(out)
     assert t["c_region_priority"]["status"] == "refused" and t["kpi_orders"]["status"] == "refused"
-    assert t["c_trend"]["status"] == "not_filtered"
+    assert t["c_trend"]["status"] == "not_filtered"  # its table is withheld: nothing to filter it through
 
 
 # ------------------------------------------------------------------------------------------- drill-down
@@ -416,3 +422,120 @@ def test_apply_as_dashboard_filter_is_the_typed_op_and_the_saved_filter_then_app
     by_id = {c["id"]: c for c in explore["charts"]}
     assert by_id["c_region_priority"]["filter_fields"] == ["region", "priority"] and by_id["c_trend"]["drill"]["kind"] == "time"
     assert explore["kpis"] == [{"id": "kpi_orders", "dimensions": DIMS}]
+
+
+# ------------------------------------------------------------------------------------------- PILOT-FIX-03 (rehearsal C05)
+TARGETS = "shop.targets"
+SQL.update({
+    "qx_count": 'SELECT COUNT(*) AS "order_count" FROM "shop"."orders"',
+    "qx_cat": 'SELECT "category" AS "category", COUNT(*) AS "orders" FROM "shop"."orders" GROUP BY "category"',
+    "qx_avg_by_pri": "SELECT priority, AVG(resolution_hours) AS avg_hours FROM shop.orders WHERE resolution_hours IS NOT NULL "
+                     "GROUP BY priority ORDER BY priority",
+    "qx_targets": "SELECT region, COUNT(*) AS target_count FROM shop.targets GROUP BY region",
+    "qx_joined": "SELECT t.region AS region, COUNT(*) AS n FROM shop.orders AS o JOIN shop.targets AS t ON o.region = t.region "
+                 "GROUP BY t.region",
+})
+
+
+def c05_gateway() -> Gateway:
+    gw = Gateway()
+    gw.con.execute("CREATE TABLE shop.targets AS SELECT * FROM (VALUES ('EMEA', 4.0), ('APAC', 6.0)) AS v(region, target_hours)")
+    return gw
+
+
+def c05_scope(**over) -> DataScope:
+    return viewer_scope(assets=[ASSET, TARGETS], asset_sources={ASSET: "src_1", TARGETS: "src_1"},
+                        columns={ASSET: COLUMNS, TARGETS: ["region", "target_hours"]}, **over)
+
+
+def c05_document() -> DashboardDoc:
+    """The rehearsal's draft shape: every tile a recorded gateway execution, KPIs as `kpi` charts, two tables."""
+    nominal = lambda n: {"name": n, "type": "nominal", "label": n.capitalize()}  # noqa: E731
+    qty = lambda n: {"name": n, "type": "quantitative"}  # noqa: E731
+
+    def rh(id_, type_, fields, q, enc):
+        return _rh(id_, id_, type_, fields, q, enc, {"columns": [f["name"] for f in fields], "rows": []})
+
+    charts = [
+        rh("c_count", "kpi", [qty("order_count")], "qx_count", {"y": ["order_count"]}),
+        rh("c_by_category", "bar", [nominal("category"), qty("orders")], "qx_cat", {"x": "category", "y": ["orders"]}),
+        rh("c_per_month", "line", [{"name": "month", "type": "temporal"}, qty("orders")], "qx_trend", {"x": "month", "y": ["orders"]}),
+        rh("c_avg_by_priority", "table", [qty("priority"), qty("avg_hours")], "qx_avg_by_pri",
+           {"y": ["priority", "avg_hours"], "aggregation": "none"}),
+        rh("c_targets", "bar", [nominal("region"), qty("target_count")], "qx_targets", {"x": "region", "y": ["target_count"]}),
+    ]
+    items = [{"ref": c["id"], "x": 0, "y": i * 4, "w": 6, "h": 4} for i, c in enumerate(charts)]
+    return DashboardDoc.model_validate({"id": "c05", "title": "Incident operations", "charts": charts, "layout": {"items": items}})
+
+
+def c05_explorer(gw: Gateway, scope: DataScope | None = None) -> Explorer:
+    doc = c05_document()
+    assets = {"qx_targets": [TARGETS], "qx_joined": [ASSET, TARGETS]}
+    return Explorer(doc=doc, scope=scope or c05_scope(), actor="user:usr_viewer", gateway=gw, resolve_value=resolver(doc),
+                    dataset_sql=lambda ref: (SQL[ref.handle_id], "postgres", assets.get(ref.handle_id, [ASSET])), catalog=CATALOG)
+
+
+def test_a_click_filters_every_tile_over_the_same_table_even_when_its_chart_does_not_show_the_field():
+    gw = c05_gateway()
+    out = c05_explorer(gw).view([ViewFilterIn(field="category", value="Network", source="c_by_category")])
+    t = tiles(out)
+    net = DATA[DATA.category == "Network"]
+    assert t["c_by_category"]["status"] == "source"
+    assert t["c_count"]["status"] == "filtered" and t["c_count"]["preview"]["rows"] == [[len(net)]]
+    assert sum(r[1] for r in t["c_per_month"]["preview"]["rows"]) == len(net)
+    by_pri = {r[0]: pytest.approx(r[1]) for r in t["c_avg_by_priority"]["preview"]["rows"]}
+    assert by_pri == net.groupby("priority")["resolution_hours"].mean().to_dict()
+    # only the tile over another table is left alone, and it says why in plain words
+    assert t["c_targets"] == {"id": "c_targets", "kind": "chart", "status": "not_filtered",
+                              "reason": "This chart reads targets, which has no Category field."}
+    # the predicate sits inside each tile's own query as a literal, and the gateway admitted every statement
+    assert len(gw.calls) == 3 and all(c["purpose"] == "dashboard.cross_filter" for c in gw.calls)
+    assert all("'Network'" in c["sql"] and "WHERE" in c["sql"] for c in gw.calls)
+
+
+def test_a_pushed_filter_lands_only_on_the_table_the_field_comes_from():
+    scope = c05_scope()
+    sql = interact.pushdown(SQL["qx_joined"], "postgres", [("region", "eq", "EMEA")], scope, {"region": {ASSET}})
+    assert "\"o\".\"region\" = 'EMEA'" in sql and "\"t\".\"region\" = 'EMEA'" not in sql
+    with pytest.raises(interact._Unavailable, match="you may not read customer_email"):
+        interact.pushdown(SQL["qx_count"], "postgres", [("customer_email", "eq", "x")], scope, {"customer_email": {ASSET}})
+    with pytest.raises(interact._Unavailable, match="does not read the table"):
+        interact.pushdown(SQL["qx_targets"], "postgres", [("category", "eq", "Network")], scope, {"category": {ASSET}})
+    with pytest.raises(interact._Unavailable, match="combines several results"):
+        interact.pushdown("SELECT 1 AS a FROM shop.orders UNION SELECT 2 FROM shop.orders", "postgres",
+                          [("category", "eq", "Network")], scope, {"category": {ASSET}})
+
+
+def test_show_rows_on_a_tile_filtered_through_its_table_lists_only_matching_rows():
+    gw = c05_gateway()
+    out = c05_explorer(gw).drill("c_per_month", [DrillStepIn(field="month", value="2026-01-01")],
+                                 [ViewFilterIn(field="category", value="Network", source="c_by_category")], detail=True)
+    assert out["filtered_by"] == ["Category"]
+    jan_net = DATA[(DATA.category == "Network") & (DATA.opened_at >= "2026-01-01") & (DATA.opened_at < "2026-02-01")]
+    assert sum(r[1] for r in out["preview"]["rows"]) == len(jan_net)
+    cat = out["detail"]["columns"].index("category")
+    assert len(out["detail"]["rows"]) == len(jan_net) and {r[cat] for r in out["detail"]["rows"]} == {"Network"}
+    assert "customer_email" not in out["detail"]["columns"]
+
+
+def test_the_viewers_row_filter_still_applies_to_a_pushed_filter():
+    gw = c05_gateway()
+    out = c05_explorer(gw, c05_scope(row_filters={ASSET: ["region = 'APAC'"]})).view(
+        [ViewFilterIn(field="category", value="Network", source="c_by_category")])
+    assert tiles(out)["c_count"]["preview"]["rows"] == [[int(((DATA.region == "APAC") & (DATA.category == "Network")).sum())]]
+    assert all("APAC" in c["executable"] for c in gw.calls)
+
+
+def test_a_computed_grouping_is_not_pushed_onto_the_raw_column():
+    """`UPPER(category) AS category` shows NETWORK; the raw column holds Network, so other tiles are left alone."""
+    SQL["qx_cat_upper"] = 'SELECT UPPER("category") AS "category", COUNT(*) AS "orders" FROM "shop"."orders" GROUP BY 1'
+    gw = c05_gateway()
+    ex = c05_explorer(gw)
+    upper = ex.doc.chart("c_by_category")
+    ex.doc = ex.doc.model_copy(update={"charts": [c if c.id != "c_by_category" else upper.model_copy(update={
+        "dataset_ref": upper.dataset_ref.model_copy(update={"handle_id": "qx_cat_upper", "query_id": "qx_cat_upper"})})
+        for c in ex.doc.charts]})
+    ex.resolve_value = lambda name, value: Resolution(value=str(value), via="vocabulary")
+    t = tiles(ex.view([ViewFilterIn(field="category", value="NETWORK", source="c_by_category")]))
+    assert t["c_count"]["status"] == "not_filtered" and t["c_per_month"]["status"] == "not_filtered"
+    assert gw.calls == []

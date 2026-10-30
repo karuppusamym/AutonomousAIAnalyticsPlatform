@@ -74,11 +74,11 @@ describe("cross-filter", () => {
     fireEvent.change(filter, { target: { value: "0" } });
     expect(await screen.findByRole("button", { name: "Remove filter Priority = 1 - Critical" })).toBeTruthy();
     await waitFor(() => expect(within(tile("Resolution time by category")).getByText("Filtered")).toBeTruthy());
-    expect(within(tile("Incident count per month")).getByText("Not filtered")).toBeTruthy();
-    expect(within(tile("Incident count per month")).getByText("This chart has no Priority field.")).toBeTruthy();  // read out
+    // PILOT-FIX-03: the trend does not show priority but reads the same table, so the server filters it too
+    expect(within(tile("Incident count per month")).getByText("Filtered")).toBeTruthy();
     expect(within(tile("Incident count by priority")).getByText("Your selection")).toBeTruthy();
     expect(within(tile("Incident count")).getByText("Filtered")).toBeTruthy();
-    expect(within(bar).getByText("3 filtered, 1 not filtered")).toBeTruthy();
+    expect(within(bar).getByText("4 filtered, 0 not filtered")).toBeTruthy();
     const views = calls(f, "POST", /\/view$/);
     expect(views).toHaveLength(1);
     expect(bodyOf(views[0][1])).toEqual({ filters: [{ field: "incident.priority", op: "eq", value: "1 - Critical",

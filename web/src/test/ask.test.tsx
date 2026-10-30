@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import axe from "axe-core";
 import { session, streamAskTurn, type AskThread } from "../api";
 import { AppRoutes } from "../App";
 import { AuthProvider } from "../auth";
 import {
-  REFUSAL_VIEWS, canPromote, decisionLine, groupThreads, promotionText, provenancePills, refusalView, stalenessPill, turnSuggestions,
+  REFUSAL_VIEWS, canPromote, decisionLine, groupThreads, promotionText, provenancePills, refusalText, refusalView, stalenessPill,
+  turnSuggestions,
 } from "../lib/ask";
+import { setExpertView } from "../lib/expert";
 import { askTurn, mockBackend, rulesTurn, RUN, THREAD_NEW, THREAD_OLD, USER, WS } from "./mockBackend";
 
 vi.setConfig({ testTimeout: 20000 });
@@ -214,6 +216,49 @@ describe("Ask page (P4-U02)", () => {
     expect(within(turn).getByText("No model provider key is set for the API")).toBeTruthy();
     expect(within(turn).getByText(/Set OPENROUTER_API_KEY for the api and worker containers/)).toBeTruthy();
     expect(within(turn).getByRole("button", { name: "Try again after the restart" })).toBeTruthy();
+  });
+
+  it("tells an analyst in the business view to ask the administrator, without deployment steps (rehearsal friction)", async () => {
+    const analyst = { ...USER, id: "usr_analyst", email: "analyst@analystos.local", name: "Ann Analyst", is_admin: false };
+    session.set("mock-token", analyst);
+    setExpertView(false);
+    const fetchMock = mockFetch();
+    fetchMock.mockImplementation(async (input, init) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && /\/auth\/me$/.test(String(input))) return new Response(JSON.stringify(analyst), { status: 200, headers: { "Content-Type": "application/json" } });
+      const r = mockBackend(method, String(input), typeof init?.body === "string" ? init.body : null);
+      return new Response(r.body, { status: r.status, headers: { "Content-Type": r.contentType } });
+    });
+    renderAt(`/w/${WS}/ask`);
+    await ask("Which configuration items had incidents in two consecutive weeks?");
+    const turn = await screen.findByRole("article", { name: "Question 1" });
+    expect(turn.querySelector("[data-refusal=no_api_key]")).toBeTruthy();
+    expect(within(turn).getByText("This question needs an AI model")).toBeTruthy();
+    expect(within(turn).getByText("This question needs an AI model, which isn't turned on for this workspace. Ask your administrator.")).toBeTruthy();
+    expect(turn.textContent).not.toMatch(/OPENROUTER_API_KEY|docker compose|environment variable/);
+    expect(within(turn).queryByRole("button", { name: "Try again after the restart" })).toBeNull();
+    // The expert view keeps the technical detail for whoever runs the deployment.
+    act(() => setExpertView(true));
+    expect(await within(turn).findByText("No model provider key is set for the API")).toBeTruthy();
+    expect(within(turn).getByText(/Set OPENROUTER_API_KEY for the api and worker containers/)).toBeTruthy();
+    setExpertView(false);
+  });
+
+  it("refusalText keeps the technical words for administrators and the expert view", () => {
+    const r = { kind: "no_api_key", title: "No model provider key is set for the API", message: "no API key (set OPENROUTER_API_KEY)",
+      remedy: "Set OPENROUTER_API_KEY …", details: {} };
+    expect(refusalText(r, false)).toMatchObject({ title: "This question needs an AI model", business: true });
+    expect(refusalText(r, true)).toMatchObject({ title: "No model provider key is set for the API", business: false });
+    expect(refusalText({ ...r, kind: "clarify" }, false)).toMatchObject({ title: r.title, business: false });
+  });
+
+  it("shows an answer's notes, such as an incomplete quarter", async () => {
+    mockFetch();
+    renderAt(`/w/${WS}/ask`);
+    await ask("What share of incidents met SLA for each assignment group in Q3 2026?");
+    const answer = await screen.findByRole("article", { name: "Question 1" });
+    const notes = within(answer).getByRole("list", { name: "Notes on this answer" });
+    expect(within(notes).getByText(/Q3 2026 is incomplete in this data: .* none in September 2026/)).toBeTruthy();
   });
 
   it("promotes to a monitor through the form, then investigates why", async () => {

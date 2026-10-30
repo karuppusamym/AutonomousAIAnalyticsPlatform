@@ -24,6 +24,7 @@ EXTRAS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "reports": (("matplotlib", "fpdf", "openpyxl"), ("matplotlib", "fpdf2", "openpyxl")),
     "temporal": (("temporalio",), ("temporalio",)),
     "graph": (("neo4j",), ("neo4j",)),
+    "langgraph": (("langgraph",), ("langgraph",)),  # the optional LangGraph orchestrator backend (ADR-015)
 }
 FEATURES = ("standard", "bi", "graph", "demo", "sandbox", "pooled")
 FEATURE_REMEDY = {
@@ -84,7 +85,9 @@ def active_features(settings: Any = None) -> set[str]:
 
         settings = get_settings()
     out = set()
-    if settings.orchestrator == "temporal":
+    from analystos.workflows.backends import capabilities
+
+    if capabilities(settings).durable:  # the Temporal orchestrator and its workers
         out.add("standard")
     if settings.superset_url:
         out.add("bi")
@@ -128,4 +131,15 @@ def summary(settings: Any = None) -> dict[str, Any]:
 
         settings = get_settings()
     return {"profile": settings.profile, "features": sorted(active_features(settings)),
-            "extras": {e: has_extra(e) for e in EXTRAS}}
+            "extras": {e: has_extra(e) for e in EXTRAS}, "orchestrator": orchestrator_summary(settings)}
+
+
+def orchestrator_summary(settings: Any) -> dict[str, Any]:
+    """The selected orchestrator backend, its capabilities, and why it cannot start here (None = it can)."""
+    from analystos.workflows.backends import capabilities
+
+    caps = capabilities(settings)
+    reason = extra_reason(caps.extra) if caps.extra else None
+    return {"backend": caps.name, "durable": caps.durable, "needs_worker": caps.needs_worker, "parks": caps.parks,
+            "run_driver": getattr(settings, "run_driver", "api") if caps.parks else None,
+            "available": reason is None, "reason": reason}

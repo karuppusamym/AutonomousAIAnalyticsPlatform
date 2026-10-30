@@ -37,4 +37,4 @@ migration of the existing agents to manifests, plus a compatibility window durin
 dispatch map remains as a fallback. Frameworks such as LangGraph, ADK and the Microsoft Agent
 Framework were considered. They were not adopted: our durability is Temporal, our governance must
 sit on our own runtime, and framework churn is a risk. Pydantic AI may be used *inside* a
-capability for typed model calls.
+capability for typed model calls. (Note, 2026-10-30: [ADR-015](../../03-decisions/adr-log.md) (accepted 2026-10-29, built 2026-10-30) adds LangGraph as an optional orchestrator *backend*: a stateless driver over the same engine and Postgres state, never the flow definition. Agents and playbooks are unchanged.)

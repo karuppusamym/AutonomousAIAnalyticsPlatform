@@ -9,7 +9,7 @@ import { fmtDate } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import {
   CRON_PRESETS, REPORT_FORMATS, REPORT_KINDS, SCHEDULE_KINDS, buildScheduleInput, cronForPreset, describeCron, emptyScheduleForm,
-  fmtInZone, formFromSchedule, mergeScheduleConfig, presetForCron, scheduleEditable, timeZoneOptions, validateScheduleForm, type ScheduleFormErrors,
+  digestDashboards, fmtInZone, formFromSchedule, mergeScheduleConfig, presetForCron, scheduleEditable, timeZoneOptions, validateScheduleForm, type ScheduleFormErrors,
   type ScheduleFormState,
 } from "../lib/schedules";
 
@@ -140,6 +140,8 @@ function ConfigSummary({ schedule: s }: { schedule: Schedule }) {
     if (c.include?.length) parts.push(`include ${c.include.join(", ")}`);
     if (c.exclude?.length) parts.push(`exclude ${c.exclude.join(", ")}`);
   }
+  const digests = digestDashboards(c).length;
+  if (digests) parts.push(`sends a summary of ${digests} dashboard${digests === 1 ? "" : "s"}`);
   return <span className="small">{parts.join(" · ") || "—"}</span>;
 }
 
@@ -210,6 +212,7 @@ export function ScheduleForm({ wsId, initial, onSaved, onCancel }: {
   const runs = useAsync(() => (f.kind === "report" ? api.listRuns(wsId) : Promise.resolve([])), [wsId, f.kind]);
   const monitors = useAsync(() => (f.kind === "monitor" ? api.listMonitors(wsId) : Promise.resolve([])), [wsId, f.kind]);
   const sources = useAsync(() => (f.kind === "dataset_refresh" || f.kind === "crawl" ? api.listSources(wsId) : Promise.resolve([])), [wsId, f.kind]);
+  const dashboards = useAsync(() => api.builderDashboards(wsId), [wsId]);
   const zones = timeZoneOptions();
 
   const submit = async (e: FormEvent) => {
@@ -227,7 +230,7 @@ export function ScheduleForm({ wsId, initial, onSaved, onCancel }: {
     if (saved) onSaved(saved);
   };
 
-  const toggleIn = (key: "formats" | "monitorIds" | "sourceIds", value: string, on: boolean) => {
+  const toggleIn = (key: "formats" | "monitorIds" | "sourceIds" | "digestDashboards", value: string, on: boolean) => {
     const cur = f[key] as string[];
     set({ [key]: on ? [...cur, value] : cur.filter((x) => x !== value) } as Partial<ScheduleFormState>);
   };
@@ -394,6 +397,22 @@ export function ScheduleForm({ wsId, initial, onSaved, onCancel }: {
             </Field>
           </div>
         </>
+      )}
+
+      {(dashboards.data?.length ?? 0) > 0 && (
+        <fieldset className="autonomy">
+          <legend>Send a summary of these dashboards</legend>
+          <p className="muted small">After each successful run, the summary is saved under Reports and sent to this schedule&apos;s delivery
+            destinations; a destination sends only while its approval stands.</p>
+          <div className="toggle-group">
+            {(dashboards.data ?? []).map((d) => (
+              <label key={d.id} className="toggle small">
+                <input type="checkbox" checked={f.digestDashboards.includes(d.id)} onChange={(e) => toggleIn("digestDashboards", d.id, e.target.checked)} />
+                {" "}{d.title ?? d.name}
+              </label>
+            ))}
+          </div>
+        </fieldset>
       )}
 
       <ErrorBox error={act.error} />

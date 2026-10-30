@@ -153,7 +153,7 @@ describe("ScheduleForm", () => {
   });
 
   it("shows kind-specific fields for report schedules", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse([
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => jsonResponse(String(url).includes("/dashboards") ? [] : [
       { id: "run_ok", status: "COMPLETED", objective: "Incidents", created_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T01:00:00Z" },
       { id: "run_bad", status: "FAILED", objective: "Broken", created_at: "2026-01-01T00:00:00Z", finished_at: null },
     ]));
