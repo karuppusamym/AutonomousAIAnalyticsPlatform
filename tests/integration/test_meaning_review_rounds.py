@@ -117,7 +117,7 @@ def test_meaning_review_converges_in_one_owner_round_and_records_it_on_the_run(c
             assert review["answered"] == ["Late delivery"]
         assert mr.finding_caveats(rid) == [
             "Data limitation: No field in the selected data records return reason. Findings can show what goes with the "
-            "outcome, not return reason themselves."]
+            "outcome, but not return reason."]
         explained = client.get(f"/api/workspaces/{wid}/grounding/runs/{rid}", headers=headers)
         assert explained.status_code == 200, explained.text
         assert [r["round"] for r in explained.json()["rounds"]] == [1]

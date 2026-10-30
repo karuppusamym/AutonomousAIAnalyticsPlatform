@@ -160,7 +160,7 @@ def absent_limitation(term: str, cat_tokens: set[str], *, model_says_absent: boo
     phrase = term.strip().rstrip("?.").lower()
     return {"key": key_of(term), "term": term.strip(), "kind": "absent_data",
             "statement": f"No field in the selected data records {phrase}. Findings can show what goes with the "
-                         f"outcome, not {phrase} themselves."}
+                         f"outcome, but not {phrase}."}
 
 
 def noun_limitation(noun: str) -> dict:

@@ -16,7 +16,7 @@ const REVIEW = {
   questions: [{ key: "delivery late", term: "late delivery", question: "What counts as a late delivery?", kind: "model",
     columns: ["r.orders.promised_date", "r.orders.delivered_date"] }],
   limitations: [{ key: "reason return", term: "return reason", kind: "absent_data",
-    statement: "No field in the selected data records return reason. Findings can show what goes with the outcome, not return reason themselves." }],
+    statement: "No field in the selected data records return reason. Findings can show what goes with the outcome, but not return reason." }],
   not_asked: [], answered: [], pinned: [], binding_revisions: {},
   resolved_without_asking: [{ term: "Sales Channel", by: "catalog", columns: ["r.orders.sales_channel"] },
     { term: "Region", by: "catalog", columns: ["r.customers.region"] }, { term: "Category", by: "catalog", columns: ["r.products.category"] }],
