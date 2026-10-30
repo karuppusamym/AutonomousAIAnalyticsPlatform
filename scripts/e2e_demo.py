@@ -53,6 +53,10 @@ class Api:
         return r.json()
 
 
+# Set in main(): answers a run's business-meaning questions as the workspace owner (see owner_answers_meaning).
+ON_WAITING = None
+
+
 def wait(api: Api, ws: str, run: str, predicate, *, timeout=1800, label=""):
     started = time.time()
     last = None
@@ -63,10 +67,73 @@ def wait(api: Api, ws: str, run: str, predicate, *, timeout=1800, label=""):
             last = detail["status"]
         if predicate(detail):
             return detail
+        if detail["status"] == "WAITING_USER" and ON_WAITING is not None and ON_WAITING(run):
+            last = None
+            continue
         if detail["status"] in ("FAILED", "CANCELLED"):
             raise SystemExit(f"run ended {detail['status']}: {detail.get('error')}")
         time.sleep(3)
     raise SystemExit(f"timeout waiting for {label}")
+
+
+def metric_contract(proposal: dict, types: dict[str, str]) -> dict | None:
+    """The owner's contract for a metric the run proposed, from the columns it names. Only the shapes this demo
+    population has; anything else returns None and the scenario stops instead of guessing a meaning."""
+    cols = proposal.get("columns") or []
+    text = (proposal.get("term", "") + " " + proposal.get("definition", "")).lower()
+    name = lambda ref: ref.rsplit(".", 1)[-1]  # noqa: E731
+    time_col = next((c for c in cols if types.get(c) == "datetime"), None)
+    flags = [c for c in cols if types.get(c) == "boolean"]
+    counts = [c for c in cols if types.get(c) == "numeric" and name(c) != "priority"]
+    if flags:
+        miss = any(w in text for w in ("breach", "miss", "fail", "= false"))
+        return {"outcome_column": flags[0], "calculation": "flag_rate", "true_value": not miss,
+                "numerator": f"incidents with {name(flags[0])} = {str(not miss).lower()}", "denominator": "all incidents",
+                "grain": "incident", "unit": "share of incidents", "time_column": time_col}
+    if "critical" in text and any(name(c) == "priority" for c in cols):
+        pr = next(c for c in cols if name(c) == "priority")
+        return {"outcome_column": pr, "calculation": "flag_rate", "true_value": 1, "numerator": "incidents with priority 1",
+                "denominator": "all incidents", "grain": "incident", "unit": "share of incidents", "time_column": time_col}
+    if counts:
+        return {"outcome_column": counts[0], "calculation": "numeric_mean", "numerator": f"sum of {name(counts[0])}",
+                "denominator": "incidents", "grain": "incident", "unit": f"{name(counts[0]).replace('_', ' ')} per incident",
+                "time_column": time_col}
+    if "recurr" in text and any(name(c) == "cmdb_ci" for c in cols):
+        ci = next(c for c in cols if name(c) == "cmdb_ci")
+        return {"outcome_column": ci, "calculation": "auto",
+                "numerator": "configuration items with two or more incidents opened in the window",
+                "denominator": "configuration items with at least one incident in the window",
+                "grain": "configuration item", "unit": "share of configuration items", "time_column": time_col}
+    return None
+
+
+def owner_answers_meaning(admin: Api, analyst: Api, ws: str, run: str, owner_id: str, types: dict[str, str], ev: dict) -> bool:
+    """When a run waits for business meaning (context grounding asks once, before testing), the owner defines the
+    metrics it proposed and asks for a recheck, as a person would on the Data dictionary screen. A question that is
+    not a proposed metric stops the scenario: the script does not invent business definitions."""
+    report = admin.get(f"/api/workspaces/{ws}/grounding/runs/{run}")["grounding"]
+    if not report.get("needs_clarification"):
+        return False
+    questions = (report.get("meaning_review") or {}).get("questions") or []
+    other = [q["question"] for q in questions if q.get("kind") != "metric"]
+    if other:
+        raise SystemExit(f"run {run} waits for meanings the scenario does not define: {other}")
+    answered = []
+    for p in report.get("metric_proposals") or []:
+        contract = metric_contract(p, types)
+        if contract is None:
+            raise SystemExit(f"no owner contract for the proposed metric {p['term']!r} ({p.get('columns')})")
+        b = admin.post(f"/api/workspaces/{ws}/grounding/bindings", {
+            "term": p["term"], "kind": "metric", "state": "approved", "owner_id": owner_id,
+            "definition": (p.get("definition") or p["term"])[:3000], "columns": p.get("columns") or [],
+            "metric": {k: v for k, v in contract.items() if v is not None},
+            "evidence": "Reviewed by the workspace owner for the e2e demo from the run's proposal and the catalog.",
+            "examples": "An incident in the window counts once in the denominator; the numerator follows the stated rule."})
+        answered.append({"term": p["term"], "binding": b["id"], "calculation": contract["calculation"]})
+    analyst.post(f"/api/workspaces/{ws}/grounding/runs/{run}/recheck")
+    ev.setdefault("owner_meaning_answers", []).append(answered)
+    print(f"  owner defined {len(answered)} proposed metric(s) and asked for a recheck", flush=True)
+    return True
 
 
 def run_seconds(detail: dict | None) -> float | None:
@@ -125,6 +192,10 @@ def main() -> int:
         "columns": [incident["cmdb_ci"], incident["opened_at"]],
         "evidence": "Service management policy reviewed by the workspace owner for the e2e demo.",
         "examples": "A CI with incidents opened on 2026-03-02 and 2026-04-11 is recurring; a CI with one incident is not."})["id"]
+
+    global ON_WAITING
+    types = {c["ref"]: c.get("type", "") for c in admin.get(f"/api/workspaces/{wid}/grounding")["catalog"]}
+    ON_WAITING = lambda run_id: owner_answers_meaning(admin, analyst, wid, run_id, me, types, ev)  # noqa: E731
 
     # run
     run = analyst.post(f"/api/workspaces/{wid}/analysis", {"objective": OBJECTIVE})

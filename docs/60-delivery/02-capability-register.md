@@ -1,5 +1,23 @@
 # Capability register (evidence)
 
+## 2026-10-30 — Redeploy on Docker compose and live e2e re-run (V2-E2E-1)
+
+The full compose stack (profiles standard, bi, demo: API, worker, scheduler, Temporal, Redis, Superset 6.1.0, ServiceNow
+mock, web) was rebuilt from `main` and redeployed on the Windows dev host. Host ports 5432 and 8090 belong to other
+software here, so a local, uncommitted override published Postgres on 127.0.0.1:15432 and the mock on 127.0.0.1:8091.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| Temporal listened on the `isolated` network address only; the API and worker on `default` were refused, the worker restart-looped | `compose.yaml`: `BIND_ON_IP=0.0.0.0`, `TEMPORAL_BROADCAST_ADDRESS=127.0.0.1` (commit 22e8a7c) | `/api/health` temporal, worker ok |
+| Superset could not decrypt stored connection passwords: its generated secret key was new, the metadata DB was older | metadata DB backed up (`pg_dump`), the 10 undecryptable `dbs.password` / `encrypted_extra` values cleared; the publisher re-sets a workspace's connection on its next publish | Superset healthy; 37 dashboards kept |
+| Every new workspace's first publish failed: Superset's database create took 38 s (per-schema permission sync over ~530 analytics schemas), past the 30 s client timeout | `publishing/superset.py`: the create gets 180 s; a create that still times out adopts the connection Superset made (commit 7d4d871) | `tests/unit/test_publishing_superset.py` (2 new) |
+| The e2e hung when the model proposed metrics: the run waits for the owner's meaning review, and the script never answered | `scripts/e2e_demo.py`: the owner defines each proposed metric from its named columns (flag rate, mean, coded priority, recurring share) and asks for a recheck; any other question stops the scenario | applied to the stalled run (5 metrics accepted, run resumed) |
+| The script crashed printing its summary on a Windows console | UTF-8 stdout (commit 1caeac3) | |
+
+Result: [`evidence/e2e-20261030-203355.md`](evidence/e2e-20261030-203355.md) (+ `.json`), **26/26**, 19 model calls,
+USD 0.009, no Claude or Gemini. In this run the model proposed no metric needing review, so the owner step was not
+exercised end to end; it was exercised on the stalled run above.
+
 ## 2026-10-30 — Owner decisions taken under delegation (ADR-016): model policy, JEV price, demo metrics, SLOs
 
 The owner delegated these on 2026-10-30. They are recorded as the agent's decisions, to revisit:
