@@ -86,7 +86,9 @@ The `production` job in release.yml is skipped until both of these exist:
    table above (for example `HELM_VALUES_FILES=deploy/helm/analystos/values-ha.yaml deploy/helm/analystos/values-production.yaml`).
 2. The repository variable `PRODUCTION_DEPLOY=true` (Settings → Secrets and variables → Actions → Variables).
 
-Production then runs only for tagged releases, after staging succeeded, and waits for its own reviewers. Add
+Production then runs only for tagged releases, after staging succeeded, and waits for its own reviewers. A manual
+deploy to `production` also verifies against the tag identity (`...release.yml@refs/tags/v`), so a version released
+by hand from a branch can go to staging but never to production (deploy.yml `SIGNER`, 2026-10-30). Add
 admission control that enforces the signature on the production cluster (Kyverno `verifyImages` or the Sigstore
 policy-controller) with the identity `^https://github.com/<owner>/<repo>/.github/workflows/release.yml@refs/tags/v`
 and issuer `https://token.actions.githubusercontent.com`. Then a digest the release did not sign cannot run.

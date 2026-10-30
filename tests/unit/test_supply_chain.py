@@ -128,3 +128,20 @@ def test_deploy_verifies_signatures_and_pins_digests_with_cluster_credentials_fr
     assert "${{ secrets.KUBECONFIG }}" in body and "umask 077" in body
     text = (WF / "deploy.yml").read_text(encoding="utf-8") + (WF / "release.yml").read_text(encoding="utf-8")
     assert "kind: Config" not in text and "client-key-data" not in text  # no cluster in the repo
+
+
+def test_release_and_deploy_scripts_read_inputs_from_the_environment_never_inline():
+    """Security self-check 2026-10-30: an `${{ inputs.* }}` / `${{ github.event.* }}` expression inside `run:` is
+    expanded into the script before bash parses it (script injection); values reach scripts through `env:`."""
+    for name in ("release.yml", "deploy.yml"):
+        for job in _wf(name)["jobs"].values():
+            for step in job.get("steps") or []:
+                script = step.get("run") or ""
+                assert "${{ inputs." not in script and "${{ github.event." not in script, (name, step.get("name"))
+
+
+def test_production_deploys_only_images_signed_by_a_tagged_release():
+    """release.yml dispatched from a branch signs its images with the same workflow identity; production must only
+    accept the identity of a tag run (docs/30-runbooks/14-release-and-deploy.md, admission control)."""
+    signer = _wf("deploy.yml")["jobs"]["deploy"]["env"]["SIGNER"]
+    assert signer.endswith(r"release\.yml@refs/${{ inputs.environment == 'production' && 'tags/v' || '' }}")

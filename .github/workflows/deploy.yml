@@ -43,7 +43,9 @@ jobs:
       NAMESPACE: ${{ vars.NAMESPACE || 'analystos' }}
       RELEASE: ${{ vars.RELEASE_NAME || 'analystos' }}
       VALUES_FILES: ${{ vars.HELM_VALUES_FILES || 'deploy/helm/analystos/values-small.yaml' }}
-      SIGNER: ^https://github\.com/${{ github.repository }}/\.github/workflows/release\.yml@refs/
+      # Production deploys only what a tagged release signed (release.yml dispatched from a branch signs too).
+      SIGNER: ^https://github\.com/${{ github.repository }}/\.github/workflows/release\.yml@refs/${{ inputs.environment == 'production' && 'tags/v' || '' }}
+      DEPLOY_ENV: ${{ inputs.environment }}
       ISSUER: https://token.actions.githubusercontent.com
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +55,7 @@ jobs:
         run: |
           printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' || { echo "::error::bad version '$VERSION'"; exit 1; }
           if [ -z "$KUBECONFIG_B64" ]; then
-            echo "::error::Environment '${{ inputs.environment }}' has no KUBECONFIG secret (docs/30-runbooks/14-release-and-deploy.md)"; exit 1
+            echo "::error::Environment '$DEPLOY_ENV' has no KUBECONFIG secret (docs/30-runbooks/14-release-and-deploy.md)"; exit 1
           fi
           for f in $VALUES_FILES; do test -f "$f" || { echo "::error::values file $f is not in the repository"; exit 1; }; done
           echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
@@ -112,7 +114,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "### Deployed ${{ inputs.environment }}: $RELEASE $VERSION (namespace $NAMESPACE)"
+            echo "### Deployed $DEPLOY_ENV: $RELEASE $VERSION (namespace $NAMESPACE)"
             echo "- chart: ghcr.io/$OWNER/charts/analystos@${CHART_DIGEST:-?}"
             echo "- app: ghcr.io/$OWNER/analystos-app@${APP_DIGEST:-?}"
             echo "- web: ghcr.io/$OWNER/analystos-web@${WEB_DIGEST:-?}"

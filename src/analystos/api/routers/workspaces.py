@@ -34,7 +34,7 @@ UPLOAD_EXTENSIONS = (".csv", ".tsv", ".json", ".ndjson", ".jsonl", ".parquet", "
 
 
 class WorkspaceIn(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=200)  # the column's width: a longer name was a 500 (self-check 2026-10-30)
     description: str = ""
     objective: str = ""
     autonomy_level: int = 3

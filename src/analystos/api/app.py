@@ -50,6 +50,7 @@ from analystos.api.routers import triggers_v2 as triggers_v2_router
 from analystos.api.routers import work_orders as work_orders_router
 from analystos.api.routers import worker as worker_router
 from analystos.api.routers import workspace_brief as brief_router
+from analystos.api.security_headers import SecurityHeadersMiddleware
 from analystos.core.config import get_settings
 from analystos.core.errors import AnalystOSError
 from analystos.core.logging import configure_logging, get_logger
@@ -110,6 +111,7 @@ app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in get_setting
                    expose_headers=["ETag", "Idempotent-Replayed", "Location", "X-Request-ID"])  # P4-06
 app.add_middleware(MetricsMiddleware)  # S12: request latency per route class + the request span (inside the tenant)
 app.add_middleware(TenantMiddleware)  # binds the caller's tenant before any route code (ADR-009)
+app.add_middleware(SecurityHeadersMiddleware)  # nosniff, no framing, CSP and no-store on every response
 app.add_middleware(RequestIdMiddleware)  # outermost: every response, errors included, names its request
 for r in (auth.router, workspaces.router, analysis.router, artifacts.router, admin.router, continuous.router, catalog.router,
           capabilities.router, registries_router.router, semantic_router.router):
