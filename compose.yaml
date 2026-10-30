@@ -139,6 +139,10 @@ services:
       POSTGRES_USER: analystos
       POSTGRES_PWD: analystos
       POSTGRES_SEEDS: postgres
+      # On two networks auto-setup binds to whichever address `hostname -i` lists first, which may be `isolated`
+      # only; the API and workers on `default` were then refused. Listen everywhere; one node broadcasts loopback.
+      BIND_ON_IP: 0.0.0.0
+      TEMPORAL_BROADCAST_ADDRESS: 127.0.0.1
     ports: ["7233:7233"]
     networks: [default, isolated]
 

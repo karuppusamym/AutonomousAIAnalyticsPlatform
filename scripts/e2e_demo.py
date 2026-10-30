@@ -77,6 +77,8 @@ def run_seconds(detail: dict | None) -> float | None:
 
 
 def main() -> int:
+    # The summary contains arrows; a Windows console (cp1252) cannot print them after the evidence is written.
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument("--api", default=os.getenv("ANALYSTOS_API", "http://localhost:8000"))
     ap.add_argument("--servicenow", default=os.getenv("ANALYSTOS_SERVICENOW_MOCK_URL", "http://localhost:8090"))
