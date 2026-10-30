@@ -7,7 +7,7 @@ context that other apps and agents can query (REST, MCP, OKF export).
 
 > Models propose. Deterministic code authorizes, computes, verifies and publishes. People approve side effects.
 
-**Status (2026-10-27):** specs v2 accepted (ADR-001…014). This repository was seeded from AnalystOS
+**Status (2026-10-30):** specs v2 accepted (ADR-001…015). This repository was seeded from AnalystOS
 (`codex/investigator-demo`, full history) and is now the product home. AnalystOS and Atlas are donors.
 The baseline's own README, with its feature list and status, is at [docs/00-intent/00-analystos-readme.md](docs/00-intent/00-analystos-readme.md).
 
@@ -18,7 +18,7 @@ The baseline's own README, with its feature list and status, is at [docs/00-inte
 | 1 | [Design review of v1](docs/00-review/01-design-review-of-v1.md) | What the v1 `.docx` gets right and wrong, what's missing, FR coverage against existing code, OSS assessment (incl. DB-GPT), direct answers to the open questions |
 | 2 | [Product spec v2](docs/01-product/01-product-spec-v2.md) | Modes, analyst work model (R1–R9), FR-037…058, value metrics, NFRs, AT-13…24 |
 | 3 | [Architecture](docs/02-architecture/01-architecture.md) | Planes, process roles, profiles, key flows, module map |
-| 4 | [Decision log](docs/03-decisions/adr-log.md) | ADR-001…012 |
+| 4 | [Decision log](docs/03-decisions/adr-log.md) | ADR-001…015 |
 | 5 | [Development specs S01–S13](docs/04-specs/) | Per-module build specs: baseline to reuse, what to build, interfaces, invariants, acceptance, tasks |
 | 6 | [Delivery plan](docs/05-delivery/01-delivery-plan.md) | ~180 engineer-days, 5 waves, ~12 weeks to production pilot, risks, traceability |
 
@@ -66,5 +66,7 @@ export ANALYSTOS_PROFILE=lite
 ```
 
 Profiles (`lite` → `standard` → `bi` → `events` → `airgapped`/`ha`) add services only when a feature needs them;
-see [runbook 04](docs/30-runbooks/04-lite-and-profiles.md). Tests: `pytest -m "not integration"` (no services),
+see [runbook 04](docs/30-runbooks/04-lite-and-profiles.md). The run orchestrator is a deployment choice (ADR-015):
+`local` (lite), `temporal` (standard and above) or `langgraph` (the `langgraph` extra, never a default), all over the
+same Postgres run state; runbook 04 §6 says how to choose. Tests: `pytest -m "not integration"` (no services),
 `pytest -m integration` (compose stack), `cd web && npm test`.

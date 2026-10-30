@@ -47,13 +47,18 @@ kafka = ["confluent-kafka>=2.5"]
 temporal = ["temporalio>=1.7"]
 # The optional Neo4j projection (ANALYSTOS_GRAPH_ENABLED, the `graph` profile).
 graph = ["neo4j>=5.23"]
+# The optional LangGraph orchestrator backend (ADR-015, ANALYSTOS_ORCHESTRATOR=langgraph). Pinned to one 1.x
+# minor: the StateGraph / Send / recursion_limit APIs the driver uses were checked against 1.2.18. Pulls
+# langchain-core and langsmith; only workflows/langgraph_backend.py may import them (import-linter below).
+langgraph = ["langgraph>=1.2.18,<1.3"]
 # OpenTelemetry SDK + OTLP/HTTP exporter for traces (S12 §2; ANALYSTOS_OTEL_ENABLED). The API alone is enough for
 # no-op spans; metrics need nothing (analystos.observability.metrics renders the Prometheus format itself).
 otel = ["opentelemetry-sdk>=1.44", "opentelemetry-exporter-otlp-proto-http>=1.44"]
 # Everything a standard/scale deployment image carries.
 standard = ["analystos[ml,reports,temporal,graph]"]
 dev = [
-  "analystos[ml,reports,temporal,graph]",  # the test suite exercises every extra
+  "analystos[ml,reports,temporal,graph,langgraph]",  # the test suite exercises every extra
+  "import-linter>=2.15,<3",  # `lint-imports`: package boundary contracts ([tool.importlinter])
   "pytest>=8.3",
   "pytest-asyncio>=0.24",
   "respx>=0.21",
@@ -128,6 +133,22 @@ markers = [
 ]
 addopts = "-q --import-mode=importlib"
 filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.importlinter]
+root_package = "analystos"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+# ADR-015: the LangGraph backend is a stateless driver. No other module may reach LangGraph, LangChain or
+# LangSmith (a chat model, tool or tracer used anywhere else would bypass the router and the egress guard).
+name = "LangGraph, LangChain and LangSmith only in workflows/langgraph_backend.py (ADR-015)"
+type = "forbidden"
+source_modules = ["analystos"]
+forbidden_modules = ["langgraph", "langchain_core", "langsmith"]
+ignore_imports = [
+  "analystos.workflows.langgraph_backend -> langgraph",
+  "analystos.workflows.langgraph_backend -> langsmith",
+]
 
 [tool.ruff]
 line-length = 120

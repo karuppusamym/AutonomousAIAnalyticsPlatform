@@ -2,7 +2,7 @@
 
 This repository is the product home (ADR-001). Code baseline: AnalystOS (Python package `analystos`).
 Read [`README.md`](README.md), then the v2 spec for the module you change (`docs/04-specs/Sxx-*.md`).
-Decisions: [`docs/03-decisions/adr-log.md`](docs/03-decisions/adr-log.md) (v2, ADR-001…014) and
+Decisions: [`docs/03-decisions/adr-log.md`](docs/03-decisions/adr-log.md) (v2, ADR-001…015) and
 `docs/10-architecture/adr/` (inherited 0001…0025). Older intent docs (`docs/00-intent/`) explain existing
 behaviour; where they disagree with a v2 spec, the v2 spec wins. `AIAnalystAgentOS`, `AIDataAnalyst` (Atlas)
 and DataPilot are donors: port behaviour and tests, never runtime calls (ADR-0018).
@@ -48,9 +48,11 @@ docker compose up -d postgres redis temporal superset       # infra (Superset im
 # analystos:analystos@127.0.0.1:<port>/analystos_unit_absent. The worker conformance suite is POSIX-only.
 .venv/bin/pytest -q -m integration                          # needs the compose stack
 .venv/bin/ruff check src tests
+.venv/bin/lint-imports                                      # import-linter contracts ([tool.importlinter] in pyproject.toml)
 .venv/bin/uvicorn analystos.api.app:app --reload            # API :8000
 .venv/bin/analystos worker [--queues analysis,compute]      # Temporal worker (all queues by default; config/task_queues.yaml)
 .venv/bin/analystos scheduler                               # schedules + monitors (claim-then-execute)
+.venv/bin/analystos driver                                  # local/langgraph runs under Postgres run leases (ANALYSTOS_RUN_DRIVER=process)
 .venv/bin/uvicorn analystos.connectors.servicenow_mock:app --port 8090   # demo source
 cd web && npm install && npm run dev                        # UI :5173
 .venv/bin/python scripts/e2e_demo.py                        # live v1 §62 scenario + evidence report
@@ -67,7 +69,7 @@ Seeded users (dev only): `admin@analystos.local`, `analyst@…`, `approver@…` 
 | `src/analystos/contracts/` | Pydantic contracts (agent/tool/skill/policy/analysis/bi/events); `analystos export-contracts` writes `contracts/*.json` |
 | `src/analystos/runtime/` | plan (hashes), engine (get_state/execute_task/replan: interprets the run's bound playbook, no step keys), per-step RunContext (agent manifest, budget) |
 | `src/analystos/agents/` | agent behaviours; `dispatch.py` resolves a task through the playbook + agent manifest; `generic.py` runs declarative agents (propose → validate → execute) |
-| `src/analystos/workflows/` | Temporal workflow + activities; `orchestrator.py` local runner |
+| `src/analystos/workflows/` | orchestrator backends (ADR-015): `backends.py` (protocol + capabilities; never compare `orchestrator ==`), Temporal workflow + activities, `orchestrator.py` local runner, `langgraph_backend.py` (stateless LangGraph driver, the only module that may import langgraph/langchain/langsmith), `driver.py` (`analystos driver`, run leases); `runtime/loop.py::next_action` is the shared decision |
 | `src/analystos/governance/` | scope, policy decisions, approvals, audit |
 | `src/analystos/gateway/`, `connectors/`, `staging/` | data plane; `config/source_kinds.yaml` + `connectors/kinds.py` + `generic_sql.py` = every database kind |
 | `src/analystos/services/crawler.py`, `skills/catalog.py` | metadata crawler (deterministic semantics/PII/drift; model optional) |

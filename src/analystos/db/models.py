@@ -522,6 +522,38 @@ class RunTask(Base):
     claim_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
+class RunLease(Base):
+    """Which `analystos driver` process drives a local/langgraph run (ORC-T7, ADR-015 phase 2). A driver
+    claims a due run with `FOR UPDATE SKIP LOCKED`, renews `expires_at` by heartbeat and releases it when the
+    run parks or ends; a lease that expires is taken over by another driver. `epoch` is the fencing token:
+    bumped by every claim, so a driver whose lease was taken over cannot renew or release it. Run state stays
+    in analysis_run / run_task; this row only says who may drive."""
+
+    __tablename__ = "run_lease"
+    run_id: Mapped[str] = mapped_column(ForeignKey("analysis_run.id", ondelete="CASCADE"), primary_key=True)
+    holder: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    epoch: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # A start or signal asked for the run to be driven (cleared by the claim that takes it up).
+    wake_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The last driver parked it (waiting for a person, paused); the sweep re-drives it after a while.
+    parked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class RunDriver(Base):
+    """Heartbeat of one `analystos driver` process (platform bookkeeping for /api/health; no tenant data)."""
+
+    __tablename__ = "run_driver"
+    id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    backend: Mapped[str] = mapped_column(String(20))
+    host: Mapped[str] = mapped_column(String(200))
+    pid: Mapped[int] = mapped_column(Integer)
+    runs: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class RunEvent(Base):
     """Persisted event stream (§42). The SSE endpoint and activity feed read from here."""
 

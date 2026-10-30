@@ -19,7 +19,8 @@ from analystos.core import config
 from analystos.core.config import Settings
 
 ROOT = Path(__file__).resolve().parents[2]
-EXTRA_MODULES = ("sklearn", "statsmodels", "matplotlib", "fpdf", "openpyxl", "temporalio", "neo4j", "mcp")
+EXTRA_MODULES = ("sklearn", "statsmodels", "matplotlib", "fpdf", "openpyxl", "temporalio", "neo4j", "mcp", "langgraph",
+                 "langchain_core", "langsmith")
 
 # A child interpreter in which every extra's top-level module is missing, as in `pip install analystos`.
 _CORE_ONLY = """
@@ -53,7 +54,7 @@ def _core_only(tmp_path: Path) -> dict:
 def test_a_core_install_starts_without_any_extra_and_defaults_to_lite(tmp_path):
     got = _core_only(tmp_path)
     assert got["loaded"] == []  # no extra's library and no polars at API start (file ingest loads it on first use)
-    assert got["extras"] == {"ml": False, "reports": False, "temporal": False, "graph": False}
+    assert got["extras"] == {"ml": False, "reports": False, "temporal": False, "graph": False, "langgraph": False}
     assert (got["profile"], got["orchestrator"]) == ("lite", "local")
 
 
@@ -123,6 +124,10 @@ def test_image_extras_agree_across_compose_dockerfile_and_helm():
         values = _env_file(env.name)
         if values.get("ANALYSTOS_ORCHESTRATOR") == "temporal":
             assert "temporal" in _expand(extras, _names(values.get("ANALYSTOS_API_EXTRAS", default))), env.name
+        if values.get("ANALYSTOS_ORCHESTRATOR") == "langgraph":  # ADR-015: the backend needs its extra
+            assert "langgraph" in _expand(extras, _names(values.get("ANALYSTOS_API_EXTRAS", default))), env.name
+    # langgraph is never a profile default: no image carries it unless asked for (ADR-015 §1).
+    assert not any("langgraph" in _expand(extras, names) for names in named.values())
     # Workers and the scheduler carry every extra; the isolated pools only what they run.
     assert _expand(extras, named["worker"]) >= {"ml", "reports", "temporal", "graph"}
     assert named["worker"] == named["scheduler"] == named["worker-compute"]
