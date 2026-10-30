@@ -102,7 +102,38 @@ def on_turn(session: Session, turn: AskTurn, actor: str) -> None:
     for fq in result.get("referenced_assets") or []:
         if fq not in state["sources"]:
             state["sources"] = [*state["sources"], fq]
+    if turn.status == "answered":
+        _narrowing(state, turn.provenance or {})
     write(session, conv, state, cause="message", actor=actor, message_id=turn.id, at_seq=turn.seq)
+
+
+def _narrowing(state: dict[str, Any], prov: dict[str, Any]) -> None:
+    """PILOT-FIX-02: the state says what the latest answer is restricted to. A follow-up that narrowed the previous
+    answer adds its filter (replacing an earlier one on the same column) or sets the period; a new question starts
+    over with its own period. The answer's SQL is what applies them; the state shows them."""
+    followup = prov.get("followup") or {}
+    period = prov.get("period") if isinstance(prov.get("period"), dict) else None
+    window = {**period, "origin": "answer"} if period else None
+    tw = state.get("time_window")
+    by_answer = isinstance(tw, dict) and tw.get("origin") == "answer"  # one a person set stays until they change it
+    if not followup:
+        state["filters"] = [f for f in state.get("filters") or [] if f.get("origin") != "followup"]
+        if by_answer or tw is None:
+            state["time_window"] = window
+        return
+    if followup.get("period"):
+        if by_answer or tw is None:
+            state["time_window"] = {**followup["period"], "origin": "answer"}
+        return
+    column, values = followup.get("column"), list(followup.get("values") or [])
+    if not column or not values:
+        return
+    op = "not in" if followup.get("mode") == "exclude" else "in"
+    kept = [f for f in state.get("filters") or []
+            if not (op == "in" and f.get("column") == column and f.get("op") == "in" and f.get("origin") == "followup")]
+    state["filters"] = [*kept, {"column": column, "op": op, "value": values, "origin": "followup"}][-MAX_FILTERS:]
+    if window and tw is None:
+        state["time_window"] = window
 
 
 def _check_filters(value: Any) -> list[dict[str, Any]]:

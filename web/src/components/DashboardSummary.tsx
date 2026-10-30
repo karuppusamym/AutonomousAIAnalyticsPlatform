@@ -3,6 +3,7 @@ import { api, type BuilderDashboard } from "../api";
 import { useExpertView } from "../lib/expert";
 import { useAction, useAsync } from "../lib/hooks";
 import { to } from "../routes";
+import { DashboardDigest } from "./DashboardDigest";
 import { Card, ErrorBox, Loading } from "./ui";
 
 /**
@@ -10,7 +11,7 @@ import { Card, ErrorBox, Loading } from "./ui";
  * Facts are computed on the server from the chart previews and the version diff; "Turn this into a report" makes
  * a report document of them that can be shaped further by asking.
  */
-export function DashboardSummary({ dashboard }: { dashboard: BuilderDashboard }) {
+export function DashboardSummary({ dashboard, canEdit = false }: { dashboard: BuilderDashboard; canEdit?: boolean }) {
   const expert = useExpertView();
   const navigate = useNavigate();
   const story = useAsync(() => api.dashboardStory(dashboard.id), [dashboard.id, dashboard.version]);
@@ -34,6 +35,7 @@ export function DashboardSummary({ dashboard }: { dashboard: BuilderDashboard })
         </div>
       ) : <ErrorBox error={story.error} onRetry={() => void story.reload()} />}
       <ErrorBox error={act.error} />
+      <DashboardDigest dashboard={dashboard} canEdit={canEdit} />
     </Card>
   );
 }

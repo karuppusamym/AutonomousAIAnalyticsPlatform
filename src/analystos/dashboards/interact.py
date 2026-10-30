@@ -11,8 +11,13 @@ Every number a viewer sees after a click is a governed re-query of the tile's ow
 * the tile's SQL comes from where it was built: the semantic compiler for an approved `metric@v` (the filter is a
   `SemanticFilter`, compiled under the viewer's scope), else the verified query or the recorded gateway execution
   (`bundle.Resolver`), wrapped with predicates built from sqlglot nodes and `skills/sqlbuild` literals;
+* a tile whose chart does not show the field is still filtered when its governed source can be (PILOT-FIX-03): a
+  query over the same table as a chart that shows the field gets the predicate inside its own WHERE, on that
+  table's column (the viewer must be allowed to read it); a metric tile gets it when the field is an approved
+  dimension of the metric. Only tiles over other tables, or metrics without that dimension, are left alone and say
+  why;
 * every statement runs through `QueryGateway.execute` with the viewer's resolved scope, so denied columns, row
-  filters, ABAC and budgets apply as usual. Charts that do not carry the field are left alone and say so.
+  filters, ABAC and budgets apply as usual.
 
 Drill-down is one level per click: a time axis truncated to a grain (`DATE_TRUNC`) re-grains year → quarter → month
 → day inside the window of the clicked member; a metric chart walks the metric's approved dimensions (the semantic
@@ -154,6 +159,50 @@ def _window(target: exp.Expression, start: datetime, end: datetime, dialect: str
         return sqlbuild.cast(exp.Literal.string(v.isoformat(sep=" ")), "timestamp", dialect)
 
     return exp.And(this=exp.GTE(this=target.copy(), expression=ts(start)), expression=exp.LT(this=target.copy(), expression=ts(end)))
+
+
+def source_tables(sql: str, dialect: str) -> list[exp.Table]:
+    """The tables a single SELECT reads directly (FROM and joins); subqueries, CTEs and set operations are not
+    followed (a predicate cannot be placed on their rows safely)."""
+    tree = _select(sql, dialect)
+    nodes = [(tree.args.get("from_") or tree.args.get("from"))] + list(tree.args.get("joins") or [])
+    return [n.this for n in nodes if n is not None and isinstance(n.this, exp.Table)]
+
+
+def _scope_column(scope: Any, asset: str, name: str) -> str | None:
+    hits = [c for c in scope.columns.get(asset) or [] if c.lower() == canon(name)]
+    return hits[0] if len(hits) == 1 else None
+
+
+def pushdown(sql: str, dialect: str, conditions: list[tuple[str, str, Any]], scope: Any, origins: dict[str, set[str]]) -> str:
+    """The same statement with each (field, op, value) as a WHERE predicate on the column of the table it reads.
+
+    `origins` maps a field to the assets a chart showing it reads: the predicate goes only on one of those tables
+    (same name on another table is not the same field), on a column the viewer may read. Raises `_Unavailable`."""
+    if not conditions:
+        return sql
+    tree = _select(sql, dialect)
+    tables = source_tables(sql, dialect)
+    many = len(tables) > 1
+    preds: list[exp.Expression] = []
+    for name, op, value in conditions:
+        hits = []
+        for t in tables:
+            asset = _asset(scope, t)
+            if asset is None or asset not in origins.get(canon(name), set()):
+                continue
+            column = _scope_column(scope, asset, name)
+            if column is not None:
+                hits.append((t, asset, column))
+        if len(hits) != 1:
+            raise _Unavailable(f"it does not read the table {canon(name).replace('_', ' ')} comes from" if not hits
+                               else f"{canon(name)} is in more than one of its tables")
+        table, asset, column = hits[0]
+        if _denied(scope, asset, column):
+            raise _Unavailable(f"you may not read {column}")
+        target = exp.column(column, table=table.alias_or_name, quoted=True) if many else sqlbuild.col(column)
+        preds.append(_condition(target, op, value, dialect))
+    return tree.where(sqlbuild.and_all(preds)).sql(dialect=dialect)
 
 
 def wrap_filters(sql: str, conditions: list[tuple[str, str, Any]], dialect: str) -> str:
@@ -383,6 +432,88 @@ class Explorer:
     catalog: dict[str, Any] | None = None
     gate: threading.BoundedSemaphore = field(default_factory=lambda: threading.BoundedSemaphore(MAX_CONCURRENT))
     version: int = 1
+    _datasets: dict[tuple[str, str], Any] = field(default_factory=dict, init=False, repr=False)
+
+    # ---------------------------------------------------------------- sources
+    def _dataset(self, ref: Any) -> tuple[str, str, list[str]]:
+        """`dataset_sql` once per dataset per request (a failure is remembered and raised again)."""
+        key = (ref.kind, getattr(ref, "query_id", None) or getattr(ref, "handle_id", None) or ref.name)
+        if key not in self._datasets:
+            try:
+                self._datasets[key] = self.dataset_sql(ref)
+            except AnalystOSError as exc:
+                self._datasets[key] = exc
+        hit = self._datasets[key]
+        if isinstance(hit, AnalystOSError):
+            raise hit
+        return hit  # type: ignore[no-any-return]
+
+    def tables_of(self, chart: ChartDoc) -> list[str]:
+        """The scope assets a chart's governed source reads directly (empty when it cannot be read)."""
+        ref = chart.dataset_ref
+        if ref.kind == "metric":
+            defn = (metric_definition(self.catalog, ref.name) or {}).get("definition") or {}
+            sources = [d.get("source") for d in (self.catalog or {}).get("datasets") or [] if d.get("name") == defn.get("dataset")]
+            return [a for a in self.scope.assets if any(isinstance(s, str) and s.lower() == a.lower() for s in sources)]
+        try:
+            sql, fallback, assets = self._dataset(ref)
+            tables = source_tables(sql, self._dialect(assets, fallback))
+        except (AnalystOSError, _Unavailable):
+            return []
+        return [a for t in tables if (a := _asset(self.scope, t)) is not None]
+
+    def _plain(self, chart: ChartDoc, name: str) -> bool:
+        """The chart shows `name` as the table's own column, so its members are that column's values (a computed
+        projection such as UPPER(x) AS x would not match the raw column)."""
+        ref = chart.dataset_ref
+        if ref.kind == "metric":
+            defn = (metric_definition(self.catalog, ref.name) or {}).get("definition") or {}
+            for d in (self.catalog or {}).get("datasets") or []:
+                if d.get("name") == defn.get("dataset"):
+                    f = next((f for f in d.get("fields") or [] if canon(f.get("name", "")) == canon(name)), None)
+                    exprs = (f or {}).get("expressions") or [{}]
+                    return f is not None and canon(str(exprs[0].get("expression", ""))) == canon(name)
+            return False
+        try:
+            sql, fallback, assets = self._dataset(ref)
+            proj = _projection(_select(sql, self._dialect(assets, fallback)), chart_field(chart, name).name)  # type: ignore[union-attr]
+        except (AnalystOSError, _Unavailable):
+            return False
+        inner = proj.unalias() if proj is not None else None
+        return isinstance(inner, exp.Column) and canon(inner.name) == canon(name)
+
+    def origins(self, view: list[ViewFilter]) -> dict[str, set[str]]:
+        """Per filtered field, the tables it comes from: those read by a chart that shows it as a plain column."""
+        out: dict[str, set[str]] = {}
+        for v in view:
+            key = canon(v.field)
+            for chart in self.bound_charts(v.field):
+                if self._plain(chart, v.field):
+                    out.setdefault(key, set()).update(a for a in self.tables_of(chart) if _scope_column(self.scope, a, key))
+        return out
+
+    def reach(self, chart: ChartDoc, v: ViewFilter, origins: dict[str, set[str]]) -> str | None:
+        """How `v` reaches a chart: "output" (a column it shows), "source" (its table's column) or None."""
+        if chart_field(chart, v.field) is not None:
+            return "output"
+        if chart.dataset_ref.kind == "metric":
+            return "output" if metric_dimension(self.catalog, chart.dataset_ref.name, v.field) else None
+        mine = set(self.tables_of(chart))
+        return "source" if mine & origins.get(canon(v.field), set()) else None
+
+    def why_not(self, chart: ChartDoc | KpiDoc, missed: list[ViewFilter]) -> str:
+        """In plain words, why these filters do not reach a tile."""
+        names = ", ".join(v.label for v in missed)
+        if isinstance(chart, KpiDoc) or chart.dataset_ref.kind == "metric":
+            metric = chart.metric if isinstance(chart, KpiDoc) else chart.dataset_ref
+            entry = metric_definition(self.catalog, metric.name) or {}
+            shown = (entry.get("definition") or {}).get("display_name") or metric.name.replace("_", " ")
+            return f"{names} is not an approved breakdown of {shown}."
+        tables = self.tables_of(chart)
+        if tables:
+            readable = ", ".join(sorted({t.split(".", 1)[-1].replace("_", " ") for t in tables}))
+            return f"This chart reads {readable}, which has no {names} field."
+        return f"This chart has no {names} field."
 
     # ---------------------------------------------------------------- validation
     def bound_charts(self, name: str) -> list[ChartDoc]:
@@ -507,11 +638,14 @@ class Explorer:
             sql, dialect = self._semantic(ref, dimensions if dimensions is not None else list(ref.dimensions),
                                           conds + list(extra or []), limit=limit)
         else:
-            sql, fallback, assets = self.dataset_sql(ref)
+            sql, fallback, assets = self._dataset(ref)
             dialect = self._dialect(assets, fallback)
             sql = transform(sql, dialect) if transform is not None else sql
+            shown = [v for v in view if chart_field(chart, v.field) is not None]
+            inner = [(v.field, v.op, v.value) for v in view if chart_field(chart, v.field) is None]
+            sql = pushdown(sql, dialect, inner, self.scope, self.origins(view)) if inner else sql
             names = [(chart.field(f.field).name, f.op, f.value) for f in saved]  # type: ignore[union-attr]
-            names += [(chart_field(chart, v.field).name, v.op, v.value) for v in view]  # type: ignore[union-attr]
+            names += [(chart_field(chart, v.field).name, v.op, v.value) for v in shown]  # type: ignore[union-attr]
             sql = wrap_filters(sql, names, dialect)
         return _wrap_compare(sql, chart, dialect), dialect
 
@@ -520,15 +654,19 @@ class Explorer:
         return self._semantic(kpi.metric, [], [c for c in conds if c[0]], limit=1)  # type: ignore[misc]
 
     def applies(self, chart: ChartDoc | KpiDoc, view: list[ViewFilter]) -> list[ViewFilter]:
+        """The filters (other than the tile's own selection) its governed source can take."""
         out = []
+        origins: dict[str, set[str]] | None = None
         for v in view:
             if v.source == chart.id:
                 continue
             if isinstance(chart, KpiDoc):
                 if metric_dimension(self.catalog, chart.metric.name, v.field):
                     out.append(v)
-            elif chart_field(chart, v.field) is not None or (
-                    chart.dataset_ref.kind == "metric" and metric_dimension(self.catalog, chart.dataset_ref.name, v.field)):
+                continue
+            if origins is None and chart_field(chart, v.field) is None and chart.dataset_ref.kind != "metric":
+                origins = self.origins(view)
+            if self.reach(chart, v, origins or {}) is not None:
                 out.append(v)
         return out
 
@@ -569,20 +707,23 @@ class Explorer:
         for chart in self.doc.charts:
             applied = self.applies(chart, view)
             mine = [v for v in view if v.source == chart.id]
+            missed = [v for v in view if v.source != chart.id and v not in applied]
             if not applied and not (refresh_saved and self.saved_filters(chart)):
                 status = "source" if mine else "not_filtered"
-                names = ", ".join(v.label for v in view if v.source != chart.id)
                 tiles[chart.id] = {"id": chart.id, "kind": "chart", "status": status,
-                                   **({"reason": f"This chart has no {names} field."} if status == "not_filtered" and names else {})}
+                                   **({"reason": self.why_not(chart, missed)} if status == "not_filtered" and missed else {})}
                 continue
             tiles[chart.id] = {"id": chart.id, "kind": "chart", "status": "filtered" if applied else "saved_filter",
-                               "filtered_by": [v.label for v in applied]}
+                               "filtered_by": [v.label for v in applied],
+                               **({"reason": f"Not filtered by {', '.join(v.label for v in missed)}: {self.why_not(chart, missed)}"}
+                                  if applied and missed else {})}
             self._plan(tiles[chart.id], statements, lambda c=chart, a=applied: self.chart_sql(c, a))
         for kpi in self.doc.kpis:
             applied = self.applies(kpi, view)
+            missed = [v for v in view if v not in applied]
             if not applied:
                 tiles[kpi.id] = {"id": kpi.id, "kind": "kpi", "status": "not_filtered",
-                                 **({"reason": "This figure has no " + ", ".join(v.label for v in view) + " breakdown."} if view else {})}
+                                 **({"reason": self.why_not(kpi, missed)} if missed else {})}
                 continue
             tiles[kpi.id] = {"id": kpi.id, "kind": "kpi", "status": "filtered", "filtered_by": [v.label for v in applied]}
             self._plan(tiles[kpi.id], statements, lambda k=kpi, a=applied: self.kpi_sql(k, a))
@@ -637,7 +778,7 @@ class Explorer:
         ref = chart.dataset_ref
         if x is not None and x.type == "temporal":
             try:
-                sql, fallback, assets = self.dataset_sql(ref) if ref.kind != "metric" else (None, "postgres", [])
+                sql, fallback, assets = self._dataset(ref) if ref.kind != "metric" else (None, "postgres", [])
             except AnalystOSError as exc:
                 return {"kind": "none", "reason": exc.message}
             grain = time_grain(sql, self._dialect(assets, fallback), x.name) if sql else None
@@ -777,10 +918,13 @@ class Explorer:
                     conds.append((dim, f.op, f.value, None))
             sql, dialect = self._semantic(ref, list(dict.fromkeys(dims))[:10], [])
         else:
-            sql, fallback, assets = self.dataset_sql(ref)
+            sql, fallback, assets = self._dataset(ref)
             dialect = self._dialect(assets, fallback)
+            inner = [(v.field, v.op, v.value) for v in view if chart_field(chart, v.field) is None]
+            sql = pushdown(sql, dialect, inner, self.scope, self.origins(view)) if inner else sql
             conds += [(chart.field(f.field).name, f.op, f.value, None) for f in self.saved_filters(chart)]  # type: ignore[union-attr]
-            conds += [(chart_field(chart, v.field).name, v.op, v.value, None) for v in view]  # type: ignore[union-attr]
+            conds += [(chart_field(chart, v.field).name, v.op, v.value, None) for v in view  # type: ignore[union-attr]
+                      if chart_field(chart, v.field) is not None]
         return detail_sql(sql, dialect, conds, self.scope)
 
     # ---------------------------------------------------------------- what each chart offers

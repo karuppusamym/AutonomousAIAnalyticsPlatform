@@ -24,9 +24,10 @@ test("cross-filter, drill and rows on a draft dashboard", async ({ page, api }, 
   const chip = bar.getByRole("button", { name: "Remove filter Priority = 1 - Critical" });
   await expect(chip).toBeVisible();
   await expect(page.getByRole("group", { name: "Resolution time by category" }).getByText("Filtered", { exact: true })).toBeVisible();
-  await expect(page.getByRole("group", { name: "Incident count per month" }).getByText("Not filtered")).toBeVisible();
+  // PILOT-FIX-03: the trend does not show priority but reads the same table, so it is filtered too
+  await expect(page.getByRole("group", { name: "Incident count per month" }).getByText("Filtered", { exact: true })).toBeVisible();
   await expect(page.getByRole("group", { name: "Incident count by priority" }).getByText("Your selection")).toBeVisible();
-  await expect(bar).toContainText("3 filtered, 1 not filtered");
+  await expect(bar).toContainText("4 filtered, 0 not filtered");
   await expect(page.getByText(/qx_view_/)).toHaveCount(0);  // query ids only in expert view
 
   // ---- drill a month to its days, breadcrumbs back

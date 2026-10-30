@@ -1,5 +1,24 @@
 # Capability register (evidence)
 
+## 2026-10-30 — Orchestrator backends: seam, LangGraph driver, run-lease drivers (ORC-T1..T7, ADR-015)
+
+| Capability | Code path | Evidence |
+|---|---|---|
+| Backend seam | `workflows/backends.py` (protocol, `Capabilities`, `validate`, `get_backend`), `orchestrator.py` `TemporalBackend` / `InProcessBackend`; capability reads in `api/app.py`, `core/profiles.py`, `workers/dispatch.py`; `ANALYSTOS_ORCHESTRATOR` a `Literal` | `tests/unit/test_orchestrator_backends.py` (12, incl. no name comparison left); `tests/unit/test_local_orchestrator.py` unchanged and green; `tests/integration/test_temporal_queues.py` 5/5 (2026-10-30) |
+| One decision function | `runtime/loop.py::next_action` (local and langgraph); Temporal keeps its inline copy | `tests/conformance/orchestrator/test_next_action_parity.py`: 20 shapes x 3 drivers, AST coverage of `engine._decide` keys; a deliberate drift fails 4 cases |
+| Conformance suite | `tests/conformance/orchestrator/` (`ConformanceEngine`), Temporal leg `tests/integration/test_orchestrator_conformance_temporal.py` | 106 passed (local + langgraph), Temporal 6/6 on a dev server (2026-10-30) |
+| LangGraph backend | `workflows/langgraph_backend.py` (`LangGraphRuntime`: no checkpointer, fixed graph, `Send` on the shared pool, tenant per node, recursion bound + re-invoke, parks) | Conformance suite; live e2e 26/26 and restart drill 7/7 ([`evidence/orc-t6-t7-live-20261030.md`](evidence/orc-t6-t7-live-20261030.md)) |
+| Packaging and guards | `langgraph` extra (1.2.x), `[tool.importlinter]` contract, `workflows/langgraph_guard.py` (tracing refused without `ANALYSTOS_LANGGRAPH_ALLOW_TRACING`; `tracing_context(enabled=False)`), `/api/health` `checks.orchestrator`, `profiles.summary()["orchestrator"]` | `lint-imports` 1 kept / 0 broken; `test_orchestrator_backends.py`; `test_slim_install.py` (core install has no langgraph; no image carries it) |
+| Run-lease drivers | `workflows/driver.py`, `analystos driver`, `ANALYSTOS_RUN_DRIVER=process`, migration `0076_run_leases` | `tests/integration/test_run_driver_leases.py` 4/4 (two driver processes, kill + takeover, no overlap, fencing, migration); live takeover under the e2e (11 s, epoch 1 -> 2, run completed; e2e 25/26, publication timeout) |
+| Operator docs | [runbook 04 §6](../30-runbooks/04-lite-and-profiles.md), README, CLAUDE.md, ADR-015 implementation note | `.env.example` not edited (unreadable from the building session); variables listed in runbook 04 §6 |
+
+Checks on the final code (merged with develop 809a53e, Windows 11 dev host, 2026-10-30): fast suite 5111 passed /
+106 skipped / 0 failed; ruff clean; `lint-imports` clean. Not run here: the worker conformance suite (POSIX-only),
+CI (GitHub Actions blocked by billing).
+
+Not done / follow-ups: the Superset publisher's fixed 30 s timeout on `POST /api/v1/database/` is too short when the
+analytics database holds hundreds of schemas (Superset syncs a permission per schema); `.env.example` entries.
+
 ## 2026-10-29 — Release pipeline, kind proof install, gVisor compute pods (FND-004, S07-T1)
 
 | Capability | Code path | Evidence |
@@ -1248,6 +1267,33 @@ Not verified: a live delivery to email or a webhook, and model wording (`always`
 Rehearsal evidence: [`evidence/value-05-pilot-rehearsal-20261030.md`](evidence/value-05-pilot-rehearsal-20261030.md). Every
 record is `evidence_kind = rehearsal` with machine timings; no analyst time, accuracy or usefulness is claimed. Open
 problems are tracker rows PILOT-FIX-01…08.
+
+## 2026-10-30 — PILOT-FIX-02 and PILOT-FIX-05: Ask follow-ups, approved metrics, business refusals
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| Narrowing follow-ups (PILOT-FIX-02) | `agents/ask_followup.py`: a rules rung after the sample rung. It handles "only X", "just for Q3", "exclude X", "without X", "what about X" and "same for Q2". The restriction is resolved on the previous answer's table: column words and glossary synonyms (`ask_rules._match`), values against the complete profiled vocabulary or the numeric profile range ("P1" = priority 1), and periods by `ask_period`. It is added to the previous SQL in the SELECT that reads the table; the same column's earlier filter, or the same time column's window, is replaced. A governed previous answer gets a `SemanticFilter` or time window and is compiled again. Two columns holding a value → clarify. Anything unresolved → generation, with `refines` = previous question and SQL as data. `conversations/state.py` shows the filters and period (`origin` = followup or answer; a filter a person set stays) | `tests/unit/test_ask_followup.py` (24). Live C02: follow-ups answered by rules with 0 model calls; numbers match the answer key |
+| Period coverage and left-out records | `agents/ask_period.py`: the period a question names (quarter, half, month, year, this/last) and the date window its SQL applied. One MIN/MAX/COUNT aggregate through the gateway; the note names the missing months or says the period is still in progress. A GROUP BY column required `IS NOT NULL` is said to be left out. Notes are in `provenance.notes` and shown under the answer (`AnswerNotes`) | `tests/unit/test_ask_period.py` (21), `web/src/test/ask.test.tsx`. Live: Q3 2026 note on the C02 answers |
+| Approved metric routing (PILOT-FIX-05) | `agents/ask_metrics.py`: an approved metric named inside a longer question (name, display name, `ai_context` and glossary synonyms; longest phrase, else every word of a multi-word name). The rest of the question must be its dimensions, a grain or a period; output-only sentences are set aside. Tied metrics are ranked by `metric_match` (authority rank, rules backend on names), else a clarify. `sql_agent.compile_governed` labels the answer "Approved metric definition <name> (v<n>)". Notes say when an approved metric matched but did not cover the question, and when no semantic model is approved yet | `tests/unit/test_ask_metric_match.py` (13). Live C06: governed, 0 model calls, numbers match |
+| Compiler: lookup joins and grain | `semantic/compiler.py` `_base_only`: a dataset whose only joins are LEFT JOINs from a base table is read from the base table alone. A LEFT JOIN never removes a base row and no uncertified join reaches the query (ADR-0019); fields over the joined tables are unavailable with reason `uncertified_join`. Inner, right, nested, filtered-by-join and unqualified-column datasets are still refused. `_grain_holds`: `record`, or the base table's own entity (`order` on `orders`) with no join | `tests/unit/test_semantic_base_only.py` (12); semantic and dashboard suites pass unchanged |
+| Business wording for model-setup refusals | `services/ask.refusal` adds `business` (title, message, remedy) for `no_api_key`, `mode_off`, `no_model`, `policy_blocked`, `residency_blocked` and `provider_cooldown`. `lib/ask.refusalText`: the business view shows it to people who are not platform admins; admins and the expert view keep the technical remedy | `test_ask_metric_match.py::test_model_setup_refusals…`, `web/src/test/ask.test.tsx` (business vs expert). Live rules-only pass |
+
+Re-walk: [`evidence/pilot-fix-ask-20261030.md`](evidence/pilot-fix-ask-20261030.md), on a clone of the rehearsal database.
+Limits: no demo workspace has an approved semantic model (owner action), so C06 stays ad hoc on the shared databases,
+with a note saying why. Governed metrics cannot use lookup fields (product category, customer region) until that join
+is certified.
+
+## 2026-10-30 — Pilot fixes: cross-filter scope, digests on schedules, report summary, coded numbers (PILOT-FIX-03, -07, -08)
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| Cross-filter reaches every tile its source can take (PILOT-FIX-03) | `dashboards/interact.py`: `origins` (tables a chart showing the field reads), `reach`, `pushdown` (predicate in the tile query's own WHERE on that table's column, sqlglot nodes and `sqlbuild` literals; denied columns, set operations and other tables refused), `why_not` in plain words; Show rows carries the pushed filter. Every statement through `QueryGateway.execute` as the viewer | `tests/unit/test_dashboard_interact.py` (real validator + DuckDB); web and Playwright explore journeys; re-walk C05 matches the answer key. "Apply as dashboard filter" still scopes the saved filter to charts that show the field |
+| Dashboard summary on a schedule (PILOT-FIX-07) | `web/src/components/DashboardDigest.tsx` on the Summary panel; schedule form checkbox list; `lib/schedules.withDigest` keeps every other config key | `test_report_docs_service.py` (editor only, builder dashboards only, next fire saves the digest, nothing sent without a destination); `dashboardDigest.test.tsx`; `e2e/dashboard-digest.spec.ts` (axe-clean); re-walk C09 |
+| Report summary drafted from verified blocks (PILOT-FIX-08) | `reports/summary.py` + `reports/design.draft_summary`: template sentences (rules rung), optional `data_story` rewording in `always` mode with a per-sentence numbers guard, plain fallback note; a `text.set` the engine guards again | `tests/unit/test_report_summary.py`; re-walk C07 (rules only). The summary repeats a finding's discovery-row figure (PILOT-FIX-06) |
+| Coded numbers are groupings | `skills/viz.is_coded_number`; `dashboards/drafts.classify` (prompt-named groupings first, text categories before codes); `dashboards/questions.infer_fields` (ordinal axis); a second identical filter control is refused (`dashboards/ops.py`) | `test_dashboard_conversation.py`, `test_skills_viz_dashboards.py`, `test_dashboard_ops.py`; re-walk C04: no "Average priority" KPI |
+
+Re-walk evidence: [`evidence/pilot-fix-dash-reports-20261030.md`](evidence/pilot-fix-dash-reports-20261030.md) (agent,
+rules only, on a copy of the rehearsal database; no analyst results).
 
 ## 2026-10-30 — PILOT-FIX-01 and PILOT-FIX-06: typed periods, findings scoped to the rows they describe
 

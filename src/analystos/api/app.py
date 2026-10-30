@@ -231,6 +231,10 @@ def prometheus_metrics(request: Request):
     return PlainTextResponse(render(), media_type="text/plain; version=0.0.4")
 
 
+def _drives_runs(settings) -> str:
+    return "in `analystos driver` processes" if getattr(settings, "run_driver", "api") == "process" else "in the API process"
+
+
 @app.get("/api/health")
 def health():
     """Dependency health. Reports what is reachable; never claims readiness it cannot observe."""
@@ -262,9 +266,13 @@ def health():
         _driver().verify_connectivity()
         return {"enabled": True}
 
+    from analystos.workflows.backends import capabilities
+
+    caps = capabilities(settings)
+
     def temporal():
-        if settings.orchestrator != "temporal":
-            return {"enabled": False, "status": "local orchestrator (in the API process)"}
+        if not caps.needs_worker:
+            return {"enabled": False, "status": f"{caps.name} orchestrator ({_drives_runs(settings)})"}
         import socket
 
         host, port = settings.temporal_address.split(":")
@@ -283,9 +291,25 @@ def health():
         r = default_router()
         return {"chat": r.available("planning"), "jev": r.available("risk_check")}
 
+    def orchestrator():
+        """The selected backend can run here (its extra, its guards) and, with driver processes, one is alive."""
+        from analystos.core.profiles import orchestrator_summary
+        from analystos.workflows.backends import get_backend, validate
+
+        validate(settings)
+        out = {**orchestrator_summary(settings), **get_backend(settings).health()}
+        if caps.parks and getattr(settings, "run_driver", "api") == "process":
+            from analystos.workflows.driver import live_drivers
+
+            drivers = live_drivers()
+            if not drivers:
+                raise RuntimeError("no `analystos driver` process holds a heartbeat: runs wait until one starts")
+            out["drivers"] = drivers
+        return out
+
     def worker():
-        if settings.orchestrator != "temporal":
-            return {"enabled": False, "status": "local orchestrator: runs execute in the API process"}
+        if not caps.needs_worker:
+            return {"enabled": False, "status": f"{caps.name} orchestrator: runs execute {_drives_runs(settings)}"}
         if not checks.get("temporal", {}).get("ok"):
             raise RuntimeError("unknown: Temporal is not reachable")
         from analystos.workflows.orchestrator import worker_status
@@ -296,7 +320,7 @@ def health():
         return {"queues": st["queues"]}
 
     _run_checks(checks, [("postgres", pg), ("redis", redis_), ("neo4j", neo), ("temporal", temporal),
-                         ("superset", superset), ("models", models)])
+                         ("superset", superset), ("models", models), ("orchestrator", orchestrator)])
     _run_checks(checks, [("worker", worker)], max(0.3, started + HEALTH_BUDGET_S - time.perf_counter()))
 
     # P4-02: the Python sandbox's isolation, as the gate sees it. Not ok = sandboxed code is refused
@@ -314,7 +338,7 @@ def health():
     pools = sorted(settings.isolated_pool_set)
     transport = settings.isolated_transport
     if transport == "auto":
-        transport = "temporal" if settings.orchestrator == "temporal" else "subprocess"
+        transport = caps.isolated_transport
     checks["isolated_pools"] = {"ok": True, "enabled": bool(pools), "pools": pools,
                                 "transport": transport if pools else None}
     from analystos.core.profiles import summary
@@ -330,6 +354,7 @@ HEALTH_IMPACT = {
     "postgres": ("critical", "The platform database is unreachable: nothing can be loaded or saved until it is back."),
     "temporal": ("critical", "Temporal is unreachable: new runs cannot start and running ones wait until it is back."),
     "worker": ("critical", "No worker is running: runs stay queued until `analystos worker` is started."),
+    "orchestrator": ("critical", "The selected orchestrator cannot drive runs here: new runs wait until it can."),
     "redis": ("warning", "Redis is unreachable: model calls are refused (spend caps fail closed) and live updates "
                          "fall back to polling."),
     "superset": ("warning", "Superset is not reachable: new publications go to the in-platform preview, and an approved "

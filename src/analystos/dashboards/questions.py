@@ -56,14 +56,32 @@ def _is_temporal(v: Any) -> bool:
     return isinstance(v, datetime | date) or (isinstance(v, str) and bool(_DATE.match(v.strip())))
 
 
+_AGGREGATE_NAME = re.compile(r"^(?:avg|average|mean|sum|total|count|cnt|n|num|min|max|median|pct|share|rate)(?:_|$)|_(?:count|total|avg|sum)$")
+
+
+def _codes(name: str, values: list[Any]) -> bool:
+    """Whole numbers in a column whose name is not an aggregate's (`avg_priority` is a measure of codes)."""
+    return not _AGGREGATE_NAME.search(name.rsplit(".", 1)[-1].lower()) and all(float(v).is_integer() for v in values)
+
+
 def infer_fields(columns: list[str], rows: list[Any], *, measures: set[str] | None = None,
                  sensitivity_of: Callable[[str], str] | None = None) -> list[FieldDef]:
     """One field per result column, typed from its values (the first rows only); `measures` (approved metric
     names) are quantitative whatever their values."""
+    from analystos.skills.viz import MAX_CODES, is_coded_number
+
     out: list[FieldDef] = []
+    cols = [[r[i] for r in rows[:MAX_PREVIEW_ROWS] if isinstance(r, list | tuple) and i < len(r) and r[i] is not None]
+            for i in range(len(columns))]
+    numeric = [bool(v) and all(_is_number(x) for x in v) for v in cols]
     for i, name in enumerate(columns):
-        values = [r[i] for r in rows[:MAX_PREVIEW_ROWS] if isinstance(r, list | tuple) and i < len(r) and r[i] is not None]
-        if name in (measures or set()) or (values and all(_is_number(v) for v in values)):
+        values = cols[i]
+        if name in (measures or set()):
+            ftype = "quantitative"
+        elif numeric[i] and sum(numeric) > 1 and _codes(name, values) and is_coded_number(name, distinct=len(set(values))) \
+                and len(set(values)) <= MAX_CODES:
+            ftype = "ordinal"  # priority 1-5 beside a count: a grouping, never a measure to average
+        elif numeric[i]:
             ftype = "quantitative"
         elif values and all(isinstance(v, bool) for v in values):
             ftype = "boolean"

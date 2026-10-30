@@ -16,7 +16,7 @@ import { NumberTrail, VerificationBadge, WhyState } from "../components/WhyNumbe
 import { WhatIfPanel } from "../components/WhatIf";
 import {
   PROMOTE_LABELS, PROMOTE_MIN_ROLE, answeredByLabel, branchPointBefore, canComplete, canPromote, costLine, decisionLine, groupThreads,
-  mergePromotion, messageToTurn, promotionText, provenancePills, receiptView, refusalView, stalenessPill, topProbabilities, turnSuggestions,
+  mergePromotion, messageToTurn, promotionText, provenancePills, receiptView, refusalText, refusalView, stalenessPill, topProbabilities, turnSuggestions,
   type Pill,
 } from "../lib/ask";
 import { guessChart } from "../lib/charts";
@@ -25,6 +25,7 @@ import { fmtDate, fmtMs, fmtNumber, fmtUsd } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import { exampleSql, starterQuestions } from "../lib/starters";
 import { needsRole, roleAtLeast, to } from "../routes";
+import { useAuth } from "../auth";
 
 /** Reorder a result so the hinted x / y columns come first (chart builders read columns 0 and 1). */
 export function projectForChart(res: QueryResult, x?: string | null, y?: string | null) {
@@ -176,7 +177,10 @@ function RefusalState({ turn, ws, busy, onParameters, onRephrase, onExplain, onR
   turn: AskTurn; ws: string; busy: boolean; onParameters: (p: Dict) => void; onRephrase: () => void; onExplain: (sql: string) => void; onRetry: () => void;
 }) {
   const r = turn.refusal;
-  const view = refusalView(r);
+  const expert = useExpertView();
+  const { user } = useAuth();
+  const text = refusalText(r, expert || !!user?.is_admin);
+  const view = text.business ? { ...refusalView(r), action: "retry" as const, actionLabel: "Try again" } : refusalView(r);
   const lastSql = turn.attempts.length ? turn.attempts[turn.attempts.length - 1].sql : turn.sql;
   let action: ReactNode = null;
   if (view.action === "rephrase") action = <button type="button" className="btn btn-sm" onClick={onRephrase}>{view.actionLabel}</button>;
@@ -186,9 +190,9 @@ function RefusalState({ turn, ws, busy, onParameters, onRephrase, onExplain, onR
   else if (view.action === "retry") action = <button type="button" className="btn btn-sm" onClick={onRetry} disabled={busy}>{view.actionLabel}</button>;
   return (
     <div data-refusal={r?.kind ?? "failed"}>
-      <StateView kind={view.state} title={r?.title ?? "Not answered"} action={action}>
-        {r?.message && <p>{r.message}</p>}
-        <p><strong>What to do:</strong> {r?.remedy ?? "Rephrase the question."}</p>
+      <StateView kind={view.state} title={text.title} action={action}>
+        {text.message && <p>{text.message}</p>}
+        <p><strong>What to do:</strong> {text.remedy}</p>
         {view.action === "parameters" && <ParameterForm turn={turn} onSubmit={onParameters} busy={busy} />}
       </StateView>
     </div>
@@ -412,6 +416,17 @@ export function AnsweredBy({ turn }: { turn: AskTurn }) {
   );
 }
 
+/** What a reader must know beside the numbers (an incomplete period, an approved metric not used), from the server. */
+function AnswerNotes({ turn }: { turn: AskTurn }) {
+  const notes = (turn.provenance?.notes ?? []).filter((n) => typeof n === "string" && n.trim());
+  if (!notes.length) return null;
+  return (
+    <ul className="stack small answer-notes" aria-label="Notes on this answer">
+      {notes.map((n) => <li key={n}><Notice tone="warning">{n}</Notice></li>)}
+    </ul>
+  );
+}
+
 /** A message a branch shows from the conversation it continues: read here, acted on in the original. */
 function InheritedTurn({ turn }: { turn: AskTurn }) {
   return (
@@ -471,6 +486,7 @@ function TurnView({ turn, role, selected, onSelect, busy, onParameters, onRephra
           <Pills label="Provenance" pills={[...provenancePills(turn), stalenessPill(turn.staleness)]} />
           <AnsweredBy turn={turn} />
           {turn.explanation && <p>{turn.explanation}</p>}
+          <AnswerNotes turn={turn} />
           <AskWhy turn={turn} onSelect={onSelect} />
           {turn.evidence_status?.state === "changed" && <Notice tone="warning">The evidence has changed since this answer.
             Review the recorded definitions and ask again before using these numbers.</Notice>}

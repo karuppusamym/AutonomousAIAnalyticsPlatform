@@ -194,6 +194,8 @@ class Column:
     glossary: bool
     personal: bool
     label: str
+    values: tuple[Any, ...] = ()  # the complete profiled vocabulary, when the profile measured all of it
+    bounds: tuple[Any, Any] | None = None  # profiled (min, max) of a numeric column
 
     @property
     def is_time(self) -> bool:
@@ -312,7 +314,11 @@ def load_tables(ctx: Any) -> tuple[list[Table], Any]:
                                    semantic=c.semantic_type or profile.get("semantic_type"),
                                    distinct=profile.get("distinct"), ordinal=c.ordinal, words=frozenset(words),
                                    name_words=_words(c.name.replace("_", " ")), glossary=glossary, personal=personal,
-                                   label=(c.business_name or " ".join(split_tokens(c.name))).strip()))
+                                   label=(c.business_name or " ".join(split_tokens(c.name))).strip(),
+                                   values=tuple(profile.get("values") or ()) if profile.get("values_complete") and not personal
+                                   else (),
+                                   bounds=(profile.get("min"), profile.get("max"))
+                                   if profile.get("min") is not None and profile.get("max") is not None else None))
             spec = declared.get(entity) or declared.get(name.lower())
             pack_dims = [(str(d["label"]), str(d["column"])) for d in (spec or {}).get("dimensions") or []
                          if any(c.name == d["column"] for c in cols)]

@@ -479,7 +479,70 @@ def clarify(ctx: Any, question: str) -> dict[str, Any]:
 def ask(ctx: RunContext, question: str, *, max_repairs: int = 2, parameters: dict[str, Any] | None = None,
         use_registry: bool = True) -> dict[str, Any]:
     out = _ask(ctx, question, max_repairs=max_repairs, parameters=parameters, use_registry=use_registry)
-    return label(out)
+    return label(annotate(ctx, question, out))
+
+
+def annotate(ctx: Any, question: str, out: dict[str, Any]) -> dict[str, Any]:
+    """What a reader must know beside the numbers, as `notes` (never a change to them): a period the data covers
+    only in part (`ask_period`), an approved metric that matched but was not used, and an output the question asked
+    for that the answer's own actions make. Deterministic; one gateway aggregate at most."""
+    if out.get("status") != "answered":
+        return out
+    from analystos.agents.ask_period import Period, coverage_note, find_period, left_out_note
+
+    notes = list(out.get("notes") or [])
+    previous = getattr(ctx, "previous_answer", None) or {}
+    follows = bool(out.get("parent_turn_id")) and out.get("parent_turn_id") == previous.get("id")
+    inherited = Period.from_dict(previous.get("period")) if follows else None
+    period = Period.from_dict(out.get("period")) or find_period(question) or inherited
+    if period is not None:
+        note = coverage_note(ctx, out.get("sql"), period)
+        if note and note not in notes:
+            notes.append(note)
+        out = {**out, "period": period.as_dict()}
+    left_out = left_out_note(out.get("sql"), ask_dialect(ctx))
+    if left_out and left_out not in notes:
+        notes.append(left_out)
+    notes += [n for n in _metric_notes(ctx, question, out) if n not in notes]
+    return {**out, "notes": notes} if notes else out
+
+
+def _metric_notes(ctx: Any, question: str, out: dict[str, Any]) -> list[str]:
+    from analystos.agents import ask_metrics
+
+    sentences, output = ask_metrics.metric_sentences(question)
+    notes = []
+    if output:
+        notes.append("To put this answer on a dashboard or in a report, use the actions under the answer "
+                     "(Add to dashboard, Save as report).")
+    if out.get("governance") == "governed" or out.get("parent_turn_id"):
+        return notes
+    catalog = getattr(ctx, "semantic_catalog", None)
+    if catalog:
+        from analystos.semantic.compiler import planner_catalog
+
+        try:
+            visible = planner_catalog(catalog, ctx.scope)
+            m = ask_metrics.match(ctx, question, visible)
+        except Exception:  # noqa: BLE001 - a note is best effort; the answer stands
+            return notes
+        if m.metric and m.unexplained:
+            name = visible["metrics"][m.metric]["definition"].get("display_name") or m.metric
+            notes.append(f"The approved metric {name} matches this question, but "
+                         f"'{' '.join(dict.fromkeys(m.unexplained))}' is not part of its definition, so this answer was "
+                         "calculated ad hoc.")
+        return notes
+    unmodelled = getattr(ctx, "approved_metrics_unmodelled", None) or {}
+    for sentence in sentences:
+        text = ask_metrics.lead_free(sentence)
+        found = ask_metrics.candidates(text, unmodelled, {})
+        if found:
+            name = unmodelled[found[0][0]]["definition"].get("display_name") or found[0][0]
+            notes.append(f"{name} is an approved metric, but this workspace's semantic model is not approved yet, so "
+                         "this answer was calculated ad hoc rather than from the approved definition. A workspace owner "
+                         "can approve the semantic model.")
+            break
+    return notes
 
 
 def label(out: dict[str, Any]) -> dict[str, Any]:
@@ -555,13 +618,14 @@ def _model_semantic_query(ctx: Any, question: str, catalog: dict[str, Any]) -> A
 
 def _semantic_answer(ctx: Any, question: str, parameters: dict[str, Any] | None) -> dict[str, Any] | None:
     """Governed rung (ADR-0019): an explicit `semantic_query`, the rules rung (exact metric / synonym
-    match) or the `semantic_query` model's choice is compiled against the approved model version.
-    None means not expressible here: the caller's ad-hoc path answers, labelled `ad_hoc`."""
+    match, then `agents/ask_metrics` for a question that names an approved metric among other words) or the
+    `semantic_query` model's choice is compiled against the approved model version. None means not expressible
+    here: the caller's ad-hoc path answers, labelled `ad_hoc`."""
     from pydantic import ValidationError
 
+    from analystos.agents import ask_metrics
     from analystos.contracts.semantic import SemanticQuery
-    from analystos.core.ids import stable_hash
-    from analystos.semantic.compiler import compile_query, match_question, planner_catalog
+    from analystos.semantic.compiler import match_question, planner_catalog
 
     catalog = getattr(ctx, "semantic_catalog", None)
     explicit = (parameters or {}).get("semantic_query")
@@ -579,13 +643,19 @@ def _semantic_answer(ctx: Any, question: str, parameters: dict[str, Any] | None)
         query = SemanticQuery.model_validate(explicit) if explicit is not None else match_question(question, visible)
     except ValidationError as exc:
         raise InvalidInput("The metric query contains invalid fields or values.") from exc
+    except InvalidInput:  # two metrics share the phrase: ask_metrics ranks them (metric_match) or asks which one
+        query = None
+    if query is None:
+        m = ask_metrics.match(ctx, question, visible)  # PILOT-FIX-05: an approved metric named among other words
+        if m.tied:
+            return _metric_clarify(ctx, m.tied, visible)
+        query = m.query
     if query is None:
         query, chosen_by = _model_semantic_query(ctx, question, visible), "model"
         if query is None:
             return None
-    _stage(ctx, "semantic", "Compiling the approved metric definition" + (" (no model call)" if chosen_by != "model" else ""))
     try:
-        compiled = compile_query(query, catalog, ctx.scope)
+        return compile_governed(ctx, query, chosen_by=chosen_by)
     except InvalidInput as exc:
         # A model's choice the compiler cannot use (an unknown name) is not an answer: the ad-hoc path
         # answers. A governance refusal (fan-out, unvalidated join) is the answer, whoever chose the query.
@@ -593,6 +663,26 @@ def _semantic_answer(ctx: Any, question: str, parameters: dict[str, Any] | None)
             _stage(ctx, "semantic", f"The metric query could not be compiled ({exc.message[:120]}); answering ad hoc")
             return None
         raise
+
+
+def _metric_clarify(ctx: Any, names: list[str], catalog: dict[str, Any]) -> dict[str, Any]:
+    labels = [catalog["metrics"][n]["definition"].get("display_name") or n for n in names]
+    _stage(ctx, "clarify", f"More than one approved metric matches: {', '.join(labels)}")
+    return {"status": "clarify", "answered_by": "rules", "route": "semantic", "sql": None, "model": None, "attempts": [],
+            "decisions": [], "result": None, "missing": [{"name": "metric", "values": labels}],
+            "suggestions": [f"What is the {name.lower()}?" for name in labels[:4]],
+            "explanation": f"This question matches more than one approved metric: {' or '.join(labels)}. Say which one; "
+                           "nothing was guessed."}
+
+
+def compile_governed(ctx: Any, query: Any, *, chosen_by: str) -> dict[str, Any]:
+    """Compile a SemanticQuery against the approved model, run it through the gateway and label it governed."""
+    from analystos.core.ids import stable_hash
+    from analystos.semantic.compiler import compile_query
+
+    catalog = ctx.semantic_catalog
+    _stage(ctx, "semantic", "Compiling the approved metric definition" + (" (no model call)" if chosen_by != "model" else ""))
+    compiled = compile_query(query, catalog, ctx.scope)
     compiled.provenance["policy_hash"] = stable_hash(ctx.policy.model_dump(mode="json"))
     compiled.provenance["chosen_by"] = chosen_by
     _stage(ctx, "execute", "Running the approved calculation through the query gateway")
@@ -604,10 +694,14 @@ def _semantic_answer(ctx: Any, question: str, parameters: dict[str, Any] | None)
         if router is not None:
             router.record_skip(SEMANTIC_PURPOSE, ctx.call_ctx(), estimated_tokens=500, reason="rules: exact metric match",
                                rung="rules")
-    chart = _semantic_chart(query)
+    names = []
+    for m in query.metrics:
+        entry = (catalog.get("metrics") or {}).get(m) or {}
+        names.append(f"{(entry.get('definition') or {}).get('display_name') or m} (v{entry.get('version', '?')})")
     return {"status": "answered", "answered_by": "semantic", "governance": "governed", "semantic": compiled.provenance,
-            "sql": compiled.sql, "explanation": "Calculated from the approved metric definition: " + ", ".join(query.metrics),
-            "chart": chart, "model": None, "attempts": [], "decisions": [], "route": "semantic", "result": _result(result)}
+            "sql": compiled.sql, "explanation": "Calculated from the approved metric definition " + ", ".join(names),
+            "chart": _semantic_chart(query), "model": None, "attempts": [], "decisions": [], "route": "semantic",
+            "result": _result(result)}
 
 
 def _semantic_chart(query: Any) -> dict[str, Any] | None:
@@ -634,6 +728,11 @@ def generation_context(ctx: Any, asked_text: str, *, redacted: bool = False) -> 
     if memory and memory.get("clarifications"):
         # S04: the user's own corrections (session, personal, approved team), as labelled data, never instructions
         required["conversation_clarifications"] = memory["clarifications"]
+    from analystos.agents.ask_followup import refinement_context
+
+    refines = refinement_context(ctx, asked_text)
+    if refines:  # PILOT-FIX-02: a narrowing the rules could not resolve still builds on the previous question (as data)
+        required["refines"] = refines
     if redacted:
         required["redacted_values"] = QUESTION_MODEL_INSTRUCTION
     compiled = compile_for(ctx, "sql_generation", required, objective=asked_text, catalog=catalog, reference_text=asked_text)
@@ -655,6 +754,11 @@ def _ask(ctx: RunContext, question: str, *, max_repairs: int = 2, parameters: di
     sample = sample_answer(ctx, question)
     if sample is not None:
         return sample
+    from analystos.agents.ask_followup import answer as followup_answer
+
+    followup = followup_answer(ctx, question, parameters)  # PILOT-FIX-02: "only priority 1 and 2" narrows the last answer
+    if followup is not None:
+        return followup
     semantic = _semantic_answer(ctx, question, parameters)
     if semantic is not None:
         return semantic
