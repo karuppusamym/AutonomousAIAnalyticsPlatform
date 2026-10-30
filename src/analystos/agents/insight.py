@@ -246,6 +246,9 @@ def build_insights(ctx: RunContext) -> dict:
 
     period_facts = {t.get("asset"): list(t.get("facts") or [])
                     for t in (task_output(ctx.run.id, "hypotheses").get("period") or {}).get("tables") or []}
+    from analystos.services.meaning_review import finding_caveats
+
+    meaning_caveats = finding_caveats(ctx.run.id)
     for hid, code, _statement, spec, stat, eid, qids, impact, typed, facts in prepared:
         title, finding = template_text(stat, spec)
         source, action = "template", None
@@ -275,6 +278,7 @@ def build_insights(ctx: RunContext) -> dict:
         population = population_for(spec.get("asset"), ctx.scope.asset_sources.get(spec.get("asset") or "")).caveat()
         if population:  # a sampled or truncated snapshot: say which population the finding describes (P4-C12)
             caveats.append(population)
+        caveats += meaning_caveats  # PILOT-FIX-04: what the data cannot show, recorded by the meaning review
         ctx.check_control()  # never write findings into a plan that was replaced while we ran
         evidence = ([{"type": "hypothesis", "id": hid, "label": code}, {"type": "experiment", "id": eid, "label": stat.get("test")}]
                     + [{"type": "query", "id": q, "label": "evidence query"} for q in qids])

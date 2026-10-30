@@ -10776,6 +10776,8 @@ export interface components {
         };
         /** PilotCheck */
         PilotCheck: {
+            /** Action */
+            action?: string | null;
             /** Check */
             check: string;
             /** Evidence */
@@ -10784,6 +10786,8 @@ export interface components {
             reason: string;
             /** Remediation */
             remediation?: string | null;
+            /** Screen */
+            screen?: ("members_policy" | "sources" | "metrics" | "scorecard") | null;
             /**
              * Status
              * @enum {string}
@@ -10791,6 +10795,8 @@ export interface components {
             status: "pass" | "missing" | "fail";
             /** Subject */
             subject: string;
+            /** Who */
+            who?: ("workspace_owner" | "editor" | "analyst" | "platform_admin") | null;
         };
         /** PilotReadiness */
         PilotReadiness: {

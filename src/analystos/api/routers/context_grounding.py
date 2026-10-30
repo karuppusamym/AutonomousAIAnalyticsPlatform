@@ -80,12 +80,22 @@ def run_context(workspace_id: str, run_id: str, user: User = Depends(current_use
     # A viewer whose access narrowed must not see the run owner's old mapped context.
     report = {**report, "resolutions": [r for r in report.get("resolutions", [])
                                         if all(svc.allowed_ref(c, scope) for c in r.get("columns", []))]}
+    if report.get("meaning_review"):
+        review = dict(report["meaning_review"])
+        for part in ("questions", "not_asked", "resolved_without_asking"):
+            review[part] = [{**q, "columns": [c for c in q.get("columns") or [] if svc.allowed_ref(c, scope)]}
+                            for q in review.get(part) or []]
+        report["meaning_review"] = review
     calls = list(session.scalars(select(ModelCall).where(ModelCall.workspace_id == workspace_id, ModelCall.run_id == run_id)))
     _, visible_receipts = svc.pinned_prompt_context(run, scope)
     receipt_ids = {r["id"] for r in visible_receipts}
     receipts = [{"purpose": c.purpose, "receipt": r} for c in calls for r in c.context_receipts or []
                 if r.get("source") == "reviewed_brief" and r.get("id") in receipt_ids]
-    return {"grounding": report, "brief_receipts": receipts,
+    from analystos.services.meaning_review import previous_rounds
+
+    rounds = [{k: r.get(k) for k in ("round", "questions", "asked_at", "rechecked_at", "owner_minutes")}
+              for r in previous_rounds(session, run.id)]
+    return {"grounding": report, "brief_receipts": receipts, "rounds": rounds,
             "coverage": next(((t.output or {}).get("question_coverage") for t in tasks if t.key == "hypotheses"), None)}
 
 
@@ -98,6 +108,10 @@ def recheck(workspace_id: str, run_id: str, user: User = Depends(current_user), 
     waiting = [t for t in tasks if t.status == "WAITING_USER" and (t.output or {}).get("meaning_questions")]
     if not waiting or run.control != "run" or run.status in {"COMPLETED", "CANCELLED", "REJECTED"}:
         raise Conflict("This run is not waiting for business meaning")
+    from analystos.services.meaning_review import record_round
+
+    # The round that was waiting becomes history: the next round asks only what is still open or an answer changed.
+    record_round(session, run, waiting[0].output.get("grounding") or {}, user_id=user.id, asked_at=waiting[0].finished_at)
     for task in tasks:
         if task in waiting or task.key == "context":
             task.status, task.output, task.error, task.finished_at = "NEW", {}, None, None
@@ -155,7 +169,8 @@ def evaluate(workspace_id: str, body: GoldenEvaluateIn, user: User = Depends(cur
         if not all(svc.allowed_ref(c, scope) for c in expected.get("expected_columns", [])):
             continue
         report = svc.resolve(session, user, workspace_id, ResolveIn(question=expected["question"], use_model=body.use_model))
-        actual = {c for r in report["resolutions"] if r["state"] == "resolved" for c in r["columns"]}
+        # grounding by reviewed knowledge; a field named in the question and found in the catalog is not a mapping
+        actual = {c for r in report["resolutions"] if r["state"] == "resolved" and r.get("by") != "catalog" for c in r["columns"]}
         expected_refs = set(expected["expected_columns"])
         columns_match = expected_refs <= actual if expected["expect_clarification"] else expected_refs == actual
         passed = bool(report["needs_clarification"]) == expected["expect_clarification"] and columns_match

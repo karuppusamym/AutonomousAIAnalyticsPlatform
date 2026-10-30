@@ -170,3 +170,22 @@ def test_sso_preview_and_dead_grants(world, tmp_path):
     strict = oidc.Mapping(workspace_roles=mapping.workspace_roles, require_group=True)
     refused = oidc.preview(s, ["contractors"], strict)
     assert refused["signs_in"] is False and "mapped" in refused["reason"]
+
+
+def test_every_gap_says_in_plain_words_what_to_do_who_does_it_and_where(world, tmp_path):
+    """Rehearsal 2026-10-30: remediation lines showed API paths and scripts on the owner page. The page now shows
+    `action` (plain words) with the screen that fixes it; the technical step stays in `remediation`."""
+    s, ws, owner, analyst = world
+    r = pilot.readiness(s, analyst, ws.id, evidence_dir=_evidence(tmp_path, drill=None))
+    gaps = [c for c in r.checks if c.status != "pass"]
+    assert gaps and all(c.action and c.who for c in gaps)
+    for c in gaps:
+        assert not any(tech in c.action for tech in ("/api/", "PUT ", "scripts/", "ANALYSTOS_", ".yaml", "config/")), c.action
+    business = _by(r, "owner.business")[0]
+    assert (business.action, business.who, business.screen) == ("Name the business owner of this workspace", "workspace_owner",
+                                                                "members_policy")
+    assert "PUT /api/workspaces/" in business.remediation  # the expert detail is kept
+    assert _by(r, "owner.technical", "source:src_snow")[0].action == "Name the technical owner of the ServiceNow source"
+    assert _by(r, "connector.health", "source:src_pilot")[0].screen == "sources"
+    assert [c.who for c in r.checks if c.check == "identity.sso"] == ["platform_admin"]
+    assert next(c for c in r.checks if c.check == "conversation.definitions").screen == "metrics"

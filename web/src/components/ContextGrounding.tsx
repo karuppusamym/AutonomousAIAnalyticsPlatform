@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { api, request } from "../api";
 import { roleAtLeast, to } from "../routes";
 import { useAction, useAsync } from "../lib/hooks";
-import { groundingApi, type Binding, type BindingInput, type GroundingReport, type KnownMeaning, type MetricMeaning, type Studio } from "../lib/grounding";
+import { useExpertView } from "../lib/expert";
+import { groundingApi, type Binding, type BindingInput, type GroundingReport, type KnownMeaning, type MeaningQuestion, type MeaningRound, type MetricMeaning, type Studio } from "../lib/grounding";
 import { StartWorkButton } from "./StartWork";
 import { UsageGuide } from "./UsageGuide";
 import { Card, ErrorBox, Field, Loading, Notice, Tag } from "./ui";
@@ -15,6 +16,7 @@ export function ContextGrounding({wsId, canEdit}: {wsId: string; canEdit: boolea
   const data = useAsync(() => groundingApi.studio(wsId), [wsId]);
   const members = useAsync(() => api.getWorkspace(wsId), [wsId]);
   const act = useAction();
+  const expert = useExpertView();
   const canAnalyze = roleAtLeast(members.data?.role, "analyst");
   const [question, setQuestion] = useState("");
   const [model, setModel] = useState(true);
@@ -54,11 +56,11 @@ export function ContextGrounding({wsId, canEdit}: {wsId: string; canEdit: boolea
         <label className="toggle"><input type="checkbox" checked={model} onChange={e => {invalidate(); setModel(e.target.checked);}} /><span>Use model assistance after reading reviewed knowledge</span></label>
         <button className="btn btn-primary" disabled={act.busy || !canAnalyze}>{act.busy ? "Checking context…" : "Resolve meaning"}</button>
         {members.data && !canAnalyze && <p className="small">You can read definitions here. An analyst, editor or owner can check a question and start an investigation.</p>}</form>
-      {report && <><p role="status" className="small">{report.used_count} supporting entries resolved from {report.available_count} available entries · model: {report.model_status}</p>
+      {report && <><p role="status" className="small">{report.used_count} supporting entries resolved from {report.available_count} available entries{expert ? ` · model: ${report.model_status}` : ""}</p>
         <Notice tone={report.needs_clarification ? "warning" : "success"}>{report.needs_clarification ? "Some meaning still needs review after context resolution." : "No unresolved business definitions were detected. Check the mappings before relying on the answer."}</Notice>
         {canAnalyze && !report.needs_clarification && report.question.length >= 10 && <div className="stack"><p className="small">The meaning check is complete. Next, review the data and plan before analysis starts. Context is checked again inside the investigation.</p><StartWorkButton wsId={wsId} label="Investigate this question" initialObjective={report.question} /></div>}
-        <ul className="list">{report.resolutions.map((r, i) => <li key={`${r.id}-${i}`}><strong>{r.term}</strong> <Tag>{r.state}</Tag><p className="small">{r.definition}</p><p className="small mono">{r.columns.join(", ") || "No physical mapping"}</p><span className="small muted">{r.by} · {r.id}{r.revision ? ` · v${r.revision}` : ""}</span></li>)}</ul>
-        {report.clarification.length > 0 && <ul className="list">{report.clarification.map(q => <li key={q}>{q}</li>)}</ul>}
+        <MeaningReviewPanel report={report} onDefine={canEdit ? q => {setEdit(undefined);setDraft({...empty(),term:q.term,columns:q.columns});} : undefined} />
+        <details><summary>How each term was understood ({report.resolutions.length})</summary><ul className="list">{report.resolutions.map((r, i) => <li key={`${r.id}-${i}`}><strong>{r.term}</strong> <Tag>{r.state}</Tag> <span className="small muted">{byLabel(r.by)}</span><p className="small">{r.definition}</p>{expert && <><p className="small mono">{r.columns.join(", ") || "No physical mapping"}</p><span className="small muted">{r.by} · {r.id}{r.revision ? ` · v${r.revision}` : ""}</span></>}</li>)}</ul></details>
         {!!report.analysis_filters?.length&&<details open><summary>Population and reporting constraints</summary><ul className="list small">{report.analysis_filters.map((f,i)=><li key={i}>{f.column} {f.op} {JSON.stringify(f.value)}</li>)}</ul></details>}
         {report.metric_proposals.map((p, i) => <div key={i} className="value-proposal"><strong>Proposed metric: {p.term}</strong><p>{p.definition}</p><p className="small">Missing contract: {p.missing_contract_fields.join(", ") || "Domain owner must validate the complete metric"}</p>{canEdit && <button className="btn btn-sm" onClick={() => {setEdit(undefined);setDraft({...empty(),kind:"metric",term:p.term,definition:p.definition,columns:p.columns,metric:metricEmpty()});}}>Review metric contract</button>}</div>)}</>}
     </Card>
@@ -142,13 +144,45 @@ function GoldenQuestions({wsId,canEdit,canAnalyze,catalog}: {wsId:string;canEdit
   </Card>;
 }
 
+/** Where a meaning came from, in business words. */
+export function byLabel(by?: string | null): string {
+  return ({catalog:"from the data catalog",glossary_and_catalog:"glossary, matched to a catalog field",reviewed_mapping:"reviewed definition",reviewed_knowledge:"glossary",reviewed_brief:"reviewed brief",
+    model_with_reviewed_evidence:"glossary, matched with model help"} as Record<string,string>)[by ?? ""] ?? (by ?? "");
+}
+
+/**
+ * The meaning review (PILOT-FIX-04): every open question at once, what the data cannot show (recorded, never a
+ * block), and what was understood without asking anyone. Column references, ids and revisions are expert detail.
+ */
+export function MeaningReviewPanel({report,onDefine,rounds}: {report:GroundingReport;onDefine?:(q:MeaningQuestion)=>void;rounds?:MeaningRound[]}) {
+  const expert=useExpertView();const review=report.meaning_review;
+  if(!review) return report.clarification.length>0?<ul className="list">{report.clarification.map(q=><li key={q}>{q}</li>)}</ul>:null;
+  const absent=review.limitations.filter(l=>l.kind==="absent_data");const unreviewed=review.limitations.filter(l=>l.kind==="unreviewed");
+  const minutes=(rounds??[]).reduce((sum,r)=>sum+(r.owner_minutes??0),0);
+  return <div className="stack meaning-review">
+    {(review.round>1||!!rounds?.length)&&<p className="small" role="note">Meaning review round {review.round}{review.round>1?": only what is still open, or what an answer changed, is asked again":""}.{rounds?.length?` Owner time so far: ${minutes.toFixed(1)} min.`:""}</p>}
+    {review.questions.length>0&&<section aria-label="Meanings to confirm"><h3 className="h-sm">{review.questions.length===1?"One meaning to confirm":`${review.questions.length} meanings to confirm, all at once`}</h3>
+      <ol className="list">{review.questions.map(q=><li key={q.key}>{q.question}{expert&&q.columns.length>0&&<span className="small mono muted"> · {q.columns.join(", ")}</span>}
+        {onDefine&&<> <button type="button" className="btn btn-xs" onClick={()=>onDefine(q)}>Define {q.term}</button></>}</li>)}</ol></section>}
+    {absent.length>0&&<section aria-label="What the data cannot show"><h3 className="h-sm">What the data cannot show</h3>
+      <ul className="list">{absent.map(l=><li key={l.key}>{l.statement}</li>)}</ul>
+      <p className="small muted">Recorded as a limitation on the investigation and on each finding; it does not stop the work.</p></section>}
+    {review.resolved_without_asking.length>0&&<details><summary>Understood without asking ({review.resolved_without_asking.length})</summary>
+      <ul className="list small">{review.resolved_without_asking.map((r,i)=><li key={i}><strong>{r.term}</strong> · {byLabel(r.by)}{expert&&r.columns.length>0&&<span className="mono"> · {r.columns.join(", ")}</span>}</li>)}</ul></details>}
+    {review.answered.length>0&&<p className="small">Answered since the last round: {review.answered.join(", ")}.</p>}
+    {unreviewed.length>0&&<details><summary>Not asked: raised after the first round ({unreviewed.length})</summary><ul className="list small">{unreviewed.map(l=><li key={l.key}>{l.statement}</li>)}</ul></details>}
+    {expert&&review.pinned.length>0&&<p className="small mono muted">Pinned definitions: {review.pinned.map(p=>`${p.term} ${p.id} v${p.revision ?? "?"}`).join("; ")}</p>}
+  </div>;
+}
+
 export function RunGrounding({wsId,runId,onRecheck,refreshKey}: {wsId:string;runId:string;onRecheck:()=>void;refreshKey?:string}) {
-  const data=useAsync(()=>groundingApi.run(wsId,runId),[wsId,runId,refreshKey]);const act=useAction();const report=data.data?.grounding;
+  const data=useAsync(()=>groundingApi.run(wsId,runId),[wsId,runId,refreshKey]);const act=useAction();const report=data.data?.grounding;const expert=useExpertView();
   return <Card title="Why this context and analysis?" label="Run context explanation"><ErrorBox error={data.error} onRetry={data.reload}/><ErrorBox error={act.error}/>
     {!report?.question&&<p className="small muted">Context resolution is recorded when the context step runs. Older investigations may not have this record.</p>}
-    {report?.question&&<><p className="small">{report.used_count} supporting entries resolved from {report.available_count} available entries · model: {report.model_status}</p>
-      <ul className="list small">{report.resolutions.map((r,i)=><li key={`${r.id}-${i}`}><strong>{r.term}</strong> · {r.state} · {r.by}<p>{r.columns.join(", ")}</p><p>{r.definition}</p></li>)}</ul>
-      {report.needs_clarification&&<Notice tone="warning"><ul>{report.clarification.map(q=><li key={q}>{q}</li>)}</ul><Link to={to.data(wsId,"grounding")}>Review the remaining meaning and mappings</Link><button className="btn btn-sm" disabled={act.busy} onClick={async()=>{const r=await act.run(()=>groundingApi.recheck(wsId,runId));if(r){await data.reload();onRecheck();}}}>Recheck reviewed context</button></Notice>}
+    {report?.question&&<><p className="small">{report.used_count} supporting entries resolved from {report.available_count} available entries{expert?` · model: ${report.model_status}`:""}</p>
+      {report.needs_clarification&&<Notice tone="warning"><p>The investigation waits for these meanings. Ask the workspace owner to define them in one go, then recheck.</p><Link to={to.data(wsId,"grounding")}>Define the meanings</Link> <button className="btn btn-sm" disabled={act.busy} onClick={async()=>{const r=await act.run(()=>groundingApi.recheck(wsId,runId));if(r){await data.reload();onRecheck();}}}>Recheck reviewed context</button></Notice>}
+      <MeaningReviewPanel report={report} rounds={data.data?.rounds} />
+      <details><summary>How each term was understood ({report.resolutions.length})</summary><ul className="list small">{report.resolutions.map((r,i)=><li key={`${r.id}-${i}`}><strong>{r.term}</strong> · {r.state} · {byLabel(r.by)}{expert&&<p className="mono">{r.columns.join(", ")}</p>}<p>{r.definition}</p></li>)}</ul></details>
       {data.data?.coverage&&<p className="small">Question coverage: {data.data.coverage.covered?"Covered by selected candidates":`Additional exploration requested: ${data.data.coverage.missing.join(", ")}`}</p>}
       {!!report.analysis_filters?.length&&<details><summary>Population and reporting constraints</summary><ul className="list small">{report.analysis_filters.map((f,i)=><li key={i}>{f.column} {f.op} {JSON.stringify(f.value)}</li>)}</ul></details>}
     </>}

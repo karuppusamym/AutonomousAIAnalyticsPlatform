@@ -236,11 +236,13 @@ def candidates(session, scope):
 
 
 def resolve_known(question, known, bindings, scope):
-    focus = terms(question)
+    from analystos.services.meaning_review import focus_terms, norm_terms
+
+    focus = focus_terms(question)  # singular forms too: the owner's "Late delivery" answers "late deliveries"
     results = []
     for item in known:
         names = [item["term"], *item.get("synonyms", [])]
-        if not any((terms(n) and terms(n) <= focus) or (n and re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", question, re.I)) for n in names):
+        if not any((terms(n) and (terms(n) <= focus or norm_terms(n) <= focus)) or (n and re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", question, re.I)) for n in names):
             continue
         refs = item["columns"]
         state = "resolved" if refs else "missing"
@@ -251,7 +253,7 @@ def resolve_known(question, known, bindings, scope):
     # applies even when the question uses only the synonym ("revenue" for the pack's "Net revenue").
     matched_known = {" ".join(sorted(terms(r["term"]))) for r in results}
     for row in bindings:
-        if ((terms(row.term) and terms(row.term) <= focus) or " ".join(sorted(terms(row.term))) in matched_known
+        if ((terms(row.term) and (terms(row.term) <= focus or norm_terms(row.term) <= focus)) or " ".join(sorted(terms(row.term))) in matched_known
                 or (row.definition.get("kind") == "population_rule" and row.state == "approved")):
             d = row.definition
             state = binding_state(d, scope)
@@ -329,7 +331,14 @@ def resolve(session, user, workspace_id, body, *, router=None, call_ctx=None, re
     domains = domains_for(session, scope)
     bindings = [b for b in scoped_bindings(session, scope) if not b.definition.get("domain") or b.definition["domain"] in domains]
     results = resolve_known(body.question, known, bindings, scope)
-    model_status, missing, proposals, proposed_filters = "not_requested", [], [], []
+    from analystos.services import meaning_review as mr
+
+    plan_text = _plan_text(agent_ctx)
+    cat = catalog(session, scope)
+    mr.map_glossary_to_catalog(results, cat)
+    # Plain table fields named by the question or plan resolve from the catalog, never by asking (PILOT-FIX-04).
+    fields = mr.catalog_fields(body.question + "\n" + plan_text, cat, results)
+    model_status, missing, proposals, proposed_filters, open_terms = "not_requested", [], [], [], []
     if body.use_model:
         from analystos.runtime.context import default_router, workspace_call_ctx
         router = router or default_router()
@@ -337,7 +346,8 @@ def resolve(session, user, workspace_id, body, *, router=None, call_ctx=None, re
         if router.mode("glossary_suggestion") != "off" and router.available("glossary_suggestion", call_ctx):
             from analystos.core.errors import AnalystOSError
             try:
-                payload = {"question": body.question, "known": known[:100], "catalog": catalog(session, scope)[:300], "already_resolved": results}
+                payload = {"question": body.question, "plan_questions": plan_text[:2000], "known": known[:100],
+                           "catalog": cat[:300], "already_resolved": results + [f for f in fields if f["state"] == "resolved"]}
                 if agent_ctx is not None:
                     from analystos.agents.common import compile_for, llm_json
 
@@ -389,6 +399,11 @@ def resolve(session, user, workspace_id, body, *, router=None, call_ctx=None, re
                     if not any(r["id"] == resolved_item["id"] and r["state"] == "resolved" for r in results):
                         results.append(resolved_item)
                 missing = [str(x)[:300] for x in data.get("missing", [])[:10] if isinstance(x, str) and not is_injection(x)]
+                for t in data.get("open_terms", [])[:25]:
+                    if isinstance(t, dict) and not is_injection(str(t.get("term", "")) + " " + str(t.get("question", ""))):
+                        open_terms.append({"term": str(t.get("term", ""))[:200], "question": str(t.get("question", ""))[:500],
+                                           "availability": str(t.get("availability", "unknown")).lower(),
+                                           "columns": [c for c in t.get("columns") or [] if allowed_ref(str(c), scope)]})
                 for p in data.get("metric_proposals", [])[:5]:
                     if isinstance(p, dict) and all(allowed_ref(str(c), scope) for c in p.get("columns", [])) and not is_injection(str(p)):
                         proposals.append({"term": str(p.get("term", ""))[:200], "definition": str(p.get("definition", ""))[:2000],
@@ -400,6 +415,7 @@ def resolve(session, user, workspace_id, body, *, router=None, call_ctx=None, re
                 model_status = exc.code
         else:
             model_status = "unavailable_or_off"
+    model_missing = set(missing)
     unresolved = [r for r in results if r["state"] != "resolved"]
     # Familiar words that require a business definition, not merely a column-name guess.
     for concept in ("repeat", "recurring", "backlog", "business hours"):
@@ -423,7 +439,7 @@ def resolve(session, user, workspace_id, body, *, router=None, call_ctx=None, re
     period_evidence_ids = [binding_ids.get(k["id"], k["id"]) for k in known
                            if period and not explicit_period(body.question) and re.search(r"reporting|year|period", k["term"], re.I)]
     if period:
-        metadata = {c["ref"]: c for c in catalog(session, scope)}
+        metadata = {c["ref"]: c for c in cat}
         def timestamp(ref):
             return str(metadata.get(ref, {}).get("type", "")).lower().startswith(("date", "timestamp"))
         analysis_filters = [f for f in analysis_filters if f["value"] not in period or timestamp(f["column"])]
@@ -449,15 +465,55 @@ def resolve(session, user, workspace_id, body, *, router=None, call_ctx=None, re
         missing.append("Resolve the relative reporting window from a reviewed reporting-period policy before testing")
     if not period and not date_constrained and re.search(r"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+20\d{2}\b", body.question, re.I):
         missing.append("Resolve supported date constraints for the requested comparison periods before testing")
-    return {"question": body.question, "resolutions": results, "missing": missing, "metric_proposals": proposals,
+    # Ask once (PILOT-FIX-04): every open term in one list; absent data becomes a limitation; a recheck asks only
+    # what is still open and what an answer changed.
+    questions = [mr.review_question(r) for r in unresolved] + [mr.review_question(f) for f in fields if f["state"] != "resolved"]
+    for text in dict.fromkeys(missing):
+        if text in model_missing:
+            questions.append(mr.model_question(text))
+        elif text.startswith("Review the proposed metric contract for "):
+            term = text.removeprefix("Review the proposed metric contract for ").removesuffix(" before testing it")
+            questions.append({**mr.rule_question(text, term), "kind": "metric"})
+        else:
+            concept = re.match(r"Define (.+?) for this population", text)
+            questions.append(mr.rule_question(text, concept.group(1) if concept else None))
+    # A field named like a term that needs a business definition ("backlog") is that question, not a resolution.
+    needs_definition = [set(mr.words(q["term"])) for q in questions if q["kind"] in {"rule", "metric"} and q["term"] != q["question"]]
+    fields = [f for f in fields if not any(set(mr.words(f["term"])) & w for w in needs_definition)]
+    run_id = getattr(getattr(agent_ctx, "run", None), "id", None)
+    previous = mr.previous_rounds(session, run_id) if isinstance(run_id, str) else []
+    from analystos.contracts.grounding import MeaningReview
+
+    review = MeaningReview.model_validate(mr.build(
+        question=body.question, plan_text=plan_text, results=results, fields=fields, questions=questions,
+        open_terms=open_terms, cat=cat, bindings=bindings, previous=previous)).model_dump()
+    asked = review["questions"]
+    resolutions = results + [f for f in fields if f["state"] == "resolved"]
+    return {"question": body.question, "resolutions": resolutions, "missing": [q["question"] for q in asked if q["kind"] != "review"],
+            "metric_proposals": proposals,
             "reused_metric_views": reused_views,
             "analysis_filters": analysis_filters, "filter_omissions": filter_omissions, "reporting_period": period,
             "period_evidence_ids": period_evidence_ids, "knowledge_version": getattr(call_ctx, "knowledge_version", None),
-            "needs_clarification": bool(unresolved or missing), "model_status": model_status,
-            "scope_hash": scope.scope_hash(), "context_hash": stable_hash(results),
+            "needs_clarification": bool(asked), "model_status": model_status,
+            "scope_hash": scope.scope_hash(), "context_hash": stable_hash(resolutions),
             "binding_version": binding_version(bindings, scope),
-            "available_count": len(known), "used_count": len([r for r in results if r["state"] == "resolved"]),
-            "clarification": [f"Review {r['term']}: {r['state']}" for r in unresolved] + missing}
+            "available_count": len(known), "used_count": len([r for r in resolutions if r["state"] == "resolved"]),
+            "clarification": [q["question"] for q in asked],
+            "meaning_review": review, "limitations": [lim["statement"] for lim in review["limitations"]]}
+
+
+def _plan_text(agent_ctx) -> str:
+    """The plan's questions and focus, when resolving for a run: terms the plan depends on are collected too."""
+    plan = getattr(getattr(agent_ctx, "run", None), "plan", None)
+    if not isinstance(plan, dict):
+        return ""
+    parts = []
+    for q in plan.get("questions") or []:
+        parts.append(str(q.get("question") or q.get("text") or "") if isinstance(q, dict) else str(q))
+    focus = plan.get("focus")
+    if focus:
+        parts.append(" ".join(map(str, focus)) if isinstance(focus, list) else str(focus))
+    return "\n".join(p for p in parts if p and not is_injection(p))[:4000]
 
 
 def binding_version(bindings, scope):

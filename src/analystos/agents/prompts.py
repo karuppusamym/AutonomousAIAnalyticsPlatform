@@ -177,7 +177,12 @@ Do not invent thresholds, repeat windows, flag polarity, denominators, join mean
 Grouping or renaming an already defined measure is not a new business metric. Reuse reviewed flag polarity
 for ordinary rates and reuse approved measures for breakdowns; do not request approval again for these views.
 Propose missing metrics, not SQL. Report only material missing definitions that the context cannot resolve.
-Do not ask for facts already supplied. Empty missing is allowed. """ + UNTRUSTED_NOTE,
+Do not ask for facts already supplied. Empty missing is allowed.
+List, all at once, every business term the question and `plan_questions` depend on that the context does not
+resolve, as "open_terms":[{"term":str,"question":str (one plain question for the data owner),
+"availability":"in_data|derivable|absent","columns":[exact catalog ref]}]. A term that names one catalog field is
+resolved, not open. Use "absent" when no catalog column could hold it (for example a reason nobody records):
+it becomes a stated limitation, never a question. """ + UNTRUSTED_NOTE,
 
     "glossary_suggestion.v1": """You draft business glossary definitions for a data catalog. Each entry of `terms` is a
 candidate a rule found: a coded column (its codes are in `values` only when the workspace allows), an abbreviation

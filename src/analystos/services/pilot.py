@@ -65,7 +65,7 @@ def set_source_owners(session: Session, user: User, workspace_id: str, source_id
     return src
 
 
-def _owner_checks(owners: dict[str, Any] | None, subject: str, where: str) -> list[PilotCheck]:
+def _owner_checks(owners: dict[str, Any] | None, subject: str, where: str, label: str = "this workspace") -> list[PilotCheck]:
     out = []
     for role in OWNER_ROLES:
         o = (owners or {}).get(role)
@@ -74,7 +74,8 @@ def _owner_checks(owners: dict[str, Any] | None, subject: str, where: str) -> li
         else:
             out.append(PilotCheck(check=f"owner.{role}", subject=subject, status="missing",
                                   reason=f"no named {role} owner",
-                                  remediation=f"a workspace owner names one: PUT {where}/owners"))
+                                  remediation=f"a workspace owner names one: PUT {where}/owners",
+                                  action=f"Name the {role} owner of {label}", who="workspace_owner", screen="members_policy"))
     return out
 
 
@@ -97,17 +98,19 @@ def _identity_check(ws: Workspace) -> PilotCheck:
     if not oidc.enabled():
         return PilotCheck(check="identity.sso", subject="platform", status="missing",
                           reason="single sign-on is not configured: users sign in with local passwords",
-                          remediation="set ANALYSTOS_OIDC_ISSUER / ANALYSTOS_OIDC_CLIENT_ID and map groups in config/oidc.yaml")
+                          remediation="set ANALYSTOS_OIDC_ISSUER / ANALYSTOS_OIDC_CLIENT_ID and map groups in config/oidc.yaml",
+                          action="Set up single sign-on so people use their company sign-in", who="platform_admin")
     try:
         mapping = oidc.load_mapping()
     except InvalidInput as exc:
         return PilotCheck(check="identity.sso", subject="platform", status="fail", reason=exc.message,
-                          remediation="fix config/oidc.yaml")
+                          remediation="fix config/oidc.yaml", action="Fix the single sign-on settings", who="platform_admin")
     grants = [g for g in mapping.workspace_roles if g.workspace in (ws.id, ws.name)]
     if not grants:
         return PilotCheck(check="identity.sso", subject="workspace", status="missing",
                           reason="single sign-on is on, but no identity-provider group maps to a role in this workspace",
-                          remediation="add a workspace_roles entry for this workspace in config/oidc.yaml")
+                          remediation="add a workspace_roles entry for this workspace in config/oidc.yaml",
+                          action="Give this workspace's sign-in groups their roles", who="platform_admin")
     return PilotCheck(check="identity.sso", subject="workspace", status="pass",
                       reason="groups map to roles: " + ", ".join(f"{g.group} -> {g.role}" for g in grants))
 
@@ -129,7 +132,9 @@ def _definitions_check(session: Session, ws: Workspace) -> PilotCheck:
                           reason=f"{metrics} approved metric{'s' * (metrics != 1)}, {queries} verified quer{'ies' if queries != 1 else 'y'}")
     return PilotCheck(check="conversation.definitions", subject="workspace", status="missing",
                       reason="no approved metric or verified query: Ask and dashboards by conversation have no reviewed definitions to answer from",
-                      remediation="approve the pilot's key metrics (Catalog → Metrics) or save a checked Ask answer as a verified query")
+                      remediation="approve the pilot's key metrics (Catalog → Metrics) or save a checked Ask answer as a verified query",
+                      action="Approve 3 to 5 key metrics for the pilot, or save a checked Ask answer as a verified question",
+                      who="editor", screen="metrics")
 
 
 def _rehearsal_check(session: Session, ws: Workspace) -> PilotCheck:
@@ -141,7 +146,9 @@ def _rehearsal_check(session: Session, ws: Workspace) -> PilotCheck:
                           reason="every task-card feature has a recorded rehearsal: " + ", ".join(FEATURE_LABEL.values()))
     return PilotCheck(check="pilot.rehearsal", subject="workspace", status="missing",
                       reason="not rehearsed here yet: " + ", ".join(missing),
-                      remediation="walk the task cards once and record each as a rehearsal in the pilot scorecard")
+                      remediation="walk the task cards once and record each as a rehearsal in the pilot scorecard",
+                      action="Try each task card once and record it as a rehearsal in the pilot scorecard",
+                      who="analyst", screen="scorecard")
 
 
 def readiness(session: Session, user: User, workspace_id: str, *, evidence_dir: Path | None = None) -> PilotReadiness:
@@ -152,10 +159,11 @@ def readiness(session: Session, user: User, workspace_id: str, *, evidence_dir: 
                                    .order_by(Source.created_at)))
     if not sources:
         checks.append(PilotCheck(check="connector.health", subject="workspace", status="missing",
-                                 reason="the workspace has no source", remediation="register the pilot's source"))
+                                 reason="the workspace has no source", remediation="register the pilot's source",
+                                 action="Connect the pilot's data", who="editor", screen="sources"))
     for src in sources:
         subject = f"source:{src.id} ({src.name})"
-        checks += _owner_checks(src.owners, subject, f"/api/workspaces/{ws.id}/sources/{src.id}")
+        checks += _owner_checks(src.owners, subject, f"/api/workspaces/{ws.id}/sources/{src.id}", f"the {src.name} source")
         cert = certification(src.kind, evidence_dir)
         if cert["status"] == "certified":
             checks.append(PilotCheck(check="connector.certified", subject=subject, status="pass", evidence=cert["evidence"],
@@ -164,15 +172,21 @@ def readiness(session: Session, user: User, workspace_id: str, *, evidence_dir: 
             checks.append(PilotCheck(check="connector.certified", subject=subject, status="missing",
                                      reason=f"{src.kind} has catalog and unit tests only, no live certification",
                                      remediation=f"run scripts/certify_connectors.py --kinds {src.kind} against a live "
-                                                 f"{src.kind} before the pilot relies on it"))
+                                                 f"{src.kind} before the pilot relies on it",
+                                     action=f"Have the {src.kind} connection tested against your live system before the pilot "
+                                            "relies on it", who="platform_admin"))
         if src.status == "error" or src.last_error:  # a successful crawl clears last_error
             usable = "" if src.status == "error" else f" (status {src.status}: data already staged stays readable)"
             checks.append(PilotCheck(check="connector.health", subject=subject, status="fail",
                                      reason=f"the last connection failed: {(src.last_error or 'no detail recorded')[:300]}{usable}",
-                                     remediation="fix the connection and discover the source again"))
+                                     remediation="fix the connection and discover the source again",
+                                     action=f"Fix the connection to {src.name} and check the source again", who="editor",
+                                     screen="sources"))
         elif src.last_discovered_at is None:
             checks.append(PilotCheck(check="connector.health", subject=subject, status="missing",
-                                     reason="the source was never discovered", remediation="discover the source"))
+                                     reason="the source was never discovered", remediation="discover the source",
+                                     action=f"Check the {src.name} source so its tables are known", who="editor",
+                                     screen="sources"))
         else:
             checks.append(PilotCheck(check="connector.health", subject=subject, status="pass",
                                      reason=f"discovered {src.last_discovered_at:%Y-%m-%d %H:%M} UTC, status {src.status}"))
@@ -181,11 +195,14 @@ def readiness(session: Session, user: User, workspace_id: str, *, evidence_dir: 
     drill = latest_drill(evidence_dir)
     if drill is None:
         checks.append(PilotCheck(check="recovery.drill", subject="platform", status="missing", reason="no recovery drill on record",
-                                 remediation="run scripts/recovery_drill.py --report auto (docs/30-runbooks/06-backup-and-recovery.md)"))
+                                 remediation="run scripts/recovery_drill.py --report auto (docs/30-runbooks/06-backup-and-recovery.md)",
+                                 action="Run a backup and recovery drill", who="platform_admin"))
     else:
         checks.append(PilotCheck(check="recovery.drill", subject="platform", status="pass" if drill[1] else "fail",
                                  evidence=drill[0], reason="the latest drill passed" if drill[1] else "the latest drill failed",
-                                 remediation=None if drill[1] else "fix what the drill reported and run it again"))
+                                 remediation=None if drill[1] else "fix what the drill reported and run it again",
+                                 action=None if drill[1] else "Fix what the recovery drill reported and run it again",
+                                 who=None if drill[1] else "platform_admin"))
     missing = sum(c.status == "missing" for c in checks)
     failing = sum(c.status == "fail" for c in checks)
     return PilotReadiness(workspace_id=ws.id, workspace_name=ws.name, verdict="ready" if not (missing or failing) else "not_ready",

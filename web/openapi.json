@@ -5983,6 +5983,17 @@
       },
       "PilotCheck": {
         "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          },
           "check": {
             "title": "Check",
             "type": "string"
@@ -6013,6 +6024,23 @@
             ],
             "title": "Remediation"
           },
+          "screen": {
+            "anyOf": [
+              {
+                "enum": [
+                  "members_policy",
+                  "sources",
+                  "metrics",
+                  "scorecard"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Screen"
+          },
           "status": {
             "enum": [
               "pass",
@@ -6025,6 +6053,23 @@
           "subject": {
             "title": "Subject",
             "type": "string"
+          },
+          "who": {
+            "anyOf": [
+              {
+                "enum": [
+                  "workspace_owner",
+                  "editor",
+                  "analyst",
+                  "platform_admin"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Who"
           }
         },
         "required": [
