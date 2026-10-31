@@ -1396,3 +1396,13 @@ rules only, on a copy of the rehearsal database; no analyst results).
 
 Live evidence: [`evidence/pilot-fix-investigate-20261030.md`](evidence/pilot-fix-investigate-20261030.md) (rules only, no model
 call). Not verified: a live run with models; the guided source choice on a live two-source workspace (unit tested only).
+
+## 2026-10-30 — S07-T8 Number check (from the blue ocean discovery)
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| Check a quoted number | `evidence/number_check.py`: the question runs through Ask under the caller's scope (new thread "Number check: …"); `parse_claim` keeps the written precision, `pick_value` singles out one number (scalar, `label` row, `column`), `compare` applies the numbers guard's rounding rule (percent ↔ fraction, optional relative `tolerance`). Verdict confirmed / contradicted with authority certified (verified query, certified metric) or ad_hoc, or unverifiable with the reason and a remedy. The claimed value is never in a model prompt. Audit `number_check.completed` | `tests/unit/test_number_check.py` (parsing, rounding, picking, verdicts); `tests/integration/test_number_check.py` (Postgres RLS + strict tenancy: confirmed/contradicted equal a reference query, labelled breakdown row, unverifiable cases, 422 on a non-number, claim absent from every model call, audit rows, non-member refused) |
+| Surfaces | `POST /v2/number-checks` and `/api/v2/number-checks`; MCP tool `number.check` (grant role analyst); "Check a number" card on the Ask screen with verdict, difference, authority, tables, freshness, SQL receipt and "Open the answer"; `web/openapi.json` + generated types regenerated; `number.check` in the web's built-in MCP tool list | `web/src/test/numberCheck.test.tsx`; live walkthrough below. MCP over HTTP not run (the `mcp` extra is not installed on this host) |
+
+Live evidence: [`evidence/number-check-20261030.md`](evidence/number-check-20261030.md) (5/5, rules rung, $0.000012 total).
+Not verified: a certified verdict live (no certified incident metric in the demo workspace); a model-written answer live.

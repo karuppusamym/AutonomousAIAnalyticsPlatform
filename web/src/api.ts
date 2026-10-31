@@ -4185,6 +4185,8 @@ export const api = {
     get("/api/requests", { query: q }) as Promise<DeskRequest[]>,
   getRequest: (id: string) => get("/api/requests/{request_id}", { path: { request_id: id } }) as Promise<DeskRequest>,
   createRequest: (body: Schemas["RequestIn"]) => post("/api/requests", { body }) as Promise<CreatedRequest>,
+  // number check (S07-T8): a number quoted elsewhere against the governed answer
+  checkNumber: (body: Schemas["NumberCheckIn"]) => post("/api/v2/number-checks", { body }) as Promise<NumberCheck>,
   requestAction: (id: string, type: RequestActionType, payload: Dict = {}) =>
     post("/api/requests/{request_id}/actions", { path: { request_id: id }, body: { type, payload } }) as Promise<DeskRequest>,
   value: (ws: string, q: { from?: string; to?: string } = {}) =>
@@ -5297,6 +5299,25 @@ export interface DeskRequest {
   timeline?: RequestTimelineEvent[];
 }
 export interface CreatedRequest { request: DeskRequest; conversation_id: string | null }
+
+/** S07-T8 number check (evidence/number_check.py): a claimed number against the workspace's governed answer. */
+export interface NumberCheck {
+  version: string;
+  verdict: "confirmed" | "contradicted" | "unverifiable";
+  authority: "certified" | "ad_hoc" | null;
+  question: string; source: string | null; workspace_id: string;
+  claimed: { text: string; value: number; percent: boolean };
+  label: string | null; column: string | null; tolerance: number;
+  computed: { value: number; column: string | null; row_label: string | null } | null;
+  comparison: { agrees: boolean; scale: number; compared_to: number; difference: number; relative: number | null; allowed: number } | null;
+  reason: string | null; remedy?: string; note?: string | null;
+  evidence: {
+    turn_id: string | null; thread_id: string | null; sql: string | null; query_id: string | null; result_hash: string | null;
+    answered_by: string | null; governance: "governed" | "ad_hoc"; verified_query: string | null;
+    semantic_model_version: string | null; assets: string[]; row_count: number | null; truncated: boolean;
+    staleness?: { state: string; label: string; data_as_of: string | null } | null;
+  };
+}
 
 /** FR-053 value metrics over a period (desk/value.py); `daily` is the nightly rollup (desk_daily, class `all`). */
 export interface ValueSummary {

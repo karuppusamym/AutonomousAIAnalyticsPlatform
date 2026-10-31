@@ -9,6 +9,7 @@ import { AddAnswerToDashboard } from "../components/DashboardDraft";
 import { AnalystAnswer } from "../components/AnalystAnswer";
 import { ChartView } from "../components/Chart";
 import { CitationsPanel } from "../components/Citations";
+import { NumberCheckPanel } from "../components/NumberCheck";
 import {
   Card, CodeBlock, DataTable, EmptyState, ErrorBox, Field, KeyValue, Loading, Notice, PageHeader, StateView, Tabs, TechnicalDetails,
 } from "../components/ui";
@@ -895,6 +896,10 @@ export function AskPage() {
               </form>
               <GatewayError error={askErr} />
             </div>
+          </Card>
+
+          <Card title="Check a number">
+            <NumberCheckPanel wsId={wsId} onOpenThread={(id) => { void threads.reload(); openThread(id); }} />
           </Card>
 
           {expert && <Card title="SQL console">
