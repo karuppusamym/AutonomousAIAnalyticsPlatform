@@ -1406,3 +1406,13 @@ call). Not verified: a live run with models; the guided source choice on a live 
 
 Live evidence: [`evidence/number-check-20261030.md`](evidence/number-check-20261030.md) (5/5, rules rung, $0.000012 total).
 Not verified: a certified verdict live (no certified incident metric in the demo workspace); a model-written answer live.
+
+## 2026-10-30 — S05-T7 air-gapped §62 run: blocked (no local model server)
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| §62 scenario on an air-gapped install with a real local model | unchanged: `services/airgap.py`, `config/models.airgapped.yaml`, runbook `docs/30-runbooks/08-local-models.md` | ❌ not run: the dev host has no local model server (no Ollama, LM Studio or vLLM; no GPU; CPU-only, 32 GB RAM). Nothing installed, compose stack untouched, no model call |
+
+Blocked report: [`evidence/airgap-e2e-20261030.md`](evidence/airgap-e2e-20261030.md) — what was checked, what is
+missing, and the exact commands (Ollama native or in Docker, `qwen3:8b`, a local models file, the API env, the
+posture check, `scripts/e2e_demo.py`). Still evidenced by unit tests only (`test_model_switch_gate.py::test_airgap_posture_*`).
