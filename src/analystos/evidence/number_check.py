@@ -196,3 +196,79 @@ def check(user: Any, workspace_id: str, question: str, claimed: Any, *, label: s
                    "source": source, "label": label, "column": column, "channel": channel,
                    "query_id": out["evidence"].get("query_id"), "result_hash": out["evidence"].get("result_hash")})
     return out
+
+
+def handoff(user: Any, workspace_id: str, turn_id: str, claimed: Any, *, label: str | None = None,
+            column: str | None = None, tolerance: float = 0.0, source: str | None = None) -> dict[str, Any]:
+    """Send a check to the Request Desk in one step: an escalated R7 request (the definition behind the number) with
+    the check as its data pack. The verdict is recomputed from the stored Ask turn, never taken from the caller, and
+    a confirmed check on a certified definition has nothing left to hand off."""
+    from analystos.core.ids import new_id, utcnow
+    from analystos.db.base import session_scope
+    from analystos.desk import service as desk
+    from analystos.desk.escalation import desk_settings, pick_assignee
+    from analystos.desk.models import Request
+    from analystos.desk.states import sla_due
+    from analystos.governance.policy import require_role
+    from analystos.services import ask as ask_svc
+
+    claim = parse_claim(claimed)
+    with session_scope() as s:
+        me = s.merge(user)
+        require_role(s, me, workspace_id, "viewer")
+        turn = ask_svc._turn_for(s, me, turn_id, workspace_id)
+        out = evaluate(ask_svc.turn_out(s, turn), claim, label=(label or "").strip() or None,
+                       column=(column or "").strip() or None, tolerance=float(tolerance or 0.0))
+        if out["verdict"] == "confirmed" and out["authority"] == "certified":
+            raise InvalidInput("this number matches a certified definition: there is nothing for an analyst to resolve")
+        source = " ".join((source or "").split())[:MAX_SOURCE] or None
+        computed = (out.get("computed") or {}).get("value")
+        said = f"{claim.text}" + (f" (from {source})" if source else "")
+        if out["verdict"] == "unverifiable":
+            text = f"Check this number: {turn.question} — quoted as {said}; it could not be checked here ({out['reason']})."
+        else:
+            text = (f"Settle the definition behind: {turn.question} — quoted as {said}; computed here {computed:g} "
+                    f"({out['verdict']}, {out['authority']}).")
+        now, actor = utcnow(), f"user:{user.id}"
+        req = Request(id=new_id("rq"), workspace_id=workspace_id, requester_id=user.id, channel="api", text=text[:4000],
+                      normalized_intent={"key": f"number_check:{turn.id}:{claim.text}", "turn_id": turn.id},
+                      state="new", priority="normal", request_class="R7", run_ids=[], followers=[], cost_usd=0.0,
+                      revision=1, conversation_id=turn.thread_id,
+                      triage={"class": "R7", "answered_by": "number_check", "confidence": 1.0, "flags": ["number_check"],
+                              "reason": "a number check the governed path could not settle on a certified definition"})
+        s.add(req)
+        s.flush()
+        desk._event(s, req, "created", actor, to_state="new", payload={"channel": "api", "turn_id": turn.id})
+        desk.move(s, req, "triaged", actor, type_="triaged", payload={"class": "R7", "flags": ["number_check"]}, now=now)
+        req.sla_due_at = sla_due(now, req.priority, desk_settings(s, workspace_id).get("sla_hours"))
+        req.assignee_id = pick_assignee(s, workspace_id, exclude=user.id)
+        req.data_pack = {"number_check": {k: out.get(k) for k in ("verdict", "authority", "claimed", "computed",
+                                                                  "comparison", "reason", "note")},
+                         "source": source,
+                         "evidence": [{"kind": "ask_turn", "id": turn.id, "thread_id": turn.thread_id,
+                                       "query_id": out["evidence"].get("query_id"), "sql": out["evidence"].get("sql")}],
+                         "remedy": "agree the definition, then certify it (save the answer as a verified query or "
+                                   "metric) or answer the requester with the correct number"}
+        desk.move(s, req, "escalated", actor, type_="escalated",
+                  payload={"reason": "number check", "assignee_id": req.assignee_id}, now=now)
+        return {"request_id": req.id, "state": req.state, "assignee_id": req.assignee_id,
+                "sla_due_at": req.sla_due_at.isoformat() if req.sla_due_at else None, "verdict": out["verdict"]}
+
+
+def coverage(session: Any, workspace_id: str, start: Any, end: Any) -> dict[str, Any]:
+    """How much of what people asked was answered from a certified definition, and how number checks came out: the
+    certification loop's progress for the Value screen. Counts only; bounded by the period."""
+    from sqlalchemy import func, select
+
+    from analystos.db.models import AskTurn, AuditEvent
+
+    answered, certified = session.execute(select(
+        func.count(), func.count().filter(AskTurn.answered_by.in_(GOVERNED_BY))).where(
+        AskTurn.workspace_id == workspace_id, AskTurn.status == "answered", AskTurn.created_at >= start,
+        AskTurn.created_at < end)).one()
+    checks = dict(session.execute(select(AuditEvent.decision, func.count()).where(
+        AuditEvent.workspace_id == workspace_id, AuditEvent.action == "number_check.completed",
+        AuditEvent.created_at >= start, AuditEvent.created_at < end).group_by(AuditEvent.decision)).all())
+    return {"answered": int(answered or 0), "certified": int(certified or 0),
+            "certified_share": (certified / answered) if answered else None,
+            "checks": {v: int(checks.get(v, 0)) for v in VERDICTS}}

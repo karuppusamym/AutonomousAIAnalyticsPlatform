@@ -109,3 +109,40 @@ def test_number_check_needs_workspace_membership(api, world):  # noqa: F811
     r = api.post("/api/v2/number-checks", headers=headers,
                  json={"workspace_id": world["ws"], "question": "How many incidents?", "claimed": "1"})
     assert r.status_code in (403, 404), r.text
+
+
+def test_handoff_to_the_desk_and_trust_coverage(api, world, transport):  # noqa: F811
+    from analystos.db.base import session_scope
+    from analystos.desk.models import Request
+
+    table, ws = world["table"], world["ws"]
+    headers = _login(api, "analyst@analystos.local")
+    total_q = "How many incidents are there in total?"
+    transport.sql_for = {total_q: f"SELECT COUNT(*) AS n FROM {table}"}
+    [(total,)] = _reference(f"SELECT COUNT(*) AS n FROM {table}")
+    bad = _check(api, headers, ws, question=total_q, claimed=str(int(total) + 5), source="Other BI copilot")
+    assert bad["verdict"] == "contradicted"
+
+    # the verdict is recomputed from the stored answer: a caller cannot hand off a different one
+    r = api.post("/api/v2/number-checks/handoff", headers=headers, json={
+        "workspace_id": ws, "turn_id": bad["evidence"]["turn_id"], "claimed": str(int(total) + 5), "source": "Other BI copilot"})
+    assert r.status_code == 201, r.text
+    out = r.json()
+    assert out["state"] == "escalated" and out["verdict"] == "contradicted"
+    with session_scope() as s:
+        req = s.get(Request, out["request_id"])
+        assert (req.request_class, req.conversation_id) == ("R7", bad["evidence"]["thread_id"])
+        pack = req.data_pack["number_check"]
+        assert pack["verdict"] == "contradicted" and pack["computed"]["value"] == float(total)
+        assert req.data_pack["evidence"][0]["id"] == bad["evidence"]["turn_id"] and req.sla_due_at is not None
+    assert api.get(f"/api/requests/{out['request_id']}", headers=headers).json()["state"] == "escalated"
+
+    other = api.post("/api/v2/number-checks/handoff", headers=_login(api, "approver@analystos.local"), json={
+        "workspace_id": ws, "turn_id": bad["evidence"]["turn_id"], "claimed": "1"})
+    assert other.status_code in (403, 404), other.text  # not a member of the workspace
+
+    value = api.get("/api/value", headers=headers, params={"workspace": ws})
+    assert value.status_code == 200, value.text
+    trust = value.json()["trust"]
+    assert trust["answered"] >= 1 and trust["certified"] == 0 and trust["certified_share"] == 0
+    assert trust["checks"]["contradicted"] >= 1

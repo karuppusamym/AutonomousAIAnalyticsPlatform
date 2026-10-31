@@ -1406,3 +1406,14 @@ call). Not verified: a live run with models; the guided source choice on a live 
 
 Live evidence: [`evidence/number-check-20261030.md`](evidence/number-check-20261030.md) (5/5, rules rung, $0.000012 total).
 Not verified: a certified verdict live (no certified incident metric in the demo workspace); a model-written answer live.
+
+## 2026-10-31 — S07-T9 Trust loop (label, certification coverage, check → Desk)
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| One trust label | `web/src/lib/trust.ts` (`trustOf`, `trustOfAuthority`), `components/TrustBadge.tsx`: Certified / Checked / Unchecked with the same words and hint everywhere; Ask "Answered by" line, number-check result | `web/src/test/numberCheck.test.tsx` ("trust label") |
+| Check → Desk | `evidence/number_check.handoff`, `POST /v2/number-checks/handoff`: escalated R7 request (assignee, SLA, data pack with the check and the Ask turn as evidence), verdict recomputed from the stored turn; refused for a confirmed certified number; "Send to an analyst" button | `tests/integration/test_number_check.py::test_handoff_to_the_desk_and_trust_coverage`; live `rq_ede96ebb4daa` (2026-10-31) |
+| Certification coverage | `evidence/number_check.coverage` → `trust` in `GET /api/value` (answered, certified, certified share, check outcomes); Trust card on Value with the way to raise it | Same integration test; live: 0 of 12 certified, 10 checks |
+
+Not done: plain names for the remaining internal terms outside expert view.
+

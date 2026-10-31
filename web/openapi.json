@@ -5901,6 +5901,81 @@
         "title": "NotebookIn",
         "type": "object"
       },
+      "NumberCheckHandoffIn": {
+        "properties": {
+          "claimed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Claimed"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "tolerance": {
+            "default": 0.0,
+            "maximum": 0.5,
+            "minimum": 0.0,
+            "title": "Tolerance",
+            "type": "number"
+          },
+          "turn_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Turn Id",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "turn_id",
+          "claimed"
+        ],
+        "title": "NumberCheckHandoffIn",
+        "type": "object"
+      },
       "NumberCheckIn": {
         "properties": {
           "claimed": {
@@ -24025,6 +24100,80 @@
           }
         },
         "summary": "Create Number Check",
+        "tags": [
+          "number-checks"
+        ]
+      }
+    },
+    "/api/v2/number-checks/handoff": {
+      "post": {
+        "description": "Send a check to the Request Desk (an escalated R7 request); the verdict is recomputed from the stored answer.",
+        "operationId": "hand_off_number_check_api_v2_number_checks_handoff_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NumberCheckHandoffIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Hand Off Number Check",
         "tags": [
           "number-checks"
         ]
@@ -52731,6 +52880,80 @@
           }
         },
         "summary": "Create Number Check",
+        "tags": [
+          "number-checks"
+        ]
+      }
+    },
+    "/v2/number-checks/handoff": {
+      "post": {
+        "description": "Send a check to the Request Desk (an escalated R7 request); the verdict is recomputed from the stored answer.",
+        "operationId": "hand_off_number_check_v2_number_checks_handoff_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NumberCheckHandoffIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Hand Off Number Check",
         "tags": [
           "number-checks"
         ]

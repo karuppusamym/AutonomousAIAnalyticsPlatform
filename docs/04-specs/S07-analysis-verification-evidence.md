@@ -50,6 +50,7 @@ propagates to publication banner; adversarial: a data row containing instruction
 | S07-T6 | Time-series + forecast method pack | 4d |
 | S07-T7 | Void sweep → publication banner + Desk task | 1.5d |
 | S07-T8 | Number check: a number quoted elsewhere against the governed answer (API, MCP, Ask panel) | 1.5d |
+| S07-T9 | Trust loop: one trust label, certification coverage on Value, check → Desk in one step | 1d |
 
 ## 6. As built (2026-10-27, T1 and T3–T7; T2 was done earlier)
 
@@ -126,3 +127,6 @@ BI tool keep it, and check its numbers here.
   reference query; the claimed value is absent from every model prompt), `web/src/test/numberCheck.test.tsx`. Live:
   [`evidence/number-check-20261030.md`](../60-delivery/evidence/number-check-20261030.md). Not built: escalating a
   contradicted ad hoc check to the Desk in one step; a certified verdict shown live.
+* **T9 trust loop (2026-10-31).** One label on every number (`web/src/lib/trust.ts`): Certified, Checked, Unchecked.
+  `number_check.handoff` sends a check to the Desk as an escalated R7 request (verdict recomputed from the stored
+  turn); `number_check.coverage` adds `trust` to the value report and a Trust card to Value. Tracker S07-T9.

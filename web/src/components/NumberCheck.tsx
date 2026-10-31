@@ -1,7 +1,9 @@
 import { useId, useState } from "react";
-import { api, type NumberCheck } from "../api";
+import { api, type NumberCheck, type NumberCheckHandoff } from "../api";
 import { useAction } from "../lib/hooks";
 import { fmtNumber } from "../lib/format";
+import { TRUST, trustOfAuthority } from "../lib/trust";
+import { TrustBadge } from "./TrustBadge";
 import { CodeBlock, ErrorBox, Field, KeyValue, Notice } from "./ui";
 
 const VERDICT: Record<NumberCheck["verdict"], { tone: "success" | "danger" | "warning"; title: string }> = {
@@ -68,7 +70,18 @@ export function NumberCheckPanel({ wsId, onOpenThread }: { wsId: string; onOpenT
 export function NumberCheckResult({ check, onOpenThread }: { check: NumberCheck; onOpenThread?: (threadId: string) => void }) {
   const v = VERDICT[check.verdict];
   const ev = check.evidence;
-  const authority = check.authority === "certified" ? "certified definition" : check.authority === "ad_hoc" ? "generated query (not certified)" : null;
+  const trust = trustOfAuthority(check.authority);
+  const act = useAction();
+  const [sent, setSent] = useState<NumberCheckHandoff | null>(null);
+  // a confirmed number on a certified definition is settled; anything else may need a person
+  const canHandOff = !!ev.turn_id && !(check.verdict === "confirmed" && trust === "certified");
+  const handOff = async () => {
+    const res = await act.run(() => api.handOffNumberCheck({
+      workspace_id: check.workspace_id, turn_id: ev.turn_id!, claimed: check.claimed.text, label: check.label,
+      column: check.column, tolerance: check.tolerance, source: check.source,
+    }));
+    if (res) setSent(res);
+  };
   return (
     <section className="stack" aria-label="Number check result">
       <Notice tone={v.tone}>
@@ -83,14 +96,29 @@ export function NumberCheckResult({ check, onOpenThread }: { check: NumberCheck;
         ["Claimed", check.claimed.text + (check.source ? ` (${check.source})` : "")],
         ["Computed", check.computed ? `${fmtNumber(check.computed.value)}${check.computed.row_label ? ` · row ${check.computed.row_label}` : ""}${check.computed.column ? ` · ${check.computed.column}` : ""}` : "—"],
         ["Difference", check.comparison ? `${fmtNumber(check.comparison.difference)}${check.comparison.relative != null ? ` (${fmtNumber(check.comparison.relative * 100, 1)}%)` : ""}` : "—"],
-        ["Answered from", authority ?? "—"],
+        ["Trust", check.computed ? <><TrustBadge level={trust} /> <span className="small muted">{TRUST[trust].hint}</span></> : "—"],
         ["Tables", ev.assets.length ? ev.assets.join(", ") : "—"],
         ["Data", ev.staleness?.label ?? "—"],
       ]} />
       {ev.sql && <CodeBlock code={ev.sql} label={`SQL · receipt ${ev.query_id ?? "—"}`} />}
-      {ev.thread_id && onOpenThread && (
-        <div className="btn-row"><button type="button" className="btn btn-sm" onClick={() => onOpenThread(ev.thread_id!)}>Open the answer</button></div>
+      {trust === "checked" && check.computed && (
+        <p className="small">To make this number <strong>Certified</strong>, open the answer and save it as a verified query or
+          metric; an owner approves it, and the same question is answered from it from then on.</p>
       )}
+      <div className="btn-row">
+        {ev.thread_id && onOpenThread && (
+          <button type="button" className="btn btn-sm" onClick={() => onOpenThread(ev.thread_id!)}>
+            {trust === "checked" ? "Open the answer to certify it" : "Open the answer"}</button>
+        )}
+        {canHandOff && !sent && (
+          <button type="button" className="btn btn-sm" disabled={act.busy} onClick={() => void handOff()}
+            title="Creates a Request Desk request with this check and its evidence, assigned to an analyst">
+            {act.busy ? "Sending…" : "Send to an analyst"}</button>
+        )}
+      </div>
+      <ErrorBox error={act.error} />
+      {sent && <Notice tone="success">Sent to the Request Desk as {sent.request_id}{sent.assignee_id ? ", assigned to an analyst" : ""}.
+        The check and its evidence go with it.</Notice>}
     </section>
   );
 }
