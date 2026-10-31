@@ -1417,3 +1417,16 @@ Not verified: a certified verdict live (no certified incident metric in the demo
 
 Not done: plain names for the remaining internal terms outside expert view.
 
+## 2026-10-30 — S10-MCP-LIVE: MCP over streamable HTTP, live
+
+The official MCP Python SDK client (`mcp` 2.3.0, protocol `2026-07-28`) called this worktree's API at `/mcp` over
+streamable HTTP, with the API running against the compose stack. Two admin-created clients had analyst grants on
+`ws_c0f6d56a3ce0`. `tools/list` listed `number.check` with its schema. `ask` returned 20000. `number.check`: `20,000`
+confirmed, `20037` contradicted, `775` with label `1` confirmed (all equal to psql, rules rung, $0 model cost). A client
+without the grant did not see the tool and was refused (SDK `MCPError`; raw HTTP 403 at the gate). With no token the
+endpoint returned 401. The trail reads as follows: `mcp.request` allow/deny audit rows; `number_check.completed` with
+channel `mcp`; every query receipt's actor is the client's service user (one gateway); denied calls are not counted in
+`mcp_usage`. This closes the "MCP over HTTP not run" gap in the S07-T8 entry above.
+
+Live evidence: [`evidence/mcp-live-20261030.md`](evidence/mcp-live-20261030.md) (+ `.json`, 9/9). Not verified: a
+certified verdict over MCP, MCP resources, a third-party MCP client application as the caller.
