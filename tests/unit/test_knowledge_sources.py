@@ -18,7 +18,7 @@ from analystos.knowledge import sources as ks
 from analystos.tools.http import OutboundRefused
 
 PUBLIC = ipaddress.ip_address("140.82.112.5")
-SETTINGS = SimpleNamespace(http_tool_allowlist="", outbound_private_hosts="", air_gapped=False)
+SETTINGS = SimpleNamespace(http_tool_allowlist="acme.atlassian.net", outbound_private_hosts="", air_gapped=False)
 
 
 def public(host: str, port: int) -> list:
@@ -94,6 +94,21 @@ def test_a_credential_in_the_config_is_refused(key):
 
 
 # ------------------------------------------------------------------------------------ SSRF
+def test_no_atlassian_host_is_allowed_by_default():
+    bare = SimpleNamespace(http_tool_allowlist="", outbound_private_hosts="", air_gapped=False)
+    remote = httpx.MockTransport(lambda r: httpx.Response(200, json={}))
+    fetch = ks.make_fetch(secret="a:b", auth="basic", settings=bare, resolver=public, transport=remote)
+    with pytest.raises(OutboundRefused, match="allowlist"):
+        fetch("https://victim-site.atlassian.net/wiki/rest/api/content")
+
+
+def test_binding_payload_names_workspace_host_target_and_secret():
+    p = ks.binding_payload("ws_1", "confluence", CCONF, "env:ANALYSTOS_SOURCE_SECRET_WIKI")
+    assert p == {"workspace_id": "ws_1", "kind": "confluence", "host": "acme.atlassian.net",
+                 "base": "https://acme.atlassian.net/wiki", "target": "space:DATA", "secret_ref": "env:ANALYSTOS_SOURCE_SECRET_WIKI"}
+    assert ks.binding_payload("ws_1", "github", CONFIG, None)["target"] == "acme/analytics@main:docs"
+
+
 def test_only_known_hosts_are_reachable_unless_the_operator_lists_more():
     remote = Remote({})
     fetch = ks.make_fetch(secret=None, auth="bearer", settings=SETTINGS, resolver=public, transport=httpx.MockTransport(remote))
@@ -330,8 +345,17 @@ def svc(sqlite_db, monkeypatch):
         s.add(models.User(id="usr_1", email="e@x", name="E", password_hash="-", active=True, attributes={}))
         s.add(models.Workspace(id="ws_1", name="W", autonomy_level=3, created_by="usr_1", policy_version=1, settings={}))
         s.add(models.WorkspaceMember(workspace_id="ws_1", user_id="usr_1", role="owner"))
+        s.add(models.User(id="usr_2", email="f@x", name="F", password_hash="-", active=True, attributes={}))
+        s.add(models.WorkspaceMember(workspace_id="ws_1", user_id="usr_2", role="owner"))
         s.add(models.KnowledgeSource(id="ksrc_t", workspace_id="ws_1", kind="github", name="Docs", config=CONFIG,
                                      secret_ref="env:ANALYSTOS_SOURCE_SECRET_GH", state={}, created_by="usr_1"))
+    with session_scope() as s:  # the source was created by usr_1 and approved by usr_2
+        row = s.get(models.KnowledgeSource, "ksrc_t")
+        service._request_binding(s, s.get(models.User, "usr_1"), row)
+        s.flush()
+        from analystos.governance.approvals import decide
+
+        decide(s, row.binding_approval_id, s.get(models.User, "usr_2"), approve=True)
     written: list[dict] = []
 
     def fake_write(session, workspace_id, docs, **kw):  # noqa: ANN001, ANN202
@@ -415,3 +439,67 @@ def test_schedule_kind_is_registered():
     from analystos.services import schedules
 
     assert schedules.KINDS["knowledge_sync"] == "editor"
+
+
+# ------------------------------------------------------------------------------------ approval binding
+def test_a_new_source_is_pending_and_cannot_sync_until_a_second_person_approves(svc):
+    from analystos.core.errors import ApprovalRequired, Forbidden
+    from analystos.db.base import session_scope
+    from analystos.governance.approvals import decide
+
+    with session_scope() as s:
+        made = svc.service.create_source(s, s.get(svc.models.User, "usr_1"), "ws_1", kind="github", name="new",
+                                         config={"repo": "a/b"}, secret_ref="env:ANALYSTOS_SOURCE_SECRET_GH")
+        apr_id = made["binding_approval_id"]
+    assert made["binding_status"] == "pending"
+    with pytest.raises(ApprovalRequired, match="pending"):
+        svc.service.sync_source(made["id"], actor="user:usr_1", resolver=public)
+    with session_scope() as s:
+        with pytest.raises(Forbidden, match="separation of duties"):
+            decide(s, apr_id, s.get(svc.models.User, "usr_1"), approve=True)
+    with session_scope() as s:
+        decide(s, apr_id, s.get(svc.models.User, "usr_2"), approve=True)
+    out = svc.service.sync_source(made["id"], actor="user:usr_1", resolver=public,
+                                  transport=httpx.MockTransport(Remote({"x.md": "# X\n"})),
+                                  secret_resolver=lambda ref, purpose="source": "tok")
+    assert out["status"] == "ok"
+
+
+def test_a_source_without_any_approval_cannot_sync(svc):
+    from analystos.core.errors import ApprovalRequired
+    from analystos.db.base import session_scope
+
+    with session_scope() as s:
+        s.get(svc.models.KnowledgeSource, "ksrc_t").binding_approval_id = None
+    with pytest.raises(ApprovalRequired, match="no approval"):
+        run_sync(svc, Remote(FILES))
+
+
+def test_changing_secret_ref_or_target_needs_a_new_approval_and_clears_state(svc):
+    from analystos.core.errors import ApprovalRequired
+    from analystos.db.base import session_scope
+
+    run_sync(svc, Remote(FILES))
+    with session_scope() as s:
+        old = s.get(svc.models.KnowledgeSource, "ksrc_t").binding_approval_id
+        out = svc.service.update_source(s, s.get(svc.models.User, "usr_1"), "ws_1", "ksrc_t",
+                                        {"secret_ref": "env:ANALYSTOS_SOURCE_SECRET_OTHER_WORKSPACE"})
+        assert out["binding_approval_id"] != old and out["binding_status"] == "pending"
+        assert s.get(svc.models.KnowledgeSource, "ksrc_t").state == {}
+    with pytest.raises(ApprovalRequired):
+        run_sync(svc, Remote(FILES))
+    with session_scope() as s:  # a rename or pause keeps the approval
+        keep = s.get(svc.models.KnowledgeSource, "ksrc_t").binding_approval_id
+        svc.service.update_source(s, s.get(svc.models.User, "usr_1"), "ws_1", "ksrc_t", {"name": "Renamed", "enabled": False})
+        assert s.get(svc.models.KnowledgeSource, "ksrc_t").binding_approval_id == keep
+
+
+def test_a_config_changed_behind_the_approval_is_refused_at_sync(svc):
+    from analystos.core.errors import ApprovalRequired
+    from analystos.db.base import session_scope
+
+    with session_scope() as s:  # a direct row change that bypasses update_source
+        row = s.get(svc.models.KnowledgeSource, "ksrc_t")
+        row.config = {**row.config, "repo": "victim/private"}
+    with pytest.raises(ApprovalRequired, match="payload changed"):
+        run_sync(svc, Remote(FILES))
