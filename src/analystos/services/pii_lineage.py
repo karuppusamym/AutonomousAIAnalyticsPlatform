@@ -88,10 +88,29 @@ def _body(gap: prop.Gap) -> str:
             f"{', '.join(gap.missing)}; no tag is removed.")
 
 
+def scope_filter(scope: Any, catalogued: set[prop.Col]) -> Any:
+    """A predicate over a gap: True when the caller may see every catalogued column on its path (selected asset,
+    column not denied by policy). A column outside the catalog (a caller's own target) reveals nothing."""
+    assets = {a.lower() for a in scope.assets}
+    denied = {d.lower() for d in scope.denied_columns}
+
+    def visible(col: prop.Col) -> bool:
+        return col not in catalogued or (col[0] in assets and f"{col[0]}.{col[1]}" not in denied)
+
+    def ok(gap: prop.Gap) -> bool:
+        cols = [gap.carried_from, gap.target] + [e.target for e in gap.path] + [e.source for e in gap.path]
+        return all(visible(c) for c in cols)
+
+    return ok
+
+
 def scan(session: Session, workspace_id: str, *, actor: str, extra_edges: list[prop.ColumnEdge] | None = None,
-         propose_drafts: bool = True) -> dict[str, Any]:
+         propose_drafts: bool = True, scope: Any | None = None) -> dict[str, Any]:
     """Run the check over the workspace's recorded lineage (plus `extra_edges`). Returns the gaps found and the drafts
-    queued; emits one `lineage.pii_gap_detected` event when there is at least one gap."""
+    queued; emits one `lineage.pii_gap_detected` event (counts and draft ids only) when there is at least one gap.
+
+    `scope` (the caller's DataScope) limits what is returned and drafted to gaps whose every catalogued column the
+    caller may read; the rest are only counted (`hidden`). Without it (the crawler, a system actor) nothing is hidden."""
     from analystos.events.bus import emit
     from analystos.governance.audit import audit
     from analystos.knowledge.suggestions import field, propose
@@ -101,8 +120,12 @@ def scan(session: Session, workspace_id: str, *, actor: str, extra_edges: list[p
     by_name, cols = catalog_index(session, workspace_id, assets)
     tags = {key: set(c.tags or []) for key, c in cols.items()}
     gaps = prop.propagate(edges, tags)
-    found, uncatalogued, drafts = [], [], []
+    allowed = scope_filter(scope, set(cols)) if scope is not None else (lambda _g: True)
+    found, uncatalogued, drafts, hidden = [], [], [], 0
     for gap in gaps:
+        if not allowed(gap):
+            hidden += 1
+            continue
         entry = gap.as_dict()
         column = cols.get(gap.target)
         if column is None:
@@ -126,11 +149,12 @@ def scan(session: Session, workspace_id: str, *, actor: str, extra_edges: list[p
         if draft is not None:
             entry["suggestion_id"] = draft.id
             drafts.append(draft.id)
-    out = {"edges": len(edges), "gaps": found, "uncatalogued": uncatalogued, "proposed": drafts}
+    out = {"edges": len(edges), "gaps": found, "uncatalogued": uncatalogued, "proposed": drafts, "hidden": hidden}
     if found or uncatalogued:
+        # every workspace watcher sees events: counts and draft ids, never column names
         emit(workspace_id, "lineage.pii_gap_detected",
              {"gaps": len(found), "uncatalogued": len(uncatalogued), "proposed": len(drafts),
-              "columns": [f"{g['asset']}.{g['column']}" for g in found[:50]]}, actor=actor, session=session)
+              "suggestion_ids": drafts[:50]}, actor=actor, session=session)
         audit(actor, "lineage.pii_gap_detected", workspace_id=workspace_id, decision="review_required",
               details={"gaps": len(found), "uncatalogued": len(uncatalogued), "proposed": drafts[:50]}, session=session)
     return out

@@ -291,13 +291,13 @@ def _dependents(s, world) -> dict[str, str]:
 
 
 def test_impact_lists_what_reads_a_removed_column(world) -> None:
-    from analystos.services.change_impact import crawl_impact
+    from analystos.services.change_impact import changed_columns, impact
 
     with world.db() as s:
         crawl = _crawl_with_removed_email(s, world)
         ids = _dependents(s, world)
         s.commit()
-        rep = crawl_impact(s, s.merge(world.editor), crawl.id)
+        rep = impact(s, world.ws, changed_columns(s, crawl))  # unfiltered: what the system sees
     assert rep["changed"] == [{"asset": "raw.customers", "asset_id": world.assets["raw.customers"], "key": "raw.customers",
                                "column": "email", "change": "removed"}]  # an added column breaks nothing
     assert {(d["asset"], d["column"]) for d in rep["downstream"]} == {("recipes.r_contacts", "mail"),
@@ -372,3 +372,36 @@ def test_a_schedule_edited_after_approval_needs_a_new_one(world) -> None:
         with pytest.raises(ApprovalRequired):
             execute_pause(s, editor, req["approval_id"])
         assert s.get(Schedule, ids["schedule"]).enabled
+
+
+def test_impact_report_hides_what_the_caller_cannot_read(world) -> None:
+    from analystos.services.change_impact import changed_columns, filter_for_scope, impact
+
+    with world.db() as s:
+        crawl = _crawl_with_removed_email(s, world)
+        _dependents(s, world)
+        s.commit()
+        rep = impact(s, world.ws, changed_columns(s, crawl))
+        # the removed column is tagged pii and denied; the recipe outputs are not in this caller's scope
+        scope = SimpleNamespace(assets=["raw.customers"], denied_columns=["raw.customers.email"])
+        seen = filter_for_scope(s, rep, scope)
+    assert seen["changed"] == [] and seen["downstream"] == []
+    assert all(not seen[k] for k in ("metrics", "verified_queries", "dashboards", "monitors", "schedules"))
+    assert seen["hidden"] > 0 and seen["counts"]["schedules"] == 0
+
+
+def test_pii_scan_returns_only_gaps_the_caller_may_read(world) -> None:
+    from analystos.services.pii_lineage import scan
+
+    with world.db() as s:
+        # an uncleared caller: the pii source column is denied, so no gap (or its column names) comes back
+        blind = SimpleNamespace(assets=["raw.customers", "recipes.r_contacts", "recipes.r_summary"],
+                                denied_columns=["raw.customers.email"])
+        out = scan(s, world.ws, actor="user:x", scope=blind)
+        assert out["gaps"] == [] and out["proposed"] == [] and out["hidden"] == 2
+        assert s.scalars(select(KnowledgeSuggestion)).all() == []
+        cleared = SimpleNamespace(assets=blind.assets, denied_columns=[])
+        out = scan(s, world.ws, actor="user:x", scope=cleared)
+        assert len(out["gaps"]) == 2 and out["hidden"] == 0
+        ev = s.scalars(select(RunEvent).where(RunEvent.type == "lineage.pii_gap_detected")).all()[-1]
+        assert "columns" not in ev.payload and "mail" not in str(ev.payload)  # ids and counts only

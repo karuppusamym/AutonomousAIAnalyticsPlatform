@@ -32,6 +32,7 @@ from analystos.db.models import (
     Schedule,
     SemanticMetric,
     SourceAsset,
+    SourceColumn,
     User,
     VerifiedQuery,
 )
@@ -229,10 +230,58 @@ def _crawl(session: Session, user: User, crawl_id: str, minimum: str) -> CrawlRu
     return crawl
 
 
+_SENSITIVE = {"pii", "restricted", "sensitive"}
+
+
+def filter_for_scope(session: Session, report: dict[str, Any], scope: Any) -> dict[str, Any]:
+    """Only what this caller may read: a changed column of the crawl stays visible unless it is sensitive (tagged)
+    and outside the caller's readable scope; a downstream column must be in scope and not denied. A dependent keeps
+    only its visible reads and links to visible dependents; one left with neither is dropped and only counted."""
+    assets = {a.lower() for a in scope.assets}
+    denied = {d.lower() for d in scope.denied_columns}
+    ids = [c["asset_id"] for c in report["changed"] if c.get("asset_id")]
+    tagged = set()
+    if ids:
+        for aid, name, tags in session.execute(select(SourceColumn.asset_id, SourceColumn.name, SourceColumn.tags)
+                                               .where(SourceColumn.asset_id.in_(ids))):
+            if set(tags or []) & _SENSITIVE:
+                tagged.add((aid, name.lower()))
+
+    def readable(asset: str, column: str) -> bool:
+        return asset in assets and f"{asset}.{column}" not in denied
+
+    changed = [c for c in report["changed"] if readable(c["asset"], c["column"]) or (
+        c["column"] == "*" or (c.get("asset_id"), c["column"]) not in tagged)]
+    downstream = [d for d in report["downstream"] if readable(d["asset"], d["column"])]
+    ok = {(c["asset"], c["column"]) for c in changed} | {(d["asset"], d["column"]) for d in downstream}
+    out = {**report, "changed": changed, "downstream": downstream}
+    kept: set[str] = set()
+    hidden = 0
+    for key, kind in (("metrics", "metric"), ("verified_queries", "verified_query"), ("dashboards", "dashboard"),
+                      ("monitors", "monitor"), ("schedules", "schedule")):
+        rows = []
+        for item in report[key]:
+            reads = [r for r in item["reads"] if (r["asset"], r["column"]) in ok]
+            via = [v for v in item.get("via") or [] if v in kept]
+            if reads or via:
+                rows.append({**item, "reads": reads, **({"via": via} if "via" in item else {})})
+                kept |= {f"{kind}:{item['id']}", f"{kind}:{item['name']}"}
+            else:
+                hidden += 1
+        out[key] = rows
+    out["counts"] = {k: len(out[k]) for k in ("changed", "downstream", "metrics", "verified_queries", "dashboards",
+                                               "monitors", "schedules")}
+    out["hidden"] = hidden + (len(report["downstream"]) - len(downstream)) + (len(report["changed"]) - len(changed))
+    return out
+
+
 def crawl_impact(session: Session, user: User, crawl_id: str) -> dict[str, Any]:
+    from analystos.governance.policy import resolve_scope
+
     crawl = _crawl(session, user, crawl_id, "viewer")
-    return {"crawl_id": crawl.id, "source_id": crawl.source_id, **impact(session, crawl.workspace_id,
-                                                                          changed_columns(session, crawl))}
+    scope = resolve_scope(session, user, crawl.workspace_id, minimum_role="viewer")
+    report = impact(session, crawl.workspace_id, changed_columns(session, crawl))
+    return {"crawl_id": crawl.id, "source_id": crawl.source_id, **filter_for_scope(session, report, scope)}
 
 
 def record_crawl_impact(session: Session, crawl: CrawlRun, actor: str) -> dict[str, int]:
