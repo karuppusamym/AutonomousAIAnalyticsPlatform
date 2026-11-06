@@ -3,16 +3,16 @@ names the approval (action knowledge_source.bind) over workspace, kind, host, ta
 
 Expand-only: one nullable column; existing rows have no approval and cannot sync until one is requested and approved.
 
-Revision ID: 0078_knowledge_source_binding
-Revises: 0077_knowledge_sources
+Revision ID: 0081_knowledge_source_binding
+Revises: 0080_quality_rules
 """
 from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0078_knowledge_source_binding"
-down_revision = "0077_knowledge_sources"
+revision = "0081_knowledge_source_binding"
+down_revision = "0080_quality_rules"
 branch_labels = None
 depends_on = None
 

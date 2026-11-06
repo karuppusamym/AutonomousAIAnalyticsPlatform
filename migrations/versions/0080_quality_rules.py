@@ -5,16 +5,16 @@ security) is installed here.
 
 Expand-only: two new tables; the previous release ignores them.
 
-Revision ID: 0077_quality_rules
-Revises: 0076_run_leases
+Revision ID: 0080_quality_rules
+Revises: 0079_mcp_grant_slice
 """
 from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0077_quality_rules"
-down_revision = "0076_run_leases"
+revision = "0080_quality_rules"
+down_revision = "0079_mcp_grant_slice"
 branch_labels = None
 depends_on = None
 

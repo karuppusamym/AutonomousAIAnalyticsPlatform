@@ -166,8 +166,10 @@ def create_knowledge_source(workspace_id: str, body: KnowledgeSourceIn, user: Us
 @router.patch("/workspaces/{workspace_id}/knowledge/sources/{source_id}")
 def update_knowledge_source(workspace_id: str, source_id: str, body: KnowledgeSourcePatch, user: User = Depends(current_user),
                             session: Session = Depends(db, scope="function")):
+    from analystos.db.models import KnowledgeSource
     from analystos.services import knowledge_sources
 
+    load_in_workspace(session, KnowledgeSource, source_id, workspace_id, user=user, minimum="editor", label="knowledge source")
     return knowledge_sources.update_source(session, session.merge(user), workspace_id, source_id,
                                            body.model_dump(exclude_unset=True))
 
@@ -175,8 +177,10 @@ def update_knowledge_source(workspace_id: str, source_id: str, body: KnowledgeSo
 @router.delete("/workspaces/{workspace_id}/knowledge/sources/{source_id}")
 def delete_knowledge_source(workspace_id: str, source_id: str, user: User = Depends(current_user),
                             session: Session = Depends(db, scope="function")):
+    from analystos.db.models import KnowledgeSource
     from analystos.services import knowledge_sources
 
+    load_in_workspace(session, KnowledgeSource, source_id, workspace_id, user=user, minimum="editor", label="knowledge source")
     return knowledge_sources.delete_source(session, session.merge(user), workspace_id, source_id)
 
 
