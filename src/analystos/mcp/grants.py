@@ -31,9 +31,12 @@ from analystos.governance.policy import get_workspace
 # Context Service (S03-T5): read-only, access-filtered ledger tools; `context.read` grants all of them
 CONTEXT_TOOLS = ("context.search", "context.get", "context.compile", "context.changes", "context.lookup")
 CONTEXT_READ = "context.read"
+# A grant flag, not a tool: context.lookup returns profiled data values (top values, min/max) only when the grant
+# names it explicitly. `context.read` does not imply it.
+LOOKUP_VALUES = "context.lookup.values"
 TOOLS = ("ask", "investigate", "get_finding_evidence", "validate_sql", "request.create", "request.status",
          "conversation.start", "conversation.say", "conversation.summary", *CONTEXT_TOOLS)
-GRANTABLE = (*TOOLS, CONTEXT_READ)
+GRANTABLE = (*TOOLS, CONTEXT_READ, LOOKUP_VALUES)
 # P7-11: a workspace's published query tools and tested/certified read-only HTTP tools, granted by name
 # (`query.<key>`, `http.<capability id>`) or by family (`query.*`, `http.*`)
 WORKSPACE_TOOL_PREFIXES = ("query.", "http.")
@@ -49,7 +52,7 @@ TOOL_MIN_ROLE = {"ask": "analyst", "investigate": "analyst", "validate_sql": "an
                  "request.create": "analyst", "request.status": "viewer",
                  # Conversations (S04): start/say create Desk requests (so the request grant's role); a summary is a read
                  "conversation.start": "analyst", "conversation.say": "analyst", "conversation.summary": "viewer",
-                 **{t: "viewer" for t in (*CONTEXT_TOOLS, CONTEXT_READ)}}
+                 **{t: "viewer" for t in (*CONTEXT_TOOLS, CONTEXT_READ, LOOKUP_VALUES)}}
 DEFAULT_DAILY_QUOTA = 1000
 
 
@@ -81,6 +84,11 @@ def grants_tool(tools: list[str], tool: str, patterns: list[str] | tuple[str, ..
     if not _patternable(tool):
         return False
     return f"{tool.split('.', 1)[0]}.*" in tools or any(fnmatch.fnmatchcase(tool, p) for p in patterns)
+
+
+def grants_lookup_values(grant: dict[str, Any] | None) -> bool:
+    """Whether a grant explicitly allows data values in context.lookup (default off)."""
+    return bool(grant) and LOOKUP_VALUES in (grant.get("tools") or [])
 
 
 def _check_patterns(patterns: list[str]) -> list[str]:
