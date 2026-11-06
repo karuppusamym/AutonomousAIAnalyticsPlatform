@@ -184,12 +184,24 @@ export function fieldText(f: SuggestionField | undefined): string {
   return v === null || v === undefined ? "" : String(v);
 }
 
+/** One line for a knowledge-gap draft (knowledge/gaps.py): how many conversations, how they ended, who it is routed to. */
+export function gapSummary(s: KnowledgeSuggestion): string {
+  const ev = s.fields.evidence?.value;
+  if (!ev || typeof ev !== "object" || Array.isArray(ev)) return "";
+  const e = ev as { term?: string; conversations?: number; outcomes?: Record<string, number>; rephrased?: number; window_days?: number };
+  const mix = Object.entries(e.outcomes ?? {}).map(([k, n]) => `${n} ${k.replace(/_/g, " ")}`).join(", ");
+  const owner = s.fields.routed_to?.value as { name?: string | null; email?: string | null; role?: string } | undefined;
+  const who = owner && (owner.name || owner.email) ? ` Routed to ${owner.name || owner.email} (${owner.role} owner).` : "";
+  return `“${e.term ?? ""}” came up in ${e.conversations ?? 0} conversations in the last ${e.window_days ?? 0} days (${mix || "no outcome mix"}${e.rephrased ? `; ${e.rephrased} rephrased` : ""}).${who}`;
+}
+
 /** Editable fields: text and lists of text (a computation stays as proposed). */
 export function editableFields(s: KnowledgeSuggestion): string[] {
   if (QUESTION_FIELDS[s.kind]) return QUESTION_FIELDS[s.kind].filter((k) => k === "description" || k in s.fields);
   const names = Object.entries(s.fields).filter(([, f]) => typeof f.value === "string" || (Array.isArray(f.value) && f.value.every((x) => typeof x === "string")))
     .map(([k]) => k);
   if (s.kind === "domain_candidate" && !names.includes("keyword")) names.push("keyword");
+  if (s.kind === "knowledge_gap") return names.filter((n) => n === "body");  // the counts and term are the miner's evidence
   return names.sort((a, b) => (a === primaryField(s.kind) ? -1 : b === primaryField(s.kind) ? 1 : a.localeCompare(b)));
 }
 

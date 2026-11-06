@@ -1396,3 +1396,21 @@ rules only, on a copy of the rehearsal database; no analyst results).
 
 Live evidence: [`evidence/pilot-fix-investigate-20261030.md`](evidence/pilot-fix-investigate-20261030.md) (rules only, no model
 call). Not verified: a live run with models; the guided source choice on a live two-source workspace (unit tested only).
+
+## 2026-11-05 — Review P1-3: knowledge-gap mining from failed Ask questions
+
+Source: [`70-reviews/2026-11-05-google-knowledge-catalog-review.md`](../70-reviews/2026-11-05-google-knowledge-catalog-review.md) item P1-3 (S03 / S04).
+
+| Capability | Where | Evidence |
+|---|---|---|
+| Mining of Ask outcomes (`clarify`, `not_answerable` decline, ad-hoc model answer with >= 2 SQL repairs) plus a repeated rephrase in the same conversation, grouped by the normalised unresolved term (`glossary_scan.ask_terms` against catalog names, code values and glossary) | `knowledge/gaps.py` `collect`, `outcome_of` | `tests/unit/test_knowledge_gaps.py` (grouping, outcomes, rephrase, known vocabulary) |
+| Threshold and window: a term in >= k distinct conversations over the last N days; both and a per-pass draft cap are platform settings `knowledge_gaps.{min_conversations (3), window_days (14), max_drafts_per_run (10)}` | `contracts/platform.py` `KnowledgeGapSettings` | `test_knowledge_gaps.py` (threshold, window, settings) |
+| Redaction: only the question text is read, passed through `redact_question` first; placeholders are never terms; `result` and `sql` are not selected, so no result value is read or stored | `gaps.redacted_plain`, `gaps._turns` | `test_questions_are_redacted_before_terms_and_examples_are_read` |
+| A `knowledge_gap` Note draft per term through `knowledge/suggestions.propose`: counts, outcome mix, example turn ids and redacted example questions; routed to the named owner of the source the conversations touched, else the workspace owner (business first) | `gaps.mine_workspace`, `gaps.route`; `KIND_SPEC["knowledge_gap"]` | `test_models_off_pass_proposes_one_note_...`, `test_routes_to_the_owner_of_the_source_...` |
+| De-duplication against pending, rejected (and approved) drafts of the same subject, and against rejected wording (`rejected_values`) | `gaps.decided`, `mine_workspace` | `test_pending_and_rejected_drafts_are_not_proposed_again` |
+| Models `off`: the rules rung writes the whole note. Optional wording purpose `knowledge_gap_note` (`config/models.yaml`: cache, rules, llm_small; low_cost; never escalates; cacheable). Called only in mode `always`; otherwise `record_skip` shows the saved call. Output is screened (injection, placeholder, 400 chars) and falls back to the rules text; the counts are never the model's | `gaps._wording`, prompt `knowledge_gap_note.v1` | `test_model_not_called_unless_always_...`, `test_always_mode_words_the_note_...`, `test_bad_model_wording_falls_back_...` |
+| Background rule: `mine_all` is a `@platform_loop` that only lists active workspaces; each is mined inside `as_owner_of("workspace", id)`. Wired into scheduler `housekeeping()` at most hourly per process (`mine_quietly`) | `gaps.mine_all`, `services/schedules.py` | code path; the live scheduler pass is not run |
+| Review queue shows the draft distinctly: warning tag "knowledge gap", a notice with conversations, outcome mix, rephrases and the routed owner; only the note text is editable | `web/src/components/ReviewQueue.tsx`, `web/src/lib/knowledge.ts` `gapSummary` | `web/src/test/knowledge.test.tsx` |
+
+Not verified: a live scheduler pass against real Ask history with a model (unit tested only; no migration, no new table).
+Cross-reference: [`01-tracker.md`](01-tracker.md) is untouched; this item is a review follow-up, not a v2 task ID.

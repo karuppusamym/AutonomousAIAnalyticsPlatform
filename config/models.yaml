@@ -168,6 +168,8 @@ ladders:
   # no rule matched; the small chat model last. Every answer is one of R1-R9 and code applies the policy floors (an
   # export or sensitive request is never routed to an unreviewed auto answer by a model).
   request_triage: [cache, rules, decision, llm_small]
+  # Review P1-3: rules (term frequency) find and count the gap and write the note; the model only words it (a person approves it).
+  knowledge_gap_note: [cache, rules, llm_small]
   health_probe: [cache, llm_small]  # never cached (not a cacheable purpose); admin `GET /api/admin/models/health?probe=1`: one tiny billable request
 
 routing:
@@ -211,6 +213,7 @@ routing:
   # DecisionService `llm_structured` backend: a small chat model answering with a strict JSON schema
   decision_structured: low_cost
   health_probe: low_cost
+  knowledge_gap_note: low_cost
   request_triage: low_cost  # its `decision` rung uses the decision profile (desk/triage.py)
 
 # Escalation policy per purpose (defaults; admin `llm.escalation` overrides). Purposes not listed use
@@ -234,6 +237,7 @@ escalation:
     health_probe: never
     semantic_query: never       # a refused or invalid choice falls through to the labelled ad-hoc path
     analyst_planning: never     # an invalid plan falls back to the rules plan
+    knowledge_gap_note: never   # drafts only; the rules wording stands
     request_triage: never       # an invalid class falls back to escalation (a person triages)
 
 # DecisionService (ADR-0015, spec v3 §5). Every decision purpose declares its authority class, its

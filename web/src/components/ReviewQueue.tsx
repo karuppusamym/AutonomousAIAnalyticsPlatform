@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from "react";
 import { api, type GlossaryScanResult, type KnowledgeSuggestion, type ReviewDecisionBody, type ReviewResult } from "../api";
 import {
-  batchDecisions, editableFields, editedFields, evidenceLines, fieldText, needsAnswer, primaryField, provenanceLine, QUESTION_KINDS,
+  batchDecisions, editableFields, editedFields, evidenceLines, fieldText, gapSummary, needsAnswer, primaryField, provenanceLine, QUESTION_KINDS,
   scanSummary,
 } from "../lib/knowledge";
 import { fmtDate } from "../lib/format";
@@ -12,7 +12,7 @@ const STATUSES = ["pending", "approved", "rejected", "superseded"] as const;
 const KIND_LABEL: Record<string, string> = {
   term: "glossary term", definition: "definition", metric: "metric", rule: "business rule", note: "note", negative: "negative knowledge",
   attested_computation: "attested computation", table_description: "table description", domain_candidate: "domain candidate",
-  column_description: "column description", glossary_term: "suggested glossary term", description_question: "description needed",
+  column_description: "column description", knowledge_gap: "knowledge gap", glossary_term: "suggested glossary term", description_question: "description needed",
 };
 
 /**
@@ -183,7 +183,7 @@ function SuggestionCard({ s, selectable, selected, onSelect, busy, onEditApprove
           <div className="suggestion-title">
             <h2 className="h-md">{s.title}</h2>
             <span className="chip-row small">
-              <Tag tone="info">{KIND_LABEL[s.kind] ?? s.kind}</Tag>
+              <Tag tone={s.kind === "knowledge_gap" ? "warning" : "info"}>{KIND_LABEL[s.kind] ?? s.kind}</Tag>
               <span className="muted">{s.origin} · {s.proposed_by} · {fmtDate(s.created_at)}</span>
               {s.status !== "pending" && <Tag tone={s.status === "approved" ? "success" : s.status === "rejected" ? "danger" : "neutral"}>{s.status}</Tag>}
             </span>
@@ -192,6 +192,9 @@ function SuggestionCard({ s, selectable, selected, onSelect, busy, onEditApprove
         </div>
         <p className="small muted">Writes <code>{s.path}</code> · subject <code>{s.subject}</code>{s.revision ? <> · revision {s.revision}</> : null}</p>
         {s.kind === "domain_candidate" && <Notice tone="info">Choose a keyword from the table name or a non-sensitive column name, then approve with edits. That reviewed rule applies in this workspace on the next full crawl; the suggestion alone cannot change the catalog.</Notice>}
+        {s.kind === "knowledge_gap" && gapSummary(s) && (
+          <Notice tone="warning"><strong>Knowledge gap.</strong> {gapSummary(s)} Approving writes the note below into the pack; it defines nothing until you edit it to say what the term means.</Notice>
+        )}
         {s.reason && <p className="small">Reason: {s.reason}</p>}
         {!editing && (
           <div className="table-wrap"><table className="table table-compact suggestion-fields">
