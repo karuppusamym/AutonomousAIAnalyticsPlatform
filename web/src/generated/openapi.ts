@@ -3091,6 +3091,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/number-checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Number Check */
+        post: operations["create_number_check_api_v2_number_checks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/number-checks/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hand Off Number Check
+         * @description Send a check to the Request Desk (an escalated R7 request); the verdict is recomputed from the stored answer.
+         */
+        post: operations["hand_off_number_check_api_v2_number_checks_handoff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/report-documents/{doc_id}": {
         parameters: {
             query?: never;
@@ -8806,6 +8843,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/number-checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Number Check */
+        post: operations["create_number_check_v2_number_checks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/number-checks/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hand Off Number Check
+         * @description Send a check to the Request Desk (an escalated R7 request); the verdict is recomputed from the stored answer.
+         */
+        post: operations["hand_off_number_check_v2_number_checks_handoff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/runs/{run_id}": {
         parameters: {
             query?: never;
@@ -11451,6 +11525,49 @@ export interface components {
         NotebookIn: {
             /** Title */
             title: string;
+        };
+        /** NumberCheckHandoffIn */
+        NumberCheckHandoffIn: {
+            /** Claimed */
+            claimed: string | number;
+            /** Column */
+            column?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Source */
+            source?: string | null;
+            /**
+             * Tolerance
+             * @default 0
+             */
+            tolerance?: number;
+            /** Turn Id */
+            turn_id: string;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /** NumberCheckIn */
+        NumberCheckIn: {
+            /**
+             * Claimed
+             * @description One number as written: 1204, 1,204.5 or 12.5%
+             */
+            claimed: string | number;
+            /** Column */
+            column?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Question */
+            question: string;
+            /** Source */
+            source?: string | null;
+            /**
+             * Tolerance
+             * @default 0
+             */
+            tolerance?: number;
+            /** Workspace Id */
+            workspace_id: string;
         };
         /**
          * OwnersIn
@@ -19559,6 +19676,78 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_number_check_api_v2_number_checks_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NumberCheckIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hand_off_number_check_api_v2_number_checks_handoff_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NumberCheckHandoffIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -32406,6 +32595,78 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_number_check_v2_number_checks_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NumberCheckIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hand_off_number_check_v2_number_checks_handoff_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NumberCheckHandoffIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

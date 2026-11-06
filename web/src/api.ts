@@ -4395,6 +4395,10 @@ export const api = {
     get("/api/requests", { query: q }) as Promise<DeskRequest[]>,
   getRequest: (id: string) => get("/api/requests/{request_id}", { path: { request_id: id } }) as Promise<DeskRequest>,
   createRequest: (body: Schemas["RequestIn"]) => post("/api/requests", { body }) as Promise<CreatedRequest>,
+  // number check (S07-T8): a number quoted elsewhere against the governed answer
+  checkNumber: (body: Schemas["NumberCheckIn"]) => post("/api/v2/number-checks", { body }) as Promise<NumberCheck>,
+  handOffNumberCheck: (body: Schemas["NumberCheckHandoffIn"]) =>
+    post("/api/v2/number-checks/handoff", { body }) as Promise<NumberCheckHandoff>,
   requestAction: (id: string, type: RequestActionType, payload: Dict = {}) =>
     post("/api/requests/{request_id}/actions", { path: { request_id: id }, body: { type, payload } }) as Promise<DeskRequest>,
   value: (ws: string, q: { from?: string; to?: string } = {}) =>
@@ -5577,6 +5581,30 @@ export interface DeskRequest {
 }
 export interface CreatedRequest { request: DeskRequest; conversation_id: string | null }
 
+/** A number check sent to the Request Desk (POST /v2/number-checks/handoff): an escalated R7 request. */
+export interface NumberCheckHandoff {
+  request_id: string; state: string; assignee_id: string | null; sla_due_at: string | null; verdict: NumberCheck["verdict"];
+}
+
+/** S07-T8 number check (evidence/number_check.py): a claimed number against the workspace's governed answer. */
+export interface NumberCheck {
+  version: string;
+  verdict: "confirmed" | "contradicted" | "unverifiable";
+  authority: "certified" | "ad_hoc" | null;
+  question: string; source: string | null; workspace_id: string;
+  claimed: { text: string; value: number; percent: boolean };
+  label: string | null; column: string | null; tolerance: number;
+  computed: { value: number; column: string | null; row_label: string | null } | null;
+  comparison: { agrees: boolean; scale: number; compared_to: number; difference: number; relative: number | null; allowed: number } | null;
+  reason: string | null; remedy?: string; note?: string | null;
+  evidence: {
+    turn_id: string | null; thread_id: string | null; sql: string | null; query_id: string | null; result_hash: string | null;
+    answered_by: string | null; governance: "governed" | "ad_hoc"; verified_query: string | null;
+    semantic_model_version: string | null; assets: string[]; row_count: number | null; truncated: boolean;
+    staleness?: { state: string; label: string; data_as_of: string | null } | null;
+  };
+}
+
 /** FR-053 value metrics over a period (desk/value.py); `daily` is the nightly rollup (desk_daily, class `all`). */
 export interface ValueSummary {
   n: number; duplicates: number; closed: number; accepted: number; auto_resolved: number;
@@ -5588,6 +5616,12 @@ export interface ValueReport extends ValueSummary {
   workspace_id: string; from: string; to: string; truncated: boolean;
   by_class: Record<string, ValueSummary & { baseline_minutes: number | null }>;
   baselines: Record<string, number>; daily: ValueDay[]; rollup_computed_at: string | null;
+  /** S07-T8 (evidence/number_check.coverage): answers from a certified definition, and number-check outcomes. */
+  trust?: TrustCoverage;
+}
+export interface TrustCoverage {
+  answered: number; certified: number; certified_share: number | null;
+  checks: Record<"confirmed" | "contradicted" | "unverifiable", number>;
 }
 export interface ClassBaseline {
   id: string; workspace_id: string; class: RequestClass; baseline_minutes: number; source: string; measured_at: string; created_at: string;

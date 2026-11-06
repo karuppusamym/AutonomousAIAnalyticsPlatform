@@ -38,7 +38,7 @@ LOOKUP_VALUES = "context.lookup.values"
 # verified query by id; the gateway decides either way (validate, scope, masking, row cap, audit). Read-only.
 ASSISTANT_TOOLS = ("catalog.tables", "sql.run", "queries.list", "queries.run")
 TOOLS = ("ask", "investigate", "get_finding_evidence", "validate_sql", *ASSISTANT_TOOLS, "request.create", "request.status",
-         "conversation.start", "conversation.say", "conversation.summary", *CONTEXT_TOOLS)
+         "conversation.start", "conversation.say", "conversation.summary", "number.check", *CONTEXT_TOOLS)
 GRANTABLE = (*TOOLS, CONTEXT_READ, LOOKUP_VALUES)
 # P7-11: a workspace's published query tools and tested/certified read-only HTTP tools, granted by name
 # (`query.<key>`, `http.<capability id>`) or by family (`query.*`, `http.*`)
@@ -56,6 +56,7 @@ TOOL_MIN_ROLE = {"ask": "analyst", "investigate": "analyst", "validate_sql": "an
                  "request.create": "analyst", "request.status": "viewer",
                  # Conversations (S04): start/say create Desk requests (so the request grant's role); a summary is a read
                  "conversation.start": "analyst", "conversation.say": "analyst", "conversation.summary": "viewer",
+                 "number.check": "analyst",  # S07-T8: runs Ask, so Ask's grant role
                  **{t: "viewer" for t in (*CONTEXT_TOOLS, CONTEXT_READ, LOOKUP_VALUES)}}
 DEFAULT_DAILY_QUOTA = 1000
 

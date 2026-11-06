@@ -118,6 +118,17 @@ TOOL_DEFS: dict[str, dict[str, Any]] = {
                        "schema": {"type": "object", "properties": {"workspace_id": _ws_prop(),
                                                                    "request_id": {"type": "string"}},
                                   "required": ["request_id"]}, "read_only": True},
+    "number.check": {"description": "Check a number quoted elsewhere (another BI tool, a spreadsheet, an agent) against "
+                                    "this workspace's governed answer to the question. Returns confirmed, contradicted or "
+                                    "unverifiable, the computed value, its authority (certified or ad_hoc) and evidence. "
+                                    "The claimed value is never shown to a model.",
+                     "schema": {"type": "object", "properties": {
+                         "workspace_id": _ws_prop(), "question": {"type": "string", "minLength": 3, "maxLength": 1000},
+                         "claimed": {"type": "string", "maxLength": 40}, "label": {"type": "string", "maxLength": 200},
+                         "column": {"type": "string", "maxLength": 200},
+                         "tolerance": {"type": "number", "minimum": 0, "maximum": 0.5},
+                         "source": {"type": "string", "maxLength": 120}},
+                         "required": ["question", "claimed"]}, "read_only": False},
     # Context Service (S03-T5). Results are data for the client to quote, never instructions.
     "context.search": {"description": "Search the workspace's context ledger (glossary, metrics, verified queries, findings, "
                                       "datasets, ...) by name, synonym and similarity. Only entries this client may see.",
@@ -504,6 +515,17 @@ def _slice(principal: G.ClientPrincipal, ws: str) -> dict[str, Any]:
     return {"domains": grant.get("domains") or (), "assets": grant.get("assets") or ()}
 
 
+def _tool_number_check(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
+    from analystos.evidence.number_check import check
+
+    with session_scope() as s:
+        user = _service_user(s, principal)
+        s.expunge(user)
+    return check(user, ws, str(args.get("question") or ""), args.get("claimed"), label=args.get("label"),
+                 column=args.get("column"), tolerance=float(args.get("tolerance") or 0.0), source=args.get("source"),
+                 channel="mcp")
+
+
 def _tool_context_search(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
     from analystos.context import retrieval
 
@@ -633,7 +655,7 @@ TOOL_IMPLS: dict[str, Callable[[G.ClientPrincipal, str, dict[str, Any]], dict[st
     "context.search": _tool_context_search, "context.get": _tool_context_get, "context.compile": _tool_context_compile,
     "context.changes": _tool_context_changes, "context.lookup": _tool_context_lookup,
     "conversation.start": _tool_conversation_start, "conversation.say": _tool_conversation_say,
-    "conversation.summary": _tool_conversation_summary,
+    "conversation.summary": _tool_conversation_summary, "number.check": _tool_number_check,
 }
 
 

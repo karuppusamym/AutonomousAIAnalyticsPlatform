@@ -9,6 +9,8 @@ import { AddAnswerToDashboard } from "../components/DashboardDraft";
 import { AnalystAnswer } from "../components/AnalystAnswer";
 import { ChartView } from "../components/Chart";
 import { CitationsPanel } from "../components/Citations";
+import { NumberCheckPanel } from "../components/NumberCheck";
+import { TrustBadge } from "../components/TrustBadge";
 import {
   Card, CodeBlock, DataTable, EmptyState, ErrorBox, Field, KeyValue, Loading, Notice, PageHeader, StateView, Tabs, TechnicalDetails,
 } from "../components/ui";
@@ -21,6 +23,7 @@ import {
 } from "../lib/ask";
 import { guessChart } from "../lib/charts";
 import { useExpertView } from "../lib/expert";
+import { trustOf } from "../lib/trust";
 import { fmtDate, fmtMs, fmtNumber, fmtUsd } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import { exampleSql, starterQuestions } from "../lib/starters";
@@ -408,7 +411,7 @@ function AskWhy({ turn, onSelect }: { turn: AskTurn; onSelect: () => void }) {
 export function AnsweredBy({ turn }: { turn: AskTurn }) {
   return (
     <p className="answered-by small" aria-label="Answered by">
-      <span><strong>Answered by</strong> {answeredByLabel(turn)}</span>
+      <span><TrustBadge level={trustOf(turn)} /> <strong>Answered by</strong> {answeredByLabel(turn)}</span>
       <span className="muted" title={turn.cost?.tokens_saved ? `${turn.cost.tokens_saved} tokens saved by rules and cache` : undefined}>
         {costLine(turn.cost)}
       </span>
@@ -895,6 +898,10 @@ export function AskPage() {
               </form>
               <GatewayError error={askErr} />
             </div>
+          </Card>
+
+          <Card title="Check a number">
+            <NumberCheckPanel wsId={wsId} onOpenThread={(id) => { void threads.reload(); openThread(id); }} />
           </Card>
 
           {expert && <Card title="SQL console">
