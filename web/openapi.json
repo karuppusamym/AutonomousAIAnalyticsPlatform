@@ -1009,6 +1009,18 @@
             ],
             "title": "Description"
           },
+          "guidelines": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guidelines"
+          },
           "reviewed": {
             "anyOf": [
               {
@@ -4832,6 +4844,45 @@
           "password"
         ],
         "title": "Login",
+        "type": "object"
+      },
+      "LookupIn": {
+        "properties": {
+          "assets": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Assets",
+            "type": "array"
+          },
+          "budget_chars": {
+            "default": 16000,
+            "maximum": 200000.0,
+            "minimum": 200.0,
+            "title": "Budget Chars",
+            "type": "integer"
+          },
+          "format": {
+            "default": "yaml",
+            "enum": [
+              "yaml",
+              "json"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "workspace": {
+            "title": "Workspace",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace",
+          "assets"
+        ],
+        "title": "LookupIn",
         "type": "object"
       },
       "MLSpec": {
@@ -20118,6 +20169,80 @@
           }
         },
         "summary": "Import Context",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v2/context/lookup": {
+      "post": {
+        "description": "`{content, format, assets, omissions, receipts, identity_hash, budget}` for the named `schema.table` assets\nthe caller may see (others are absent and not counted); 422 when the identities alone exceed the budget.",
+        "operationId": "lookup_context_api_v2_context_lookup_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LookupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lookup Context",
         "tags": [
           "context"
         ]
@@ -45155,6 +45280,7 @@
     },
     "/api/workspaces/{workspace_id}/relationships": {
       "get": {
+        "description": "Every recorded join with where it came from (`origin`), its measured confidence and, for a validated one, the\njoin as a runnable value-free statement (`join_sql`) in the source's dialect.",
         "operationId": "relationships_api_workspaces__workspace_id__relationships_get",
         "parameters": [
           {

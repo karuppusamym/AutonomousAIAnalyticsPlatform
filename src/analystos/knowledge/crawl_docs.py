@@ -93,7 +93,11 @@ def table_documents(asset: Mapping[str, Any], columns: list[Mapping[str, Any]], 
     body = ["# Description", "",
             f"{asset.get('business_name') or asset['name']}: {asset.get('description') or 'No description yet.'}",
             "", f"Kind {asset.get('kind') or 'table'}; role {sem.get('role') or '-'}, domain {sem.get('domain') or '-'}, "
-            f"grain {sem.get('grain') or '-'}. Source: {source_name}.", "", "# Columns", ""]
+            f"grain {sem.get('grain') or '-'}. Source: {source_name}.", ""]
+    guidelines = sem.get("guidelines") if isinstance(sem.get("guidelines"), dict) else None
+    if guidelines and guidelines.get("text"):  # a person's notes for agents (context.lookup); written by people only
+        body += ["# Guidelines", "", str(guidelines["text"]), ""]
+    body += ["# Columns", ""]
     body += _column_rows(parts[0])
     if len(parts) > 1:
         body += ["", "More columns: " + ", ".join(f"[part {i}]({table_path(fq, i).rsplit('/', 1)[-1]})"

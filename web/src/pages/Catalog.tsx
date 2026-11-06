@@ -2,7 +2,7 @@ import { Fragment, Suspense, useCallback, useEffect, useId, useState, type FormE
 import { lazyWithReload } from "../lib/lazyReload";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { to, type DataTab } from "../routes";
-import { api, type CatalogAsset, type CatalogColumn } from "../api";
+import { api, type CatalogAsset, type CatalogColumn, type Relationship } from "../api";
 import { ColumnCurationForm } from "../components/ColumnCuration";
 import { KpiEditor } from "../components/KpiEditor";
 import { ColumnProfilePanel, hasProfile, profileLine, profileMetaText } from "../components/ProfileView";
@@ -122,6 +122,8 @@ function CatalogTab({ wsId, canEdit }: { wsId: string; canEdit: boolean }) {
     }));
   }, [list.data]);
   const [open, setOpen] = useState<string | null>(null);
+  // Joins load with the first opened table and are shared by every row (one request per workspace).
+  const rels = useAsync(() => (open ? api.relationships(wsId) : Promise.resolve(null)), [wsId, open !== null]);
 
   const search = (e: FormEvent) => {
     e.preventDefault();
@@ -202,6 +204,7 @@ function CatalogTab({ wsId, canEdit }: { wsId: string; canEdit: boolean }) {
                       <tr className="row-detail" id={`cat-${a.id}`}>
                         <td colSpan={8}>
                           <AssetCuration asset={a} canEdit={canEdit} onCurated={onCurated} />
+                          <AssetRelationships fq={a.fq} rels={rels.data ?? null} error={rels.error} onRetry={rels.reload} />
                           {profileMetaText(a.profile_meta, fmtDate) &&
                             <p className="muted small">{profileMetaText(a.profile_meta, fmtDate)}</p>}
                           <CatalogColumns columns={a.columns} rowCount={a.profile_meta?.rows_profiled}
@@ -228,27 +231,31 @@ export function AssetCuration({ asset, canEdit, onCurated }: {
   const [businessName, setBusinessName] = useState(asset.business_name ?? "");
   const [description, setDescription] = useState(asset.description ?? "");
   const [reviewed, setReviewed] = useState(asset.reviewed);
+  const [guidelines, setGuidelines] = useState(asset.guidelines?.text ?? "");
   const act = useAction();
 
   const begin = () => {
     setBusinessName(asset.business_name ?? "");
     setDescription(asset.description ?? "");
     setReviewed(asset.reviewed);
+    setGuidelines(asset.guidelines?.text ?? "");
     setEditing(true);
   };
   const save = async (e: FormEvent) => {
     e.preventDefault();
-    const body: { business_name?: string; description?: string; reviewed?: boolean } = {};
+    const body: { business_name?: string; description?: string; reviewed?: boolean; guidelines?: string } = {};
     if (businessName !== (asset.business_name ?? "")) body.business_name = businessName;
     if (description !== (asset.description ?? "")) body.description = description;
     if (reviewed !== asset.reviewed) body.reviewed = reviewed;
+    if (guidelines !== (asset.guidelines?.text ?? "")) body.guidelines = guidelines;
     if (!Object.keys(body).length) {
       setEditing(false);
       return;
     }
     const r = await act.run(() => api.curateAsset(asset.id, body));
     if (r) {
-      onCurated({ id: asset.id, business_name: r.business_name, description: r.description, description_origin: r.description_origin, reviewed: r.reviewed });
+      onCurated({ id: asset.id, business_name: r.business_name, description: r.description, description_origin: r.description_origin,
+        reviewed: r.reviewed, guidelines: r.guidelines ?? null });
       setEditing(false);
     }
   };
@@ -261,6 +268,13 @@ export function AssetCuration({ asset, canEdit, onCurated }: {
     <div className="stack curation">
       {asset.description && (
         <p className="small">{asset.description} <OriginBadge origin={asset.description_origin} /></p>
+      )}
+      {asset.guidelines?.text && (
+        <div className="small">
+          <strong>Guidelines for agents</strong>
+          <p className="msg-body">{asset.guidelines.text}</p>
+          {asset.guidelines.at && <p className="muted small">Written by a person, {fmtDate(asset.guidelines.at)}.</p>}
+        </div>
       )}
       <p className="muted small">Last crawled {fmtDate(asset.last_crawled_at)}.</p>
       {canEdit && !editing && (
@@ -281,6 +295,10 @@ export function AssetCuration({ asset, canEdit, onCurated }: {
           <Field label="Description" htmlFor={`${id}-desc`}>
             <textarea id={`${id}-desc`} rows={3} value={description} maxLength={4000} onChange={(e) => setDescription(e.target.value)} />
           </Field>
+          <Field label="Guidelines for agents" htmlFor={`${id}-guide`}
+            hint="Notes an agent should follow when it reads this table, for example which date column means what. Sent with the table's context; people only.">
+            <textarea id={`${id}-guide`} rows={3} value={guidelines} maxLength={4000} onChange={(e) => setGuidelines(e.target.value)} />
+          </Field>
           <label className="toggle small">
             <input type="checkbox" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} /> Reviewed
           </label>
@@ -291,6 +309,53 @@ export function AssetCuration({ asset, canEdit, onCurated }: {
         </form>
       )}
       <ErrorBox error={act.error} />
+    </div>
+  );
+}
+
+/** Where a join came from, in words a reader can check. */
+const RELATIONSHIP_ORIGINS: Record<string, string> = {
+  declared: "Declared by the source system (a foreign key)",
+  discovered: "Found by measuring the data (containment and key uniqueness)",
+  review: "Confirmed by a person in the review queue",
+  user: "Added by a person",
+  context: "From workspace context",
+};
+
+/**
+ * The joins a table takes part in (review P1-4): where each one came from, its measured confidence and, once
+ * validated, the exact join as a runnable statement, the same one `context.lookup` hands to agents.
+ */
+export function AssetRelationships({ fq, rels, error, onRetry }: {
+  fq: string; rels: Relationship[] | null; error?: string | null; onRetry?: () => void;
+}) {
+  if (error) return <ErrorBox error={error} onRetry={onRetry} />;
+  if (!rels) return null;
+  const mine = rels.filter((r) => r.from_asset === fq || r.to_asset === fq)
+    .sort((a, b) => Number(b.validated) - Number(a.validated) || b.confidence - a.confidence || a.id.localeCompare(b.id));
+  if (!mine.length) return <p className="muted small">No joins recorded for this table yet.</p>;
+  return (
+    <div className="table-wrap">
+      <table className="table table-compact">
+        <caption className="sr-only">{`Joins of ${fq}`}</caption>
+        <thead><tr><th>Join</th><th>Origin</th><th>Confidence</th><th>Status</th><th>Join SQL</th></tr></thead>
+        <tbody>
+          {mine.map((r) => {
+            const fromCols = (r.evidence?.from_columns as string[] | undefined) ?? [r.from_column];
+            const toCols = (r.evidence?.to_columns as string[] | undefined) ?? [r.to_column];
+            return (
+              <tr key={r.id}>
+                <td className="small"><code>{r.from_asset}.{fromCols.join(", ")}</code> → <code>{r.to_asset}.{toCols.join(", ")}</code>
+                  <div className="muted small">{r.cardinality.replace(/_/g, " ")}</div></td>
+                <td className="small"><span className="tag tag-info" title={RELATIONSHIP_ORIGINS[r.origin] ?? r.origin}>{r.origin}</span></td>
+                <td><ConfidenceBar value={r.confidence} /></td>
+                <td>{r.validated ? <Tag tone="success">validated</Tag> : <Tag>not validated</Tag>}</td>
+                <td className="small">{r.join_sql ? <pre><code>{r.join_sql}</code></pre> : <span className="muted">Shown once validated</span>}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

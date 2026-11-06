@@ -100,6 +100,16 @@ TOOL_DEFS: dict[str, dict[str, Any]] = {
                             "budget_tokens": {"type": "integer", "minimum": 50, "maximum": 200000},
                             "kinds": {"type": "array", "items": {"type": "string", "enum": list(LEDGER_KINDS)}}},
                             "required": ["purpose", "objective"]}, "read_only": True},
+    "context.lookup": {"description": "The context of up to 10 named tables (`schema.table`) in one YAML or JSON block: "
+                                     "columns and keys, curated description and guidelines, validated joins between "
+                                     "them, linked terms, metrics and verified queries, quality, profile and usage. "
+                                     "Tables outside this client's scope are absent; what did not fit is in omissions.",
+                       "schema": {"type": "object", "properties": {
+                           "workspace_id": _ws_prop(),
+                           "assets": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 10},
+                           "format": {"type": "string", "enum": ["yaml", "json"]},
+                           "budget_chars": {"type": "integer", "minimum": 200, "maximum": 200000}},
+                           "required": ["assets"]}, "read_only": True},
     "context.changes": {"description": "Context ledger changes after a cursor (pass back the returned cursor).",
                         "schema": {"type": "object", "properties": {"workspace_id": _ws_prop(),
                                                                     "since": {"type": "integer", "minimum": 0},
@@ -273,6 +283,18 @@ def _tool_context_compile(principal: G.ClientPrincipal, ws: str, args: dict[str,
         return out
 
 
+def _tool_context_lookup(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
+    from analystos.context import lookup
+
+    with session_scope() as s:
+        out = lookup.lookup(s, _service_user(s, principal), ws, list(args.get("assets") or []),
+                            format=str(args.get("format") or "yaml"),
+                            budget_chars=int(args.get("budget_chars") or lookup.DEFAULT_BUDGET_CHARS))
+        audit(f"mcp_client:{principal.client_id}", "context.looked_up", workspace_id=ws, target=out["identity_hash"][:40],
+              decision="allow", details={"assets": out["assets"], "omissions": len(out["omissions"])}, session=s)
+        return out
+
+
 def _tool_context_changes(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
     from analystos.context import retrieval
 
@@ -352,7 +374,7 @@ TOOL_IMPLS: dict[str, Callable[[G.ClientPrincipal, str, dict[str, Any]], dict[st
     "ask": _tool_ask, "investigate": _tool_investigate, "get_finding_evidence": _tool_finding_evidence,
     "validate_sql": _tool_validate_sql, "request.create": _tool_request_create, "request.status": _tool_request_status,
     "context.search": _tool_context_search, "context.get": _tool_context_get, "context.compile": _tool_context_compile,
-    "context.changes": _tool_context_changes,
+    "context.changes": _tool_context_changes, "context.lookup": _tool_context_lookup,
     "conversation.start": _tool_conversation_start, "conversation.say": _tool_conversation_say,
     "conversation.summary": _tool_conversation_summary,
 }

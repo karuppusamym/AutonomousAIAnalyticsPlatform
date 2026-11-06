@@ -28,8 +28,8 @@ from analystos.db.models import McpClient, McpGrant, McpUsage, User, WorkspaceMe
 from analystos.governance.audit import audit
 from analystos.governance.policy import get_workspace
 
-# Context Service (S03-T5): read-only, access-filtered ledger tools; `context.read` grants all four
-CONTEXT_TOOLS = ("context.search", "context.get", "context.compile", "context.changes")
+# Context Service (S03-T5): read-only, access-filtered ledger tools; `context.read` grants all of them
+CONTEXT_TOOLS = ("context.search", "context.get", "context.compile", "context.changes", "context.lookup")
 CONTEXT_READ = "context.read"
 TOOLS = ("ask", "investigate", "get_finding_evidence", "validate_sql", "request.create", "request.status",
          "conversation.start", "conversation.say", "conversation.summary", *CONTEXT_TOOLS)
