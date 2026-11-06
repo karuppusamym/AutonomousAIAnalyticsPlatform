@@ -104,7 +104,8 @@ jobs:
         run: .venv/bin/pytest -q -m integration tests/integration/test_lite_profile_db.py tests/integration/test_e2e_local_run.py
 
   web:
-    runs-on: ubuntu-latest
+    # Playwright's browser install does not support ubuntu-latest (26.04) yet; pin the release it supports.
+    runs-on: ubuntu-24.04
     defaults: {run: {working-directory: web}}
     steps:
       - uses: actions/checkout@v4
