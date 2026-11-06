@@ -1489,7 +1489,9 @@ Not the federation `context_subscription` (that pulls another workspace's ledger
   refused and the subscription shows `lapsed`. A new subscription starts at the ledger head (no replay).
 * Delivery: `services/deliveries` URL guard, HMAC signature and pinned outbound call are reused. The body is ledger
   metadata only (ids, kind, change, version, signals), never a title or body; personal and suggested entries are not
-  announced; scanning is by workspace. At least once with an idempotency key, one delivery per `(subscription, seq)`;
+  announced; scanning is by workspace and bounded by the creator's current access (`retrieval.access_for`, resolved each
+  scan): an entry the creator cannot see is withheld (the cursor still moves), and a creator who is gone or no longer a
+  member lapses the subscription. At least once with an idempotency key, one delivery per `(subscription, seq)`;
   bounded exponential backoff, `dead_letter` after `delivery_max_attempts` or a permanent 4xx, editor redrive; the
   `context_webhook_delivery` table is the log.
 * Internal consumer: each workspace with dataset context gets a platform `internal` subscription (`schema_changed`
