@@ -6,9 +6,9 @@ never decides anything: every file is data, never instructions (CLAUDE.md rule 7
 
 * **Fetch** goes through `tools/http.call` only: https, host on the allowlist, every resolved address public,
   connection pinned to the vetted address, no redirects, byte caps, timeouts. The allowlist is the built-in API
-  hosts (`api.github.com`, `*.atlassian.net`) plus the operator's `http_tool_allowlist`, so a workspace editor
-  cannot point a credential at a host of their choosing. GitHub Enterprise or Confluence Data Center need the
-  operator to list the host.
+  host `api.github.com` plus the operator's `http_tool_allowlist` (a Confluence site must be listed there), and a
+  source's (workspace, kind, host, target, secret_ref) is bound by an approval a second person decides
+  (`services/knowledge_sources.py`), so an editor cannot send a credential to a host or space of their choosing.
 * **Credentials** are a `secret_ref` (`connectors/secrets.py`), resolved when a sync starts, sent in a header,
   never stored, logged or returned. A config that carries a token field is refused.
 * **Screening** is `knowledge/documents.screen` for every file: credentials, e-mail addresses and card-like
@@ -37,7 +37,7 @@ from analystos.knowledge.crawl_docs import safe_segment
 
 SOURCE_ACTOR = "process:analystos-knowledge-source"
 KINDS = ("github", "confluence")
-DEFAULT_HOSTS = ("api.github.com", "*.atlassian.net")
+DEFAULT_HOSTS = ("api.github.com",)  # Confluence hosts come only from the operator's http_tool_allowlist
 GITHUB_API = "https://api.github.com"
 MAX_FILES = 200            # files (or pages) taken per sync
 MAX_FILE_BYTES = 256 * 1024
@@ -130,6 +130,14 @@ def allowlist(extra: str | list[str] | None = None) -> list[str]:
     from analystos.tools.http import split_hosts
 
     return [*DEFAULT_HOSTS, *split_hosts(extra)]
+
+
+def binding_payload(workspace_id: str, kind: str, config: dict[str, Any], secret_ref: str | None) -> dict[str, Any]:
+    """What an approval binds: where the credential may go and what it may read."""
+    target = (f"{config['repo']}@{config['branch']}:{config['path']}" if kind == "github"
+              else f"space:{config['space']}")
+    return {"workspace_id": workspace_id, "kind": kind, "host": source_host(kind, config), "base": config.get("api_url") or config.get("base_url"),
+            "target": target, "secret_ref": secret_ref}
 
 
 def source_host(kind: str, config: dict[str, Any]) -> str:

@@ -24,7 +24,8 @@ from analystos.security.auth import APPROVER_ROLES, role_at_least
 ALWAYS_SEPARATE_DUTIES = {"semantic_model.approve", "semantic_relationship.accept",
                           "delivery_destination.authorize",  # N-3: external egress is never self-authorized
                           "monitor_rule.approve",  # S09: a rule's recipients and the work it starts, likewise
-                          "playbook.sign"}  # S06-T6: a playbook's author never signs it off
+                          "playbook.sign",
+                          "knowledge_source.bind"}  # P2-10: a credential is tied to a host and target by a second person  # S06-T6: a playbook's author never signs it off
 
 
 def _expired(approval: Approval) -> bool:

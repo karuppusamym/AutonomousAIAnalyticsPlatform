@@ -1157,6 +1157,9 @@ class KnowledgeSource(Base):
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_status: Mapped[str | None] = mapped_column(String(20), nullable=True)  # ok | partial | failed
     last_report: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    # The approval (action knowledge_source.bind) that binds this source's workspace, kind, host, target and secret_ref;
+    # a sync verifies it first. A change to the config or secret_ref asks for a new one.
+    binding_approval_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     created_by: Mapped[str] = mapped_column(String(40))
     created_at: Mapped[datetime] = _ts()
 

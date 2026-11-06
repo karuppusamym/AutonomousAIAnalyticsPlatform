@@ -14,12 +14,13 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from analystos.core.errors import AnalystOSError, InvalidInput, NotFound
+from analystos.core.errors import AnalystOSError, ApprovalRequired, InvalidInput, NotFound
 from analystos.core.ids import new_id, utcnow
 from analystos.db.base import session_scope
-from analystos.db.models import KnowledgeSource, User
+from analystos.db.models import Approval, KnowledgeSource, User
+from analystos.governance.approvals import request_approval, verify_for_execution
 from analystos.governance.audit import audit
-from analystos.governance.policy import load_in_workspace, require_role
+from analystos.governance.policy import get_workspace, load_in_workspace, require_role
 from analystos.knowledge import sources as ks
 from analystos.knowledge.drafts import write_drafts
 from analystos.services.facets import Facets
@@ -27,13 +28,31 @@ from analystos.services.knowledge_ingest import _finish
 
 log = logging.getLogger(__name__)
 MAX_SOURCES_PER_WORKSPACE = 20
+BIND_ACTION = "knowledge_source.bind"
 
 
-def view(row: KnowledgeSource) -> dict[str, Any]:
+def _payload(row: KnowledgeSource) -> dict[str, Any]:
+    return ks.binding_payload(row.workspace_id, row.kind, row.config, row.secret_ref)
+
+
+def _request_binding(session: Session, user: User, row: KnowledgeSource) -> None:
+    """Ask a second person to approve this (workspace, kind, host, target, secret_ref). Until it is approved the
+    source cannot sync; any later change of those fields needs a new approval."""
+    payload = _payload(row)
+    ws = get_workspace(session, row.workspace_id)
+    apr = request_approval(session, workspace_id=row.workspace_id, run_id=None, action=BIND_ACTION, payload=payload,
+                           plan_hash=None, policy_version=ws.policy_version, requested_by=user.id, risk_tier="medium",
+                           destination=payload["host"], affected_assets=[row.id],
+                           evidence={"source": row.name, "target": payload["target"], "secret_ref": row.secret_ref})
+    row.binding_approval_id = apr.id
+
+
+def view(row: KnowledgeSource, binding_status: str | None = None) -> dict[str, Any]:
     """The row as the API shows it: no sync state (paths and hashes), a credential only as its reference."""
     return {"id": row.id, "workspace_id": row.workspace_id, "kind": row.kind, "name": row.name, "config": row.config,
             "secret_ref": row.secret_ref, "enabled": row.enabled, "tracked_files": len(row.state or {}),
             "last_sync_at": row.last_sync_at, "last_status": row.last_status, "last_report": row.last_report or {},
+            "binding_approval_id": row.binding_approval_id, "binding_status": binding_status or "none",
             "created_by": row.created_by, "created_at": row.created_at}
 
 
@@ -50,7 +69,11 @@ def list_sources(session: Session, user: User, workspace_id: str) -> list[dict[s
     require_role(session, user, workspace_id, "viewer")
     rows = session.scalars(select(KnowledgeSource).where(KnowledgeSource.workspace_id == workspace_id)
                            .order_by(KnowledgeSource.created_at))
-    return [view(r) for r in rows]
+    out = []
+    for r in rows:
+        apr = session.get(Approval, r.binding_approval_id) if r.binding_approval_id else None
+        out.append(view(r, apr.status if apr else None))
+    return out
 
 
 def create_source(session: Session, user: User, workspace_id: str, *, kind: str, name: str, config: dict[str, Any],
@@ -70,9 +93,10 @@ def create_source(session: Session, user: User, workspace_id: str, *, kind: str,
                           enabled=enabled, state={}, last_report={}, created_by=user.id)
     session.add(row)
     session.flush()
+    _request_binding(session, user, row)
     audit(f"user:{user.id}", "knowledge.source.created", workspace_id=workspace_id, target=row.id,
           details={"kind": kind, "name": name, "secret_ref": ref}, session=session)
-    return view(row)
+    return view(row, "pending")
 
 
 def update_source(session: Session, user: User, workspace_id: str, source_id: str, patch: dict[str, Any]) -> dict[str, Any]:
@@ -82,6 +106,7 @@ def update_source(session: Session, user: User, workspace_id: str, source_id: st
         if not 1 <= len(str(patch["name"]).strip()) <= 200:
             raise InvalidInput("name must be 1-200 characters")
         row.name = str(patch["name"]).strip()
+    before = _payload(row)
     if patch.get("config") is not None:
         row.config = ks.validate_config(row.kind, patch["config"])
         row.state = {}  # another location: nothing fetched so far applies
@@ -91,9 +116,13 @@ def update_source(session: Session, user: User, workspace_id: str, source_id: st
             raise InvalidInput("a Confluence source needs a secret_ref")
     if patch.get("enabled") is not None:
         row.enabled = bool(patch["enabled"])
+    if _payload(row) != before:  # a new place or a new credential: the earlier approval no longer applies
+        row.state = {}
+        _request_binding(session, user, row)
     audit(f"user:{user.id}", "knowledge.source.updated", workspace_id=workspace_id, target=row.id,
           details={"fields": sorted(patch)}, session=session)
-    return view(row)
+    apr = session.get(Approval, row.binding_approval_id) if row.binding_approval_id else None
+    return view(row, apr.status if apr else None)
 
 
 def delete_source(session: Session, user: User, workspace_id: str, source_id: str) -> dict[str, Any]:
@@ -118,8 +147,18 @@ def sync_source(source_id: str, *, actor: str, resolver: Any = None, transport: 
         row = s.get(KnowledgeSource, source_id)
         if row is None:
             raise NotFound("knowledge source not found")
+        denied: ApprovalRequired | None = None
+        try:
+            if not row.binding_approval_id:
+                raise ApprovalRequired("this source has no approval yet; a second person must approve its host, target and secret_ref")
+            verify_for_execution(s, row.binding_approval_id, payload=_payload(row), plan_hash=None)
+        except ApprovalRequired as exc:
+            denied = exc
         snap = {"workspace_id": row.workspace_id, "kind": row.kind, "name": row.name, "config": dict(row.config or {}),
                 "secret_ref": row.secret_ref, "state": {k: dict(v) for k, v in (row.state or {}).items()}}
+    if denied is not None:  # recorded after the transaction that may have marked the approval invalidated
+        _record(source_id, actor, "failed", {"error": f"approval_required: {denied.message}"[:300]})
+        raise denied
     kind, config = snap["kind"], ks.validate_config(snap["kind"], snap["config"])
     try:
         secret = (secret_resolver or resolve_secret)(snap["secret_ref"], purpose="source") if snap["secret_ref"] else None
