@@ -139,12 +139,14 @@ def test_yaml_contract_is_sorted_deterministic_and_in_fill_order(db):
     out = _lookup(["itsm.team", "itsm.incident"])
     assert out["format"] == "yaml" and out["assets"] == 2 and out["asset_names"] == ["itsm.incident", "itsm.team"]
     block = yaml.safe_load(out["content"])
-    assert list(block) == ["workspace", "assets", "joins"] and list(block["assets"]) == ["itsm.incident", "itsm.team"]
+    assert list(block) == ["note", "workspace", "assets", "joins"] and list(block["assets"]) == ["itsm.incident", "itsm.team"]
     inc = block["assets"]["itsm.incident"]
     assert list(inc) == ["identity", "description", "terms", "quality", "profile", "usage"]  # FILL_ORDER, joins top level
     assert inc["identity"]["keys"] == ["id"] and inc["identity"]["role"] == "fact"
     assert [c["name"] for c in inc["identity"]["columns"]] == ["id", "priority", "team_id"]
-    assert inc["description"]["guidelines"] == "Use closed_at for resolution time."
+    assert inc["description"]["guidelines"] == {"text": "Use closed_at for resolution time.", "written_by": "u_editor",
+                                            "at": "2026-11-02T00:00:00+00:00", "treat_as": "untrusted reference data"}
+    assert block["note"] == L.DATA_NOTE
     assert inc["description"]["columns"] == [{"name": "priority", "description": "Urgency, P1 to P4"}]
     assert [t["title"] for t in inc["terms"]["glossary"]] == ["Priority"]
     assert block["joins"] == [{"from": "itsm.incident", "from_columns": ["team_id"], "to": "itsm.team", "to_columns": ["id"],
@@ -215,7 +217,7 @@ def test_more_than_ten_assets_or_none_is_refused(db):
 # ------------------------------------------------------------------------------------------- budget
 def test_a_small_budget_keeps_keys_and_joins_and_records_omissions(db):
     full = _lookup(["itsm.incident", "itsm.team"])
-    mandatory = len(L.render({"workspace": WS, "assets": {
+    mandatory = len(L.render({"note": L.DATA_NOTE, "workspace": WS, "assets": {
         fq: {"identity": yaml.safe_load(full["content"])["assets"][fq]["identity"]} for fq in full["asset_names"]}}, "yaml"))
     block = yaml.safe_load(full["content"])
     joins = len(L.render({"joins": block["joins"]}, "yaml"))
@@ -339,3 +341,21 @@ def test_an_mcp_grant_slice_hides_assets_outside_it_like_out_of_scope_ones(db):
     assert outside["assets"] == 0 and outside["omissions"] == [] and outside["receipts"] == []
     assert "Priority" not in outside["content"]
     assert outside["content"] == _lookup(["nope.missing"])["content"]
+
+
+def test_values_are_withheld_when_not_included_and_the_omission_says_so(db):
+    out = _lookup(["itsm.incident", "itsm.team"], include_values=False)
+    assert "P3" not in out["content"] and "Network" not in out["content"]
+    prof = {c["name"]: c for c in yaml.safe_load(out["content"])["assets"]["itsm.incident"]["profile"]["columns"]}
+    assert prof["priority"] == {"name": "priority", "null_rate": 0.01, "distinct": 4}  # counts stay
+    assert {(o["asset"], o["reason"]) for o in out["omissions"] if o["section"] == "profile"} >= {
+        ("itsm.incident", L.VALUES_WITHHELD), ("itsm.team", L.VALUES_WITHHELD)}
+
+
+def test_mcp_values_need_an_explicit_grant_flag_and_prompt_use_is_enveloped():
+    from analystos.mcp import grants
+
+    assert not grants.grants_lookup_values({"tools": ["context.read", "context.lookup"]})
+    assert grants.grants_lookup_values({"tools": ["context.lookup", grants.LOOKUP_VALUES]})
+    assert not grants.grants_lookup_values(None)
+    assert L.prompt_context({"content": "x: 1"}) == "<untrusted_context>\nx: 1\n</untrusted_context>"
