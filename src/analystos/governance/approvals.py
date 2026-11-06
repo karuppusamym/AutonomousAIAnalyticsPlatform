@@ -23,6 +23,7 @@ from analystos.security.auth import APPROVER_ROLES, role_at_least
 # Actions whose approver must differ from the requester whatever the workspace policy says (P4-K03).
 ALWAYS_SEPARATE_DUTIES = {"semantic_model.approve", "semantic_relationship.accept",
                           "delivery_destination.authorize",  # N-3: external egress is never self-authorized
+                          "context_webhook.authorize",  # P1-6: a standing push of ledger changes outside likewise
                           "monitor_rule.approve",  # S09: a rule's recipients and the work it starts, likewise
                           "playbook.sign"}  # S06-T6: a playbook's author never signs it off
 
