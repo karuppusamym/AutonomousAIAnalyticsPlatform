@@ -123,3 +123,6 @@ EVENT_TYPES |= {"report_document.created", "report_document.version_created", "r
 EVENT_TYPES |= {"trigger.received", "trigger.processed", "alert.deferred", "alert.released", "alert_group.opened",
                 "alert_group.merged", "alert_group.resolved", "monitor.rule_approved", "channel.request_created",
                 "pack.reviewed"}
+# P1-5 (review 2026-11-05): a tagged column's values reached an untagged one (a review draft adds the tag); what a
+# crawl's schema change impacts; impacted schedules paused through an approval
+EVENT_TYPES |= {"lineage.pii_gap_detected", "schema.impact_reported", "schedule.paused_for_change"}

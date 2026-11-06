@@ -50,11 +50,14 @@ KIND_SPEC: dict[str, tuple[str, str, str]] = {
     # Stream E (knowledge/glossary_scan.py): approval writes a glossary entry or catalog text, not a pack file.
     "glossary_term": ("Glossary Term", "glossary", "term"),
     "description_question": ("Note", "notes", "note"),
+    # P1-5 (services/pii_lineage.py): a sensitive tag a column inherits along lineage; approval adds it, never removes.
+    "column_tag": ("Note", "notes", "note"),
 }
 PRIMARY_FIELD = {"attested_computation": "statement", "table_description": "description",
                  "column_description": "description", "description_question": "question"}
 # Kinds whose approval is applied outside the pack (a glossary entry, catalog text): no pack document.
-APPLIED_KINDS = ("glossary_term", "description_question")
+APPLIED_KINDS = ("glossary_term", "description_question", "column_tag")
+TAGGABLE = frozenset({"pii", "restricted", "sensitive"})  # what a `column_tag` draft may add
 STATUSES = ("pending", "approved", "rejected", "superseded")
 ACTIONS = ("approve", "edit", "reject")
 REVIEW_KEY = "review"  # `analystos.review` marks a document the queue wrote (and may replace)
@@ -399,6 +402,39 @@ def _revert_description(session: Session, row: KnowledgeSuggestion) -> str:
     return "catalog restored"
 
 
+def _tags_value(fields: dict[str, Any]) -> list[str]:
+    v = _value(fields, "tags") or []
+    items = v.split(",") if isinstance(v, str) else v if isinstance(v, list) else []
+    return sorted({str(t).strip().lower() for t in items if str(t).strip()})
+
+
+def _column_tag_error(fields: dict[str, Any]) -> str | None:
+    tags = _tags_value(fields)
+    if not tags:
+        return "no_tags"
+    if set(tags) - TAGGABLE:
+        return "tag_not_allowed"
+    return None
+
+
+def _apply_column_tag(session: Session, row: KnowledgeSuggestion, fields: dict[str, Any], user: Any) -> str:
+    """Union the approved tags into the column: tags only tighten, so an approval can add and never remove. A person
+    decided it, so the result is a `user` tag set no crawl may loosen."""
+    from analystos.governance.audit import audit
+
+    c = _column(session, row)
+    if c is None:
+        return "column not found"
+    before = sorted(set(c.tags or []))
+    after = sorted(set(before) | set(_tags_value(fields)))
+    if after == before:
+        return "already tagged"
+    c.tags, c.tags_origin = after, "user"
+    audit(f"user:{user.id}", "column.tags_added", workspace_id=row.workspace_id, target=row.subject, decision="allow",
+          details={"before": before, "after": after, "suggestion_id": row.id, "origin": row.origin}, session=session)
+    return "tags added: " + ", ".join(t for t in after if t not in before)
+
+
 # ------------------------------------------------------------------------------------ review
 def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[str, Any]]) -> dict[str, Any]:
     """Decide a batch. Every accepted decision lands in ONE workspace-pack revision; a decision that
@@ -454,6 +490,16 @@ def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[
             if problem:
                 errors.append({"id": sid, "error": problem})
                 continue
+        if row.kind == "column_tag":
+            problem = _column_tag_error(fields)
+            if problem:
+                errors.append({"id": sid, "error": problem})
+                continue
+            note = _apply_column_tag(session, row, fields, user)
+            if action == "edit":
+                row.fields = fields
+            decided.append((row, "approved", note))
+            continue
         if row.kind in APPLIED_KINDS:
             from analystos.knowledge import glossary_scan
 
