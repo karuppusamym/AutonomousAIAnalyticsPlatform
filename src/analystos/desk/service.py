@@ -44,6 +44,7 @@ from analystos.desk.states import (
     sla_due,
 )
 from analystos.events.bus import emit
+from analystos.evidence import number_check
 from analystos.governance.policy import load_in_workspace, member_role, require_role, scoped_loader
 from analystos.security.auth import role_at_least
 
@@ -547,7 +548,9 @@ def value_report(session: Session, user: User, workspace_id: str, *, start: date
     return {"workspace_id": workspace_id, "from": start.isoformat(), "to": end.isoformat(),
             "truncated": len(data) >= VALUE_MAX_ROWS, **value.compute(data, baselines(session, workspace_id)),
             # The nightly rollup (desk_daily): the trend by day the requests were created, and when it last ran.
-            "daily": daily, "rollup_computed_at": max((d["computed_at"] for d in daily if d["computed_at"]), default=None)}
+            "daily": daily, "rollup_computed_at": max((d["computed_at"] for d in daily if d["computed_at"]), default=None),
+            # S07-T8: the share of answers from a certified definition, and how number checks came out
+            "trust": number_check.coverage(session, workspace_id, start, end)}
 
 
 EXPORT_COLUMNS = ("day", "class", "n", "duplicates", "closed", "accepted", "auto_resolved", "auto_resolution_rate",

@@ -1,0 +1,200 @@
+{
+ "workspace": {
+  "id": "ws_c0f6d56a3ce0",
+  "name": "ServiceNow Incident Intelligence 20261030-2033"
+ },
+ "table": "src_src_56ec843c975e.incident",
+ "reference": {
+  "total": 20000,
+  "priority": "1",
+  "priority_count": 775
+ },
+ "checks": [
+  {
+   "name": "true total",
+   "status": 200,
+   "request": {
+    "question": "How many incidents are there in total?",
+    "claimed": "20,000",
+    "source": "live check"
+   },
+   "verdict": "confirmed",
+   "authority": "ad_hoc",
+   "computed": {
+    "value": 20000.0,
+    "column": "incident_count",
+    "row_label": null
+   },
+   "reason": null,
+   "evidence": {
+    "turn_id": "askt_1df13156013a",
+    "query_id": "qry_5e839ca318e1",
+    "result_hash": "b1e78bf63358d25498d1b945fb31c18b75e7bdb450c3aefb1f889334111949ba",
+    "answered_by": "rules",
+    "governance": "ad_hoc",
+    "assets": [
+     "src_src_56ec843c975e.incident"
+    ],
+    "cost": {
+     "usd": 0.0,
+     "model_calls": 0,
+     "cache_hits": 0,
+     "avoided": 2,
+     "tokens_saved": 1019,
+     "rungs": [],
+     "models": []
+    }
+   }
+  },
+  {
+   "name": "wrong total",
+   "status": 200,
+   "request": {
+    "question": "How many incidents are there in total?",
+    "claimed": "20037"
+   },
+   "verdict": "contradicted",
+   "authority": "ad_hoc",
+   "computed": {
+    "value": 20000.0,
+    "column": "incident_count",
+    "row_label": null
+   },
+   "reason": "claimed 20037, computed 20000",
+   "evidence": {
+    "turn_id": "askt_562938388adb",
+    "query_id": "qry_17285cb7385a",
+    "result_hash": "b1e78bf63358d25498d1b945fb31c18b75e7bdb450c3aefb1f889334111949ba",
+    "answered_by": "rules",
+    "governance": "ad_hoc",
+    "assets": [
+     "src_src_56ec843c975e.incident"
+    ],
+    "cost": {
+     "usd": 0.0,
+     "model_calls": 0,
+     "cache_hits": 0,
+     "avoided": 2,
+     "tokens_saved": 1019,
+     "rungs": [],
+     "models": []
+    }
+   }
+  },
+  {
+   "name": "one priority row",
+   "status": 200,
+   "request": {
+    "question": "Count of incidents by priority",
+    "claimed": "775",
+    "label": "1"
+   },
+   "verdict": "confirmed",
+   "authority": "ad_hoc",
+   "computed": {
+    "value": 775.0,
+    "column": "incident_count",
+    "row_label": "1"
+   },
+   "reason": null,
+   "evidence": {
+    "turn_id": "askt_8c01aa42fd0e",
+    "query_id": "qry_5c00e1faa5e1",
+    "result_hash": "c64b1eecf63184ced724615523beae3f79d5eb76d83e7b9c645250083162badf",
+    "answered_by": "rules",
+    "governance": "ad_hoc",
+    "assets": [
+     "src_src_56ec843c975e.incident"
+    ],
+    "cost": {
+     "usd": 0.0,
+     "model_calls": 0,
+     "cache_hits": 0,
+     "avoided": 2,
+     "tokens_saved": 1017,
+     "rungs": [],
+     "models": []
+    }
+   }
+  },
+  {
+   "name": "breakdown without a row",
+   "status": 200,
+   "request": {
+    "question": "Count of incidents by priority",
+    "claimed": "775"
+   },
+   "verdict": "unverifiable",
+   "authority": "ad_hoc",
+   "computed": null,
+   "reason": "the answer has 5 rows: name the row the number is about with `label`",
+   "evidence": {
+    "turn_id": "askt_b26ac6f791c9",
+    "query_id": "qry_082627e13103",
+    "result_hash": "c64b1eecf63184ced724615523beae3f79d5eb76d83e7b9c645250083162badf",
+    "answered_by": "rules",
+    "governance": "ad_hoc",
+    "assets": [
+     "src_src_56ec843c975e.incident"
+    ],
+    "cost": {
+     "usd": 0.0,
+     "model_calls": 0,
+     "cache_hits": 0,
+     "avoided": 2,
+     "tokens_saved": 1017,
+     "rungs": [],
+     "models": []
+    }
+   }
+  },
+  {
+   "name": "out of scope",
+   "status": 200,
+   "request": {
+    "question": "How many payroll runs by department this year?",
+    "claimed": "12"
+   },
+   "verdict": "unverifiable",
+   "authority": null,
+   "computed": null,
+   "reason": "Ask did not answer: The question needs more detail. This question is too open to answer safely. Say what to measure (a count, a rate, an average), over which records and period, and how to group it.",
+   "evidence": {
+    "turn_id": "askt_1a41331d1403",
+    "query_id": null,
+    "result_hash": null,
+    "answered_by": null,
+    "governance": "ad_hoc",
+    "assets": [],
+    "cost": {
+     "usd": 1.2e-05,
+     "model_calls": 1,
+     "cache_hits": 0,
+     "avoided": 1,
+     "tokens_saved": 400,
+     "rungs": [
+      "decision"
+     ],
+     "models": [
+      "typesafe/jev-1.13-20260917"
+     ]
+    }
+   }
+  }
+ ],
+ "passed": true,
+ "audit": [
+  [
+   "confirmed",
+   "2"
+  ],
+  [
+   "contradicted",
+   "1"
+  ],
+  [
+   "unverifiable",
+   "2"
+  ]
+ ]
+}

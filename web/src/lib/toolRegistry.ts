@@ -44,7 +44,7 @@ export const CLASSIFICATIONS = [
 /** The platform's built-in MCP tools (mcp/grants.py TOOLS), granted by exact name; `context.read` grants every context tool. */
 export const CONTEXT_TOOLS = ["context.search", "context.get", "context.compile", "context.changes"] as const;
 export const BUILTIN_MCP_TOOLS = ["ask", "investigate", "get_finding_evidence", "validate_sql", "request.create", "request.status",
-  "conversation.start", "conversation.say", "conversation.summary", ...CONTEXT_TOOLS] as const;
+  "conversation.start", "conversation.say", "conversation.summary", "number.check", ...CONTEXT_TOOLS] as const;
 /** What a grant's `tools` list may name besides registry ids and families. */
 export const GRANTABLE_BUILTINS = [...BUILTIN_MCP_TOOLS, "context.read"];
 const WRITING_BUILTINS = new Set(["investigate", "request.create", "conversation.start", "conversation.say"]);
