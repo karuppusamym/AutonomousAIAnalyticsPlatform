@@ -1396,3 +1396,24 @@ rules only, on a copy of the rehearsal database; no analyst results).
 
 Live evidence: [`evidence/pilot-fix-investigate-20261030.md`](evidence/pilot-fix-investigate-20261030.md) (rules only, no model
 call). Not verified: a live run with models; the guided source choice on a live two-source workspace (unit tested only).
+
+## 2026-11-05 — P2-10 Read-only knowledge sources: GitHub and Confluence
+
+Review item P2-10 of [`2026-11-05-google-knowledge-catalog-review.md`](../70-reviews/2026-11-05-google-knowledge-catalog-review.md).
+A workspace registers a GitHub path (README, docs Markdown, dbt `schema.yml`/`sources.yml`, `.sql`) or one Confluence space; a sync turns
+every file into an untrusted draft in the review queue, never knowledge directly.
+
+| Capability | Where | Evidence |
+|---|---|---|
+| Source registry | `knowledge_source` table (migration `0077_knowledge_sources`, based on head 0076, RLS installed), `services/knowledge_sources.py`, API `GET/POST /api/workspaces/{id}/knowledge/sources`, `PATCH/DELETE .../{source_id}`, `POST .../{source_id}/sync` | `tests/unit/test_knowledge_sources.py` (service tests on SQLite; RLS coverage `test_tenancy_rls_coverage.py`) |
+| Credentials | `secret_ref` only (`connectors/secrets.py` policy at registration and at sync); a config key such as `token` or `password` is refused; nothing resolved is stored, logged or returned | `test_a_credential_in_the_config_is_refused`, `test_a_secret_ref_outside_the_operator_policy_is_refused`, `test_the_credential_goes_in_a_header_only` |
+| SSRF-safe fetch | `knowledge/sources.py` over `tools/http.call`: https only, host allowlist = `api.github.com`, `*.atlassian.net` + the operator's `http_tool_allowlist`, public addresses only, pinned connection, no redirects, response byte cap, 20 s timeout | `test_only_known_hosts_are_reachable_unless_the_operator_lists_more`, `test_non_public_resolution_is_refused`, `test_redirects_are_not_followed`, `test_response_byte_cap_is_enforced_by_the_http_layer` |
+| Screening | every file through `knowledge/documents.screen` (redaction, instruction-line markers, control characters, link neutralising), their frontmatter dropped, SQL/YAML inside a fence that cannot be closed from inside; drafts carry `trusted: false`, `status: draft` | `test_files_are_screened_like_uploads_and_arrive_as_untrusted_drafts`, `test_sql_and_yaml_are_data_inside_a_fence_and_cannot_close_it` |
+| Caps | 200 files/pages, 256 KiB per file (declared and downloaded size), 8 MiB per sync, 600 requests, 50 pages per Confluence request | `test_caps_on_file_size_count_and_total`, `test_confluence_incremental_and_page_cap` |
+| Incremental | per path: remote revision (git blob sha, Confluence version) skips the download, sha256 of the bytes skips the rewrite; removed remote files are reported, never deleted | `test_second_sync_skips_unchanged_files_without_fetching_them`, `test_changed_file_is_fetched_and_same_bytes_under_a_new_revision_are_not_rewritten`, `test_removed_remote_files_are_reported_not_deleted` |
+| Schedule | schedule kind `knowledge_sync` (existing scheduler claim-then-execute, editor role, 15-minute minimum interval) | `test_schedule_kind_is_registered` |
+| UI | Data dictionary → Import & export → "Remote sources" (`web/src/components/KnowledgeSources.tsx`): add, sync now, pause, remove, daily schedule | Not exercised in a browser or type-checked in the building session (no `node_modules` in the worktree) |
+
+Not verified: a live call to GitHub or Confluence (unit tests use a mock transport only); a Postgres run of migration 0077 (the SQLite unit
+fixtures and the RLS coverage test pass; the integration migration test was not run). dbt `schema.yml` is shown as screened text, not parsed
+into catalog descriptions (the manifest path in `knowledge/dbt_manifest.py` stays the structured route). Jira and other kinds are not built.

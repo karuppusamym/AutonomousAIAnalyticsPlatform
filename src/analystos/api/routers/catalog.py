@@ -129,6 +129,67 @@ async def upload_knowledge_document(workspace_id: str, file: UploadFile = File(.
     return knowledge_ingest.upload_document(session, session.merge(user), workspace_id, file.filename or "document", data)
 
 
+# ------------------------------------------------------------------------ knowledge sources (P2-10)
+class KnowledgeSourceIn(BaseModel):
+    kind: str = Field(pattern="^(github|confluence)$")
+    name: str = Field(min_length=1, max_length=200)
+    config: dict = Field(default_factory=dict)  # location filter only; credentials go in secret_ref
+    secret_ref: str | None = Field(default=None, max_length=200)
+    enabled: bool = True
+
+
+class KnowledgeSourcePatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    config: dict | None = None
+    secret_ref: str | None = Field(default=None, max_length=200)
+    enabled: bool | None = None
+
+
+@router.get("/workspaces/{workspace_id}/knowledge/sources")
+def list_knowledge_sources(workspace_id: str, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    """Read-only GitHub / Confluence knowledge sources of the workspace and their last sync."""
+    from analystos.services import knowledge_sources
+
+    return knowledge_sources.list_sources(session, session.merge(user), workspace_id)
+
+
+@router.post("/workspaces/{workspace_id}/knowledge/sources")
+def create_knowledge_source(workspace_id: str, body: KnowledgeSourceIn, user: User = Depends(current_user),
+                            session: Session = Depends(db, scope="function")):
+    from analystos.services import knowledge_sources
+
+    return knowledge_sources.create_source(session, session.merge(user), workspace_id, **body.model_dump())
+
+
+@router.patch("/workspaces/{workspace_id}/knowledge/sources/{source_id}")
+def update_knowledge_source(workspace_id: str, source_id: str, body: KnowledgeSourcePatch, user: User = Depends(current_user),
+                            session: Session = Depends(db, scope="function")):
+    from analystos.services import knowledge_sources
+
+    return knowledge_sources.update_source(session, session.merge(user), workspace_id, source_id,
+                                           body.model_dump(exclude_unset=True))
+
+
+@router.delete("/workspaces/{workspace_id}/knowledge/sources/{source_id}")
+def delete_knowledge_source(workspace_id: str, source_id: str, user: User = Depends(current_user),
+                            session: Session = Depends(db, scope="function")):
+    from analystos.services import knowledge_sources
+
+    return knowledge_sources.delete_source(session, session.merge(user), workspace_id, source_id)
+
+
+@router.post("/workspaces/{workspace_id}/knowledge/sources/{source_id}/sync")
+def sync_knowledge_source(workspace_id: str, source_id: str, user: User = Depends(current_user),
+                          session: Session = Depends(db, scope="function")):
+    """Sync now: fetch the source and merge the files into the pack as untrusted drafts (a person reviews them)."""
+    from analystos.db.models import KnowledgeSource
+    from analystos.services import knowledge_sources
+
+    load_in_workspace(session, KnowledgeSource, source_id, workspace_id, user=user, minimum="editor", label="knowledge source")
+    session.commit()  # the sync works in its own short transactions
+    return knowledge_sources.sync_source(source_id, actor=f"user:{user.id}")
+
+
 @router.get("/workspaces/{workspace_id}/crawls")
 def list_crawls(workspace_id: str, source_id: str | None = None, limit: int = 50, user: User = Depends(current_user),
                 session: Session = Depends(db, scope="function")):

@@ -1140,6 +1140,27 @@ class AuditChain(Base):
 
 
 # ------------------------------------------------------------------------------------------ Phase 3
+class KnowledgeSource(Base):
+    """A read-only remote knowledge source of a workspace (P2-10): a GitHub path or a Confluence space whose files
+    become untrusted drafts in the review queue. `config` is the location filter (never a credential); `secret_ref`
+    names the credential. `state` maps each remote path to its remote revision and content hash (incremental sync)."""
+
+    __tablename__ = "knowledge_source"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # github | confluence
+    name: Mapped[str] = mapped_column(String(200))
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    secret_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_status: Mapped[str | None] = mapped_column(String(20), nullable=True)  # ok | partial | failed
+    last_report: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    created_by: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = _ts()
+
+
 class Schedule(Base):
     """Recurring work (§37). Executes with the owner's CURRENT permissions, re-checked at fire time."""
 
