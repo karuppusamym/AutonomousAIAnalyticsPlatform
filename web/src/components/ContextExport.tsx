@@ -1,5 +1,7 @@
 import { useId, useState, type FormEvent } from "react";
-import { api, saveBlob, type ContextExportFormat, type ContextPreview, type Source } from "../api";
+import {
+  api, saveBlob, type ContextExportFormat, type ContextPreview, type GlossaryImportReport, type GlossarySheetFormat, type Source,
+} from "../api";
 import { fmtNumber } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import { Card, CodeBlock, DataTable, ErrorBox, Field, KeyValue, Loading, Notice, Tag } from "./ui";
@@ -36,6 +38,7 @@ export function ContextExport({ wsId, canEdit }: { wsId: string; canEdit: boolea
   return (
     <div className="stack">
       <DownloadCard wsId={wsId} sources={list} />
+      <GlossarySheetCard wsId={wsId} canEdit={canEdit} />
       <AgentViewCard wsId={wsId} sources={list} />
       {canEdit && <CacheCard wsId={wsId} canClear={ws.data?.role === "owner"} />}
     </div>
@@ -92,6 +95,79 @@ function DownloadCard({ wsId, sources }: { wsId: string; sources: Source[] }) {
         </div>
       </form>
       {done && <p className="small" role="status">Downloaded {done}.</p>}
+    </Card>
+  );
+}
+
+/** Stewards' round trip (review P2-11): the glossary as CSV/XLSX, and a file back in as review drafts. */
+function GlossarySheetCard({ wsId, canEdit }: { wsId: string; canEdit: boolean }) {
+  const id = useId();
+  const [format, setFormat] = useState<GlossarySheetFormat>("xlsx");
+  const [note, setNote] = useState<string | null>(null);
+  const [report, setReport] = useState<GlossaryImportReport | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const dl = useAction();
+  const imp = useAction();
+  const download = async () => {
+    setNote(null);
+    const f = await dl.run(() => api.exportGlossarySheet(wsId, format));
+    if (f) {
+      saveBlob(f);
+      setNote(`Downloaded ${f.filename}: ${plural(f.terms, "term")}${f.omittedTerms || f.omittedLinks
+        ? `; left out for your access: ${plural(f.omittedTerms, "term")}, ${plural(f.omittedLinks, "column link")}` : ""}.`);
+    }
+  };
+  const upload = async (dryRun: boolean) => {
+    if (!file) return;
+    const r = await imp.run(() => api.importGlossarySheet(wsId, file, dryRun));
+    if (r) setReport(r);
+  };
+  const problems = report?.results.filter((r) => r.status === "error" || r.status === "skipped" || r.warnings?.length) ?? [];
+  return (
+    <Card title="Glossary spreadsheet">
+      <p className="small muted">Edit the glossary in a spreadsheet: term, definition, synonyms, linked columns, owner, trust and status.
+        Importing never changes the glossary. Each row becomes a draft in the review queue (source: spreadsheet import) and counts as
+        reviewed only after a person approves it.</p>
+      <div className="form-row">
+        <Field label="Format" htmlFor={`${id}-fmt`}>
+          <select id={`${id}-fmt`} value={format} onChange={(e) => setFormat(e.target.value as GlossarySheetFormat)}>
+            <option value="xlsx">Excel (.xlsx)</option>
+            <option value="csv">CSV (.csv)</option>
+          </select>
+        </Field>
+      </div>
+      <div className="form-actions">
+        <button type="button" className="btn btn-primary" disabled={dl.busy} onClick={() => void download()}>
+          {dl.busy ? "Preparing…" : "Download glossary"}
+        </button>
+      </div>
+      <ErrorBox error={dl.error} />
+      {note && <p className="small" role="status">{note}</p>}
+      {canEdit ? (
+        <form className="form" onSubmit={(e) => { e.preventDefault(); void upload(false); }} aria-label="Import a glossary spreadsheet" noValidate>
+          <Field label="Import a spreadsheet" htmlFor={`${id}-file`} hint="A .csv or .xlsx in the same format, up to 2 MB and 2,000 rows.">
+            <input id={`${id}-file`} type="file" accept=".csv,.xlsx" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setReport(null); }} />
+          </Field>
+          <ErrorBox error={imp.error} />
+          <div className="form-actions">
+            <button type="button" className="btn btn-sm" disabled={!file || imp.busy} onClick={() => void upload(true)}>Check only</button>
+            <button type="submit" className="btn btn-primary" disabled={!file || imp.busy}>{imp.busy ? "Reading…" : "Queue for review"}</button>
+          </div>
+        </form>
+      ) : <p className="small" role="note">Editors can import a glossary spreadsheet.</p>}
+      {report && (
+        <div className="stack" aria-label="Import result">
+          <Notice tone={report.error ? "warning" : "info"}>
+            {report.dry_run ? "Checked, nothing queued: " : "Queued for review: "}{plural(report.queued, "draft")}; already waiting {report.already_pending};
+            already decided {report.already_decided}; unchanged {report.unchanged}; skipped {report.skipped}; with errors {report.error}.
+            {report.ignored_headers.length > 0 && ` Ignored columns: ${report.ignored_headers.join(", ")}.`}
+          </Notice>
+          {problems.length > 0 && (
+            <DataTable caption="Rows that need attention" columns={["Row", "Term", "Result", "Detail"]}
+              rows={problems.map((r) => [r.row, r.term, r.status, [r.error ?? r.reason, ...(r.warnings ?? [])].filter(Boolean).join("; ")])} />
+          )}
+        </div>
+      )}
     </Card>
   );
 }

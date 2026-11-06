@@ -239,6 +239,18 @@ def render(row: KnowledgeSuggestion, fields: dict[str, Any], user_id: str, at: s
     return okf.render_document(fm, f"# {heading}\n\n{text.strip()}").encode()
 
 
+def confirm_imported(fields: dict[str, Any], user_id: str, at: str) -> dict[str, Any]:
+    """A reviewer approved an imported draft: its imported fields (provenance `import:*`) reach confidence 1.0 and
+    record who confirmed them. Before this, an import is a claim at a low confidence, never a certified value."""
+    out = {}
+    for name, f in fields.items():
+        prov = f.get("provenance") if isinstance(f, dict) else None
+        if isinstance(prov, dict) and str(prov.get("source") or "").startswith("import:"):
+            f = {**f, "confidence": 1.0, "provenance": {**prov, "confirmed_by": f"user:{user_id}", "confirmed_at": at}}
+        out[name] = f
+    return out
+
+
 def negative_path(row: KnowledgeSuggestion) -> str:
     return f"negative/{slugify(row.kind)}-{slugify(row.subject.split(':', 1)[-1] or row.title, 80)}-{row.content_hash[:8]}.md"
 
@@ -439,6 +451,9 @@ def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[
             old = fields.get(name) or {}
             fields[name] = {**field(value, 1.0, source="human", by=f"user:{user.id}",
                                     edited_from=old.get("provenance")), **({"before": old["before"]} if "before" in old else {})}
+        imported = action == "approve" and str(row.origin).startswith("import:")
+        if imported:
+            fields = confirm_imported(fields, user.id, at)
         if not str(_value(fields, primary_field(row.kind)) or "").strip():
             errors.append({"id": sid, "error": "empty", "field": primary_field(row.kind)})
             continue
@@ -464,8 +479,9 @@ def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[
                 continue
             note = (glossary_scan.apply_glossary_term if glossary else glossary_scan.apply_description_answer)(
                 session, row, fields, user)
-            if action == "edit":
+            if action == "edit" or imported:
                 row.fields = fields
+                row.confidence = min(float(v.get("confidence") or 0.0) for v in fields.values())
             decided.append((row, "approved", note))
             continue
         if row.kind == "attested_computation" and attested.missing(_value(fields, "computation") or {}):
@@ -478,8 +494,9 @@ def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[
         if row.kind == "domain_candidate":
             batch_keywords[str(_value(fields, "keyword"))] = str(_value(fields, "domain"))
         note = _apply_description(session, row, fields) if row.kind == "table_description" else             _apply_column_description(session, row, fields) if row.kind == "column_description" else None
-        if action == "edit":
+        if action == "edit" or imported:
             row.fields = fields
+            row.confidence = min(float(v.get("confidence") or 0.0) for v in fields.values())
         decided.append((row, "approved", note))
     revision = None
     if files:

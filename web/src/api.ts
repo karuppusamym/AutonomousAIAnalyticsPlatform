@@ -1432,6 +1432,17 @@ export interface ReviewResult {
 /** Stream D: the workspace context as one download (OKF zip, versioned JSON, or one Markdown file). */
 export type ContextExportFormat = "okf" | "json" | "markdown";
 
+export type GlossarySheetFormat = "csv" | "xlsx";
+export interface GlossaryImportRow {
+  row: number; term: string; status: "queued" | "already_pending" | "already_decided" | "unchanged" | "skipped" | "error";
+  error?: string; reason?: string; suggestion_id?: string; existing_term?: string | null; warnings?: string[]; ignored_columns?: string[];
+}
+export interface GlossaryImportReport {
+  batch: string | null; dry_run: boolean; file_sha256: string; rows: number; queued: number; already_pending: number;
+  already_decided: number; unchanged: number; skipped: number; error: number; ignored_headers: string[]; results: GlossaryImportRow[];
+}
+export interface GlossaryExportFile extends DownloadedFile { terms: number; omittedTerms: number; omittedLinks: number }
+
 export interface ContextPurpose {
   purpose: string;
   label: string;
@@ -4638,6 +4649,29 @@ export const api = {
     get("/api/workspaces/{workspace_id}/knowledge/suggestions/summary", { path: W(ws) }) as Promise<SuggestionSummary>,
   glossaryScan: (ws: string, body: { use_model?: boolean; include_ask?: boolean; include_descriptions?: boolean } = {}) =>
     post("/api/workspaces/{workspace_id}/knowledge/glossary/scan", { path: W(ws), body }) as Promise<GlossaryScanResult>,
+  exportGlossarySheet: async (ws: string, format: GlossarySheetFormat): Promise<GlossaryExportFile> => {
+    const path = apiPath("get", "/api/workspaces/{workspace_id}/knowledge/glossary/export", { path: W(ws), query: { format } });
+    let resp: Response;
+    try {
+      resp = await fetch(`${API_BASE}${path}`, { method: "GET", headers: { ...authHeaders() } });
+    } catch (err) {
+      throw new ApiError(0, "network_error", `API unreachable: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    if (!resp.ok) {
+      const err = await parseError(resp);
+      if (resp.status === 401) unauthorizedHandler?.();
+      throw err;
+    }
+    const num = (h: string) => Number(resp.headers.get(h) ?? 0) || 0;
+    return { blob: await resp.blob(), filename: filenameFromDisposition(resp.headers.get("Content-Disposition"), `glossary.${format}`),
+      terms: num("X-Terms"), omittedTerms: num("X-Omitted-Terms"), omittedLinks: num("X-Omitted-Links") };
+  },
+  importGlossarySheet: (ws: string, file: File, dryRun: boolean) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("dry_run", dryRun ? "true" : "false");
+    return post("/api/workspaces/{workspace_id}/knowledge/glossary/import", { path: W(ws), body: fd }) as Promise<GlossaryImportReport>;
+  },
   importKnowledge: (ws: string, file: File, slug: string) => {
     const fd = new FormData();
     fd.append("file", file);
