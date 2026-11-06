@@ -622,9 +622,9 @@ def _index_resources(s: Any, user: User, ws: str, grant: dict[str, Any]) -> list
     for d in ctx_index.domains(s, ws):
         if allowed and d not in allowed:
             continue
-        if G.is_sliced(grant) and not any(ctx_index.view(s, user, ws, domain=d, domains_=grant.get("domains") or (),
-                                                          assets=grant.get("assets") or ())["counts"].values()):
-            continue  # a domain the slice holds nothing of is not even named
+        if not any(ctx_index.view(s, user, ws, domain=d, domains_=grant.get("domains") or (),
+                                  assets=grant.get("assets") or ())["counts"].values()):
+            continue  # a domain the caller sees nothing of is not even named
         out.append({"uri": f"{URI_SCHEME}{ws}/{INDEX_KIND}/{d}", "name": f"Context index: {d}",
                     "description": f"What the {d} domain holds"})
     return out

@@ -63,9 +63,23 @@ def _asset_rows(session: Session, workspace_id: str) -> list[dict[str, Any]]:
     return sorted(out, key=lambda r: r["key"])
 
 
-def domains(session: Session, workspace_id: str) -> list[str]:
-    """Domains the catalog places tables in (reviewed decisions and the crawler's rule), `generic` excluded."""
-    return sorted({r["domain"] for r in _asset_rows(session, workspace_id)} - GENERIC_DOMAINS)
+def _tagged_assets(session: Session, workspace_id: str) -> set[str]:
+    """`schema.table` of assets with a pii/sensitive/restricted column: not for every member's eyes."""
+    from analystos.db.models import SourceAsset, SourceColumn
+
+    rows = session.execute(select(SourceAsset.schema_name, SourceAsset.name, SourceColumn.tags)
+                           .join(SourceColumn, SourceColumn.asset_id == SourceAsset.id)
+                           .where(SourceAsset.workspace_id == workspace_id))
+    return {f"{sch}.{n}" for sch, n, tags in rows if {"pii", "sensitive", "restricted"} & set(tags or [])}
+
+
+def domains(session: Session, workspace_id: str, access: Any | None = None) -> list[str]:
+    """Domains the catalog places tables in (reviewed decisions and the crawler's rule), `generic` excluded; with
+    `access` only those that hold a table the caller may see."""
+    rows = _asset_rows(session, workspace_id)
+    if access is not None:
+        rows = [r for r in rows if r["key"] in access.assets]
+    return sorted({r["domain"] for r in rows} - GENERIC_DOMAINS)
 
 
 def _entry_rows(session: Session, workspace_id: str, access: Any | None) -> list[Any]:
@@ -82,8 +96,14 @@ def _entry_rows(session: Session, workspace_id: str, access: Any | None) -> list
 
 
 def build(session: Session, workspace_id: str, *, domain: str | None = None, access: Any | None = None) -> dict[str, Any]:
-    """The index as data: `{workspace_id, domain, sections: {name: [{key, title, summary, path}]}, counts}`."""
+    """The index as data: `{workspace_id, domain, sections: {name: [{key, title, summary, path}]}, counts}`.
+
+    With `access` it is that caller's own view. Without it (the pack copy, which every pack reader sees whatever their
+    data scope) it holds only what every member may see: internal-classified non-personal entries, and no table that
+    has a pii/sensitive/restricted column, nor its description, nor an entry that references it."""
     assets = _asset_rows(session, workspace_id)
+    hidden = _tagged_assets(session, workspace_id) if access is None else set()
+    assets = [r for r in assets if r["key"] not in hidden]
     if access is not None:
         allowed = set(access.assets) if access.slice_assets is None else set(access.assets) & set(access.slice_assets)
         assets = [r for r in assets if r["key"] in allowed]
@@ -92,6 +112,8 @@ def build(session: Session, workspace_id: str, *, domain: str | None = None, acc
     tables = [r for r in assets if domain_assets is None or r["key"] in domain_assets]
     sections: dict[str, list[dict[str, Any]]] = {"tables": tables}
     for entry in _entry_rows(session, workspace_id, access):
+        if hidden and {".".join(str(r).split(".")[:2]) for r in entry.refs or []} & hidden:
+            continue
         if domain_assets is not None:
             refs = {".".join(str(r).split(".")[:2]) for r in entry.refs or []}
             named = str((entry.provenance or {}).get("domain_pack") or "").lower() == want
@@ -149,7 +171,9 @@ def refresh(session: Session, workspace_id: str, *, reason: str = "context index
     from analystos.knowledge.drafts import write_drafts
 
     docs = {WORKSPACE_PATH: document(build(session, workspace_id))}
-    for d in domains(session, workspace_id):
+    hidden = _tagged_assets(session, workspace_id)
+    visible = {r["domain"] for r in _asset_rows(session, workspace_id) if r["key"] not in hidden}
+    for d in sorted(visible - GENERIC_DOMAINS):
         docs[domain_path(d)] = document(build(session, workspace_id, domain=d))
     report = write_drafts(session, workspace_id, docs, author=INDEX_ACTOR, reason=reason, origin="index")
     return report.as_dict()
