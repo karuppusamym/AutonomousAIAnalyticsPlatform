@@ -452,3 +452,55 @@ def test_the_background_entry_points_declare_their_tenancy():
     import inspect
 
     assert "system_scope" in inspect.getsource(inspect.unwrap(webhooks.dispatch_due)) or hasattr(webhooks.dispatch_due, "__wrapped__")
+
+
+def test_a_creator_who_cannot_see_an_entry_is_not_told_about_it_and_the_cursor_moves_on(env):
+    from analystos.db.models import Source, SourceAsset
+
+    with session_scope() as s:
+        s.add(Source(id="src_a", workspace_id=WS, kind="postgres", name="a", config={}, status="ready", execution_mode="pushdown"))
+        s.flush()
+        s.add(SourceAsset(id="ast_a", source_id="src_a", workspace_id=WS, schema_name="hr", name="salaries", source_name="salaries",
+                          kind="table", selected=True, row_count=1, stats={}))
+        s.add(SourceAsset(id="ast_b", source_id="src_a", workspace_id=WS, schema_name="hr", name="offices", source_name="offices",
+                          kind="table", selected=True, row_count=1, stats={}))
+    hook_id = _live()
+    from analystos.context import retrieval
+
+    real = retrieval.access_for
+
+    def narrowed(session, user, ws):  # noqa: ANN001
+        a = real(session, user, ws)
+        a.assets = {"hr.offices"}
+        return a
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(retrieval, "access_for", narrowed)
+    try:
+        seen = _change(kind="dataset", op="added", ref="syn_b", provenance={"tags": ["pii"]})
+        hidden = _change(kind="dataset", op="added", ref="syn_a", provenance={"tags": ["pii"]})
+        _fix_refs({f"cle_{_seq['n'] - 1}": ["hr.offices"], f"cle_{_seq['n']}": ["hr.salaries"]})
+        assert webhooks.scan(hook_id) == 1
+    finally:
+        mp.undo()
+    assert [d.seq for d in _deliveries(hook_id)] == [seen]
+    with session_scope() as s:
+        assert s.get(ContextWebhook, hook_id).cursor == hidden
+
+
+def _fix_refs(by_id: dict) -> None:
+    with session_scope() as s:
+        for eid, refs in by_id.items():
+            s.get(ContextLedgerEntry, eid).refs = refs
+
+
+def test_a_creator_who_left_the_workspace_suspends_the_subscription(env):
+    hook_id = _live()
+    _change()
+    with session_scope() as s:
+        s.query(WorkspaceMember).filter_by(workspace_id=WS, user_id="u_owner").delete()
+    assert webhooks.scan(hook_id) == 0
+    with session_scope() as s:
+        hook = s.get(ContextWebhook, hook_id)
+        assert hook.status == "lapsed" and not webhooks.is_authorized(hook)
+    assert _deliveries(hook_id) == []

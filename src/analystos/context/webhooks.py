@@ -353,6 +353,23 @@ def payload_for(change: ContextLedgerChange, entry: ContextLedgerEntry, signals:
             "ref": {"table": entry.ref_table, "id": entry.ref_id}}
 
 
+def _creator_access(session: Session, hook: ContextWebhook) -> Any | None:
+    """The creator's current access to the workspace's context; None (and the subscription lapses) when they are gone,
+    inactive or no longer a member, so a departed person's webhook never keeps announcing what they cannot see."""
+    from analystos.context.retrieval import access_for
+
+    creator = session.get(User, hook.created_by)
+    try:
+        if creator is None or not creator.active:
+            raise NotFound("creator inactive")
+        return access_for(session, creator, hook.workspace_id)
+    except AnalystOSError as exc:
+        hook.status, hook.authorized_hash, hook.authorized_until = "lapsed", None, None
+        audit("system:context_webhook", "context.webhook_suspended", workspace_id=hook.workspace_id, target=hook.id,
+              decision="deny", reasons=[f"creator lost access: {exc.message}"], session=session)
+        return None
+
+
 @owned_by("context_webhook", "webhook_id")
 def scan(webhook_id: str, *, limit: int = SCAN_LIMIT) -> int:
     """Read the ledger past the subscription's cursor, queue a delivery for every change that passes its filters, and
@@ -364,14 +381,19 @@ def scan(webhook_id: str, *, limit: int = SCAN_LIMIT) -> int:
         hook = s.get(ContextWebhook, webhook_id)
         if hook is None or not is_authorized(hook) or hook.cursor is None:
             return 0
+        access = None
+        if hook.kind == "webhook":  # what leaves is bounded by what the creator may see, re-resolved every scan
+            access = _creator_access(s, hook)
+            if access is None:
+                return 0
         rows = s.execute(select(ContextLedgerChange, ContextLedgerEntry)
                          .join(ContextLedgerEntry, ContextLedgerEntry.id == ContextLedgerChange.entry_id)
                          .where(ContextLedgerChange.workspace_id == hook.workspace_id, ContextLedgerChange.seq > hook.cursor)
                          .order_by(ContextLedgerChange.seq).limit(limit)).all()
         for change, entry in rows:
             hook.cursor = change.seq
-            if entry.trust in HIDDEN_TRUSTS:
-                continue
+            if entry.trust in HIDDEN_TRUSTS or (access is not None and not access.allows(entry)):
+                continue  # withheld, but the cursor has moved past it
             previous = None
             if entry.kind == "dataset" and entry.version > 1:
                 previous = s.scalar(select(ContextLedgerEntry).where(
