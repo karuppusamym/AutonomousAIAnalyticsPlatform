@@ -562,6 +562,21 @@ def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[
             row.confidence = min(float(v.get("confidence") or 0.0) for v in fields.values())
         decided.append((row, "approved", note))
     revision = None
+    if decided:
+        # P2-8: what the batch changes in the catalog and ledger is listed in the same revision (one batch, one
+        # revision). Pack documents of this batch are indexed when the revision commits, so they are listed from the
+        # next refresh.
+        from analystos.context.index import pending_files
+
+        session.flush()
+        index_files = pending_files(session, workspace_id)
+        if files:
+            files.update({p: b for p, b in index_files.items() if p not in files})
+        elif index_files:
+            from analystos.context.index import INDEX_ACTOR
+
+            store.commit(session, store.workspace_pack(session, workspace_id), index_files, author=INDEX_ACTOR,
+                         origin="index", merge=True, reason="context index after knowledge review")
     if files:
         pack = store.workspace_pack(session, workspace_id)
         approved = sum(1 for _, s, _ in decided if s == "approved")
@@ -590,10 +605,6 @@ def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[
         from analystos.conversations.corrections import on_suggestions_decided
 
         on_suggestions_decided(session, [(r, st) for r, st, _ in decided])  # S04: team corrections from conversations
-        from analystos.context.index import refresh_quietly  # P2-8: a reviewed domain or term changes what is listed
-
-        session.flush()
-        refresh_quietly(session, workspace_id, reason="context index after knowledge review")
         emit(workspace_id, "knowledge.suggestions_reviewed", {"approved": len(out["approved"]), "rejected": len(out["rejected"]),
                                                               "revision": revision}, actor=f"user:{user.id}", session=session)
     return {"revision": revision, **out, "errors": errors}

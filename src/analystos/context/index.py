@@ -1,6 +1,6 @@
 """The generated context index (P2-8, light version of Google's "context set" root index).
 
-One deterministic `index.md` per workspace and one per domain lists what exists (tables, metrics, glossary terms,
+One deterministic `context-index.md` per workspace and one per domain lists what exists (tables, metrics, glossary terms,
 verified queries, documents) with a one-line summary and a path, so an agent reads the index first and fetches only
 what it needs (progressive disclosure) instead of receiving every item's text.
 
@@ -27,7 +27,8 @@ from analystos.knowledge import okf
 log = get_logger(__name__)
 
 INDEX_ACTOR = "process:analystos-index"
-WORKSPACE_PATH = "index.md"
+# Not `index.md`: OKF reserves that name for a frontmatter-free directory listing (knowledge/okf.RESERVED).
+WORKSPACE_PATH = "context-index.md"
 LINE_CHARS = 110
 MAX_PER_SECTION = 200
 GENERIC_DOMAINS = frozenset({"", "generic", "unknown"})
@@ -42,7 +43,7 @@ TITLES = {"verified_queries": "Verified queries", "tables": "Tables", "metrics":
 def domain_path(domain: str) -> str:
     from analystos.knowledge.crawl_docs import safe_segment
 
-    return f"domains/{safe_segment(domain)}/index.md"
+    return f"domains/{safe_segment(domain)}/context-index.md"
 
 
 def _line(text: Any, limit: int = LINE_CHARS) -> str:
@@ -166,17 +167,35 @@ def view(session: Session, user: Any, workspace_id: str, *, domain: str | None =
     return {**model, "markdown": render(model)}
 
 
-def refresh(session: Session, workspace_id: str, *, reason: str = "context index refresh") -> dict[str, Any]:
-    """Write the workspace index and one per domain as machine drafts (curated documents are kept)."""
-    from analystos.knowledge.drafts import write_drafts
-
+def _documents(session: Session, workspace_id: str) -> dict[str, str]:
     docs = {WORKSPACE_PATH: document(build(session, workspace_id))}
     hidden = _tagged_assets(session, workspace_id)
     visible = {r["domain"] for r in _asset_rows(session, workspace_id) if r["key"] not in hidden}
     for d in sorted(visible - GENERIC_DOMAINS):
         docs[domain_path(d)] = document(build(session, workspace_id, domain=d))
-    report = write_drafts(session, workspace_id, docs, author=INDEX_ACTOR, reason=reason, origin="index")
+    return docs
+
+
+def refresh(session: Session, workspace_id: str, *, reason: str = "context index refresh") -> dict[str, Any]:
+    """Write the workspace index and one per domain as machine drafts (curated documents are kept)."""
+    from analystos.knowledge.drafts import write_drafts
+
+    report = write_drafts(session, workspace_id, _documents(session, workspace_id), author=INDEX_ACTOR, reason=reason,
+                          origin="index")
     return report.as_dict()
+
+
+def pending_files(session: Session, workspace_id: str) -> dict[str, bytes]:
+    """The index files that differ from the pack, for a writer to fold into its own revision (a knowledge review is
+    one revision). Curated index documents are kept, as in `refresh`. Never raises: the owner's write comes first."""
+    from analystos.knowledge.drafts import prepare_drafts
+
+    try:
+        with session.begin_nested():
+            return prepare_drafts(session, workspace_id, _documents(session, workspace_id))[0]
+    except Exception as exc:  # noqa: BLE001
+        log.warning("context index: build for %s failed: %s", workspace_id, exc)
+        return {}
 
 
 def refresh_quietly(session: Session, workspace_id: str, *, reason: str) -> None:
