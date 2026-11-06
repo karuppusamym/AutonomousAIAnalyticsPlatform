@@ -4073,6 +4073,20 @@
       },
       "GrantIn": {
         "properties": {
+          "assets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Assets",
+            "type": "array"
+          },
+          "domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Domains",
+            "type": "array"
+          },
           "expires_at": {
             "anyOf": [
               {

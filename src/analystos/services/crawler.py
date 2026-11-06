@@ -1373,6 +1373,10 @@ class _Crawl:
             # The pack is now the system of record for crawled tables (the index serves retrieval).
             s.execute(delete(ContextEntry).where(ContextEntry.workspace_id == ws, ContextEntry.kind == "table",
                                                  ContextEntry.origin == "crawler", ContextEntry.name.in_(fqs)))
+        from analystos.context.index import refresh_quietly  # P2-8: the committed catalog and ledger, now listed
+
+        with session_scope() as s:
+            refresh_quietly(s, ws, reason=f"context index after crawl {self.run.id}")
         self.stats.update(knowledge_documents=len(report.written), knowledge_kept_curated=len(report.kept_curated),
                           knowledge_revision=report.revision)
         self.log.stage("publish", f"{len(report.written)} knowledge documents written ({len(report.unchanged)} unchanged, "

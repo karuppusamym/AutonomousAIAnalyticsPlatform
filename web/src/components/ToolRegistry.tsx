@@ -724,7 +724,7 @@ function ClientGrants({ client, onChanged }: { client: McpClientRow; onChanged: 
       {client.grants.length > 0 && (
         <div className="table-wrap">
           <table className="table table-compact" aria-label="Grants">
-            <thead><tr><th>Workspace</th><th>Role</th><th>Tools</th><th>Patterns</th><th>Rate</th><th>Expires</th><th><span className="sr-only">Actions</span></th></tr></thead>
+            <thead><tr><th>Workspace</th><th>Role</th><th>Tools</th><th>Patterns</th><th>Rate</th><th>Slice</th><th>Expires</th><th><span className="sr-only">Actions</span></th></tr></thead>
             <tbody>{client.grants.map((g) => (
               <tr key={g.workspace_id}>
                 <td>{names.get(g.workspace_id) ?? <code>{g.workspace_id}</code>}</td>
@@ -732,6 +732,7 @@ function ClientGrants({ client, onChanged }: { client: McpClientRow; onChanged: 
                 <td className="small">{g.tools.join(", ") || "—"}</td>
                 <td className="small">{(g.tool_patterns ?? []).join(", ") || "—"}</td>
                 <td className="small">{g.rate_per_min ? `${g.rate_per_min}/min` : "—"}</td>
+                <td className="small">{[...(g.domains ?? []), ...(g.assets ?? [])].join(", ") || "whole workspace"}</td>
                 <td className="small">{g.expires_at ? <Tag tone={grantExpired(g) ? "danger" : "neutral"}>{fmtDate(g.expires_at)}</Tag> : "never"}</td>
                 <td>
                   <button type="button" className="btn btn-xs btn-ghost" onClick={() => setEditing(g.workspace_id)}>Edit</button>
@@ -766,6 +767,8 @@ function GrantEditor({ client, grant, onDone, onCancel }: { client: McpClientRow
   const [registry, setRegistry] = useState((grant?.tools ?? []).filter((t) => !GRANTABLE_BUILTINS.includes(t)).join(", "));
   const [patterns, setPatterns] = useState((grant?.tool_patterns ?? []).join(", "));
   const [rate, setRate] = useState(grant?.rate_per_min ? String(grant.rate_per_min) : "");
+  const [domains, setDomains] = useState((grant?.domains ?? []).join(", "));
+  const [assets, setAssets] = useState((grant?.assets ?? []).join(", "));
   const [expires, setExpires] = useState(toLocalInput(grant?.expires_at ?? null));
   const act = useAction();
   const toggle = (t: string, on: boolean) => setBuiltins((cur) => on ? [...cur, t] : cur.filter((x) => x !== t));
@@ -773,6 +776,7 @@ function GrantEditor({ client, grant, onDone, onCancel }: { client: McpClientRow
     const body = {
       role, tools: [...builtins, ...parseList(registry)], tool_patterns: parseList(patterns), quotas: grant?.quotas ?? {},
       rate_per_min: rate ? Number(rate) : null, expires_at: expires ? new Date(expires).toISOString() : null,
+      domains: parseList(domains), assets: parseList(assets),
     };
     if (await act.run(() => api.setMcpGrant(client.client_id, ws, body)) !== undefined) onDone();
   };
@@ -808,6 +812,14 @@ function GrantEditor({ client, grant, onDone, onCancel }: { client: McpClientRow
         </Field>
         <Field label="Tool patterns" htmlFor={`${id}-pat`} hint="Globs within a family, e.g. metric.payments_*; never cover built-in tools">
           <input id={`${id}-pat`} value={patterns} onChange={(e) => setPatterns(e.target.value)} />
+        </Field>
+      </div>
+      <div className="form-row">
+        <Field label="Domains (optional)" htmlFor={`${id}-dom`} hint="Limit the client to these catalog domains, e.g. itsm. Only context tools can be granted with a slice">
+          <input id={`${id}-dom`} value={domains} onChange={(e) => setDomains(e.target.value)} />
+        </Field>
+        <Field label="Assets (optional)" htmlFor={`${id}-assets`} hint="Or to these tables as schema.table; combined with domains as a union">
+          <input id={`${id}-assets`} value={assets} onChange={(e) => setAssets(e.target.value)} />
         </Field>
       </div>
       <div className="form-actions">

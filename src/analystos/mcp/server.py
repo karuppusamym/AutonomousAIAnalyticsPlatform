@@ -36,8 +36,9 @@ MAX_ROWS_OUT = 200
 MAX_RESOURCES_PER_KIND = 200
 URI_SCHEME = "analystos://"
 LEGACY_RESOURCE_KINDS = ("knowledge", "metrics", "findings", "datasets")
+INDEX_KIND = "index"  # analystos://<workspace>/index/<domain|workspace>: the context index (P2-8)
 # Context Ledger kinds (S03-T5): analystos://<ws>/<ledger kind>/<ledger entry id>
-RESOURCE_KINDS = (*LEGACY_RESOURCE_KINDS, *LEDGER_KINDS)
+RESOURCE_KINDS = (*LEGACY_RESOURCE_KINDS, *LEDGER_KINDS, INDEX_KIND)
 SCOPE_KEY = "analystos.mcp.principal"
 
 INSTRUCTIONS = ("AnalystOS governed analytics. Every tool takes `workspace_id` (optional when the client holds exactly "
@@ -98,7 +99,9 @@ TOOL_DEFS: dict[str, dict[str, Any]] = {
                             "workspace_id": _ws_prop(), "purpose": {"type": "string", "minLength": 1, "maxLength": 80},
                             "objective": {"type": "string", "maxLength": 4000},
                             "budget_tokens": {"type": "integer", "minimum": 50, "maximum": 200000},
-                            "kinds": {"type": "array", "items": {"type": "string", "enum": list(LEDGER_KINDS)}}},
+                            "kinds": {"type": "array", "items": {"type": "string", "enum": list(LEDGER_KINDS)}},
+                            "index_first": {"type": "boolean", "description": "Open with the context index and carry items as short pointers."},
+                            "domain": {"type": "string", "maxLength": 80}},
                             "required": ["purpose", "objective"]}, "read_only": True},
     "context.changes": {"description": "Context ledger changes after a cursor (pass back the returned cursor).",
                         "schema": {"type": "object", "properties": {"workspace_id": _ws_prop(),
@@ -244,12 +247,19 @@ def _tool_request_status(principal: G.ClientPrincipal, ws: str, args: dict[str, 
         return {k: out.get(k) for k in _REQUEST_FIELDS}
 
 
+def _slice(principal: G.ClientPrincipal, ws: str) -> dict[str, Any]:
+    """The grant's domain/asset slice as retrieval keywords (P2-8); empty = the whole workspace."""
+    grant = principal.grants.get(ws) or {}
+    return {"domains": grant.get("domains") or (), "assets": grant.get("assets") or ()}
+
+
 def _tool_context_search(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
     from analystos.context import retrieval
 
     with session_scope() as s:
         hits = retrieval.search(s, _service_user(s, principal), ws, str(args.get("q") or ""),
-                                kinds=list(args.get("kinds") or []) or None, limit=min(int(args.get("limit") or 20), 100))
+                                kinds=list(args.get("kinds") or []) or None, limit=min(int(args.get("limit") or 20), 100),
+                                **_slice(principal, ws))
         return {"workspace_id": ws, "results": [h.as_dict() for h in hits]}
 
 
@@ -257,7 +267,7 @@ def _tool_context_get(principal: G.ClientPrincipal, ws: str, args: dict[str, Any
     from analystos.context import retrieval
 
     with session_scope() as s:
-        return retrieval.get(s, _service_user(s, principal), str(args.get("id") or ""), workspace_id=ws)
+        return retrieval.get(s, _service_user(s, principal), str(args.get("id") or ""), workspace_id=ws, **_slice(principal, ws))
 
 
 def _tool_context_compile(principal: G.ClientPrincipal, ws: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -267,7 +277,8 @@ def _tool_context_compile(principal: G.ClientPrincipal, ws: str, args: dict[str,
         out = retrieval.compile_bundle(s, _service_user(s, principal), ws, purpose=str(args.get("purpose") or ""),
                                        objective=str(args.get("objective") or ""),
                                        budget_tokens=int(args.get("budget_tokens") or 2000),
-                                       kinds=list(args.get("kinds") or []) or None)
+                                       kinds=list(args.get("kinds") or []) or None, **_slice(principal, ws),
+                                       index_first=bool(args.get("index_first")), domain=str(args.get("domain") or "") or None)
         audit(f"mcp_client:{principal.client_id}", "context.compiled", workspace_id=ws, target=out["identity_hash"][:40],
               decision="allow", details={"purpose": args.get("purpose"), "receipts": len(out["receipts"])}, session=s)
         return out
@@ -278,7 +289,8 @@ def _tool_context_changes(principal: G.ClientPrincipal, ws: str, args: dict[str,
 
     with session_scope() as s:
         return retrieval.changes(s, _service_user(s, principal), ws, since=int(args.get("since") or 0),
-                                 limit=int(args.get("limit") or 200))
+                                 limit=int(args.get("limit") or 200),
+                                 **_slice(principal, ws))
 def _last_message(principal: G.ClientPrincipal, conversation_id: str) -> dict[str, Any] | None:
     from analystos.conversations import state as st
     from analystos.conversations.service import load, message_view
@@ -552,6 +564,10 @@ def list_resource_rows(principal: G.ClientPrincipal) -> list[dict[str, Any]]:
         user = _service_user(s, principal)
         for ws in sorted(principal.grants):
             require_role(s, user, ws, "viewer")
+            out += _index_resources(s, user, ws, principal.grants[ws])
+            if G.is_sliced(principal.grants[ws]):  # a slice sees the ledger and the index only: other kinds carry no asset refs
+                out += _ledger_resources(s, user, ws, **_slice(principal, ws))
+                continue
             for kind, metric in (("knowledge", False), ("metrics", True)):
                 for e in _context_entries(s, ws, metric):
                     out.append({"uri": f"{URI_SCHEME}{ws}/{kind}/{e.id}", "name": e.name, "description": f"{e.kind}: {e.body[:160]}"})
@@ -570,11 +586,29 @@ def list_resource_rows(principal: G.ClientPrincipal) -> list[dict[str, Any]]:
     return out
 
 
-def _ledger_resources(s: Any, user: User, ws: str) -> list[dict[str, Any]]:
+def _index_resources(s: Any, user: User, ws: str, grant: dict[str, Any]) -> list[dict[str, Any]]:
+    """The workspace index and one per domain the caller's slice allows (a domain with nothing visible is not named)."""
+    from analystos.context import index as ctx_index
+
+    out = [{"uri": f"{URI_SCHEME}{ws}/{INDEX_KIND}/workspace", "name": "Context index",
+            "description": "What this workspace's context holds, one line per item: read this first"}]
+    allowed = {d.lower() for d in grant.get("domains") or ()}
+    for d in ctx_index.domains(s, ws):
+        if allowed and d not in allowed:
+            continue
+        if G.is_sliced(grant) and not any(ctx_index.view(s, user, ws, domain=d, domains_=grant.get("domains") or (),
+                                                          assets=grant.get("assets") or ())["counts"].values()):
+            continue  # a domain the slice holds nothing of is not even named
+        out.append({"uri": f"{URI_SCHEME}{ws}/{INDEX_KIND}/{d}", "name": f"Context index: {d}",
+                    "description": f"What the {d} domain holds"})
+    return out
+
+
+def _ledger_resources(s: Any, user: User, ws: str, domains: Any = (), assets: Any = ()) -> list[dict[str, Any]]:
     """The workspace's context ledger entries the client may see (never suggestions), capped per kind."""
     from analystos.context import retrieval
 
-    access = retrieval.access_for(s, user, ws)
+    access = retrieval.access_for(s, user, ws, domains=domains, assets=assets)
     per_kind: dict[str, int] = {}
     out = []
     for e in retrieval.candidates(s, access, kinds=None, trusts=retrieval.MODEL_TRUSTS):
@@ -591,6 +625,19 @@ def read_resource_doc(principal: G.ClientPrincipal, uri: str) -> dict[str, Any]:
     G.check_grant(principal, ws, G.RESOURCE_READ)
     with session_scope() as s:
         require_role(s, _service_user(s, principal), ws, "viewer")
+        sliced = G.is_sliced(principal.grants[ws])
+        if kind == INDEX_KIND:
+            from analystos.context import index as ctx_index
+
+            allowed = {d.lower() for d in principal.grants[ws].get("domains") or ()}
+            domain = None if rid == "workspace" else rid.lower()
+            if domain is not None and allowed and domain not in allowed:
+                raise NotFound(f"resource {uri} not found")
+            out = ctx_index.view(s, _service_user(s, principal), ws, domain=domain, **{"domains_": _slice(principal, ws)["domains"],
+                                                                                         "assets": _slice(principal, ws)["assets"]})
+            return {"workspace_id": ws, "domain": out["domain"], "counts": out["counts"], "markdown": out["markdown"]}
+        if sliced and kind not in LEDGER_KINDS:  # legacy kinds are outside any slice
+            raise NotFound(f"resource {uri} not found")
         if kind in ("knowledge", "metrics"):
             from analystos.knowledge.entries import get_entry
 
@@ -613,7 +660,7 @@ def read_resource_doc(principal: G.ClientPrincipal, uri: str) -> dict[str, Any]:
             from analystos.context import retrieval
 
             try:
-                doc = retrieval.get(s, _service_user(s, principal), rid, workspace_id=ws)
+                doc = retrieval.get(s, _service_user(s, principal), rid, workspace_id=ws, **_slice(principal, ws))
             except NotFound:
                 doc = None
             if doc is not None and doc["kind"] == kind and doc["trust"] != "suggested":

@@ -150,3 +150,21 @@ def paraphrase_run(session: Session, workspace_id: str, platform_pack_id: str, p
         m = _metrics(ranks, [f"{q['expected']}#x" for q in labelled])
         out[name] = {k: v for k, v in m.items() if k.startswith("doc_")}
     return out
+
+
+def index_first_savings(session: Session, user: Any, workspace_id: str, objective: str, *, purpose: str = "benchmark",
+                        budget_tokens: int = 20_000) -> dict[str, Any]:
+    """P2-8: what reading the context index first costs against the flat bundle, for one objective: tokens used,
+    items carried and omissions of each. The index-first bundle opens with a digest of what exists and carries each
+    item as a short pointer, so it should use fewer tokens for the same receipts."""
+    from analystos.context.retrieval import compile_bundle
+
+    out: dict[str, Any] = {"objective": objective}
+    for name, first in (("flat", False), ("index_first", True)):
+        b = compile_bundle(session, user, workspace_id, purpose=purpose, objective=objective, budget_tokens=budget_tokens,
+                           index_first=first)["bundle"]
+        out[name] = {"tokens": b["budget_used"]["tokens"], "items": len(b["receipts"]), "omissions": len(b["omissions"])}
+    flat, first_tokens = out["flat"]["tokens"], out["index_first"]["tokens"]
+    out["tokens_saved"] = flat - first_tokens
+    out["saved_ratio"] = round((flat - first_tokens) / flat, 4) if flat else 0.0
+    return out

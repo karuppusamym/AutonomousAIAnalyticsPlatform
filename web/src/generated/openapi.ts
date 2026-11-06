@@ -10119,6 +10119,10 @@ export interface components {
         };
         /** GrantIn */
         GrantIn: {
+            /** Assets */
+            assets?: string[];
+            /** Domains */
+            domains?: string[];
             /** Expires At */
             expires_at?: string | null;
             /** Quotas */
