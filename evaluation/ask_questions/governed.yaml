@@ -32,7 +32,9 @@ itsm:
        query: {metrics: [incidents], dimensions: [contact_type], filters: [{field: priority, op: in, value: [1, 2]}],
                order: [{field: incidents, direction: desc}]},
        gold: "SELECT contact_type, COUNT(*) FROM @table WHERE priority IN (1, 2) GROUP BY contact_type"}
-    - {id: gov-itsm-06, q: "incident count last quarter", expect: not_governed}
+    # Was "incident count last quarter": since PILOT-FIX-05 (agents/ask_period) a relative period resolves to a window
+    # on the metric's own time dimension (opened_at), which the approved model does express. Business hours it does not.
+    - {id: gov-itsm-06, q: "incident count during business hours", expect: not_governed}
     - {id: gov-itsm-07, q: "SLA breach rate by caller", expect: not_governed}
 
 sales:
