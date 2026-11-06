@@ -8,7 +8,7 @@ import { AuthProvider } from "../auth";
 import { receiptView } from "../lib/ask";
 import { LIGHT } from "../lib/charts";
 import {
-  batchDecisions, draftFrom, draftProblems, editableFields, editedFields, emptyDraft, filterGraph, frontmatterOf, graphOption, groupByFolder,
+  batchDecisions, draftFrom, draftProblems, editableFields, editedFields, emptyDraft, filterGraph, frontmatterOf, gapSummary, graphOption, groupByFolder,
   provenanceLine,
 } from "../lib/knowledge";
 import { SCREEN_BUDGET, SCREENS, to } from "../routes";
@@ -77,6 +77,16 @@ describe("knowledge helpers", () => {
     expect(draftProblems({ ...emptyDraft("a.md"), other: "[1]" }).other).toMatch(/JSON object/);
     expect(draftProblems({ ...emptyDraft("a.md"), other: "{" }).other).toMatch(/Not valid JSON/);
     expect(groupByFolder([{ path: "b/x.md" }, { path: "r.md" }, { path: "a/y.md" }] as never).map(([f]) => f)).toEqual(["", "a", "b"]);
+  });
+
+  it("summarises a knowledge-gap draft and lets only its note be edited", () => {
+    const f = (value: unknown) => ({ value, confidence: 0.8, provenance: { source: "rule" } });
+    const s = { kind: "knowledge_gap", fields: { body: f("Note text"), term: f("zorblat"),
+      evidence: f({ term: "zorblat", conversations: 4, outcomes: { clarify: 3, low_confidence: 1 }, rephrased: 2, window_days: 14 }),
+      routed_to: f({ name: "Bea Owner", email: "bea@example.test", role: "business" }) } } as unknown as KnowledgeSuggestion;
+    expect(gapSummary(s)).toBe("“zorblat” came up in 4 conversations in the last 14 days (3 clarify, 1 low confidence; 2 rephrased). Routed to Bea Owner (business owner).");
+    expect(editableFields(s)).toEqual(["body"]);
+    expect(gapSummary({ kind: "knowledge_gap", fields: {} } as unknown as KnowledgeSuggestion)).toBe("");
   });
 
   it("builds review decisions: only changed fields are sent, lists stay lists", () => {

@@ -43,6 +43,7 @@ KIND_SPEC: dict[str, tuple[str, str, str]] = {
     "metric": ("Metric", "metrics", "metric"),
     "rule": ("Business Rule", "rules", "rule"),
     "note": ("Note", "notes", "note"),
+    "knowledge_gap": ("Note", "notes", "note"),  # knowledge/gaps.py: an unresolved term people keep asking about
     "negative": ("Negative Knowledge", "negative", "negative"),
     "attested_computation": (attested.TYPE, "findings", attested.KIND),
     "table_description": ("Table", "catalog", "table"),

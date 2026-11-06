@@ -590,6 +590,9 @@ def housekeeping() -> dict[str, Any]:
     from analystos.conversations import retention, summaries
 
     out["conversation_summaries"] = len(summaries.summarize_idle_quietly())  # S04: idle 30 min -> summary
+    from analystos.knowledge import gaps
+
+    out["knowledge_gaps"] = gaps.mine_quietly()  # review P1-3: at most hourly; drafts only
     out["conversation_retention"] = retention.apply_retention_quietly()  # S04: at most hourly; skips legal holds
     try:  # S02-T3: result handles past their TTL (files deleted, rows marked purged)
         from analystos.gateway.handles import purge_expired_results
