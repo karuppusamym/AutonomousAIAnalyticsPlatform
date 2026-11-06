@@ -1,0 +1,69 @@
+{
+  "$defs": {
+    "FreshnessSla": {
+      "additionalProperties": false,
+      "properties": {
+        "max_age_hours": {
+          "exclusiveMinimum": 0,
+          "maximum": 8784,
+          "title": "Max Age Hours",
+          "type": "number"
+        },
+        "assets": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Assets",
+          "type": "array"
+        }
+      },
+      "required": [
+        "max_age_hours",
+        "assets"
+      ],
+      "title": "FreshnessSla",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A data product's promise to its consumers (P2-9). Rule refs are `quality_rule` ids that must be active\nwhen the product is published; the monitor reads their latest results and the freshness of `assets`.",
+  "properties": {
+    "freshness": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FreshnessSla"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "quality_rules": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 50,
+      "title": "Quality Rules",
+      "type": "array"
+    },
+    "min_pass_rate": {
+      "anyOf": [
+        {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Min Pass Rate"
+    }
+  },
+  "title": "DataContract",
+  "type": "object"
+}

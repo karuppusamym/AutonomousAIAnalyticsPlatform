@@ -840,6 +840,19 @@ def _declared_fk(column: dict[str, Any], assets: dict[str, dict[str, Any]]) -> D
     return None
 
 
+def join_sql(from_asset: str, from_columns: list[str], to_asset: str, to_columns: list[str], dialect: str = "postgres") -> str:
+    """The validated join as a runnable, value-free statement (`SELECT COUNT(*) ... JOIN ... ON ...`) built with
+    `sqlbuild`, so a reader (the Catalog, `context.lookup`) sees exactly the predicate the measurement corroborated.
+    It still runs through the gateway like any other statement."""
+    if not from_columns or len(from_columns) != len(to_columns):
+        raise ValueError("a join needs the same number of columns on each side")
+    on = and_all([exp.EQ(this=exp.Column(this=ident(f), table=ident("f")), expression=exp.Column(this=ident(t), table=ident("t")))
+                  for f, t in zip(from_columns, to_columns, strict=True)])
+    q = (exp.select(count_star().as_(ident("joined_rows"))).from_(table(from_asset, "f"))
+         .join(table(to_asset, "t"), on=on, join_type="inner"))
+    return to_sql(q, dialect)
+
+
 JoinKey = tuple[str, str, str, str]
 
 

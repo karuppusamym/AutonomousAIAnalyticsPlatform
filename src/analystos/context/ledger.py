@@ -253,7 +253,8 @@ def _datasets(session: Session, ws: str, tags: _Tags) -> list[Projected]:
                              _text(f"{fq}: {'' if draft else (a.description or '')}".rstrip(": ")),
                              source="crawler", classification=tags.classify([fq], asset_level=True),
                              aliases=_uniq([fq, a.name, a.source_name, title]), refs=(fq,),
-                             provenance={"source_id": a.source_id}))
+                             provenance={"source_id": a.source_id, "structure": a.fingerprint,
+                                         "tags": sorted(tags.by_asset.get(fq, ()))}))  # what the push feed diffs (P1-6)
     return out
 
 

@@ -39,6 +39,7 @@ from analystos.api.routers import pilot as pilot_router
 from analystos.api.routers import pipelines as pipelines_router
 from analystos.api.routers import playbook_editor as playbook_editor_router
 from analystos.api.routers import process as process_router
+from analystos.api.routers import quality as quality_router
 from analystos.api.routers import recipes as recipes_router
 from analystos.api.routers import registries as registries_router
 from analystos.api.routers import report_docs as report_docs_router
@@ -122,6 +123,9 @@ app.include_router(tools_v2_router.router)  # tool, agent and data-product regis
 # The web client reaches only /api (nginx and the dev proxy forward nothing else): the same routes again under /api,
 # kept out of the schema so the generated client keeps one typed path per route. External callers keep /v2.
 app.include_router(tools_v2_router.router, prefix="/api", include_in_schema=False)
+app.include_router(quality_router.router)  # declared quality rules (P1-7)
+app.include_router(quality_router.products)  # data-product contracts and access requests (P2-9)
+app.include_router(quality_router.products, prefix="/api", include_in_schema=False)
 app.include_router(triggers_v2_router.router)  # signed triggers, incidents, conversation channels (S09)
 app.include_router(models_admin_router.router)  # model gateway admin (S05)
 app.include_router(ops_v2_router.router)  # S12: model evaluation matrix, spend (cost ledger) and its export
@@ -384,3 +388,10 @@ def health_problems(checks: dict[str, dict]) -> list[dict]:
             problems.append({"dependency": name, "severity": severity, "message": message,
                              "detail": c.get("error") or c.get("detail")})
     return problems
+
+
+
+# Last: the built web app on the same port (`analystos local`), answering only paths no route above claimed.
+from analystos.api import web_static  # noqa: E402
+
+web_static.mount(app, get_settings().web_dist)

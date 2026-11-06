@@ -4,6 +4,7 @@ import { api, saveBlob, type Approval, type KnowledgeImportReport, type Knowledg
 import { useAction, useAsync } from "../lib/hooks";
 import { to } from "../routes";
 import { ContextExport } from "./ContextExport";
+import { KnowledgeSources } from "./KnowledgeSources";
 import { Card, ErrorBox, Field, KeyValue, Loading, Notice, Tag } from "./ui";
 
 const SLUG = /^[a-z0-9][a-z0-9._-]{0,63}$/;
@@ -22,6 +23,7 @@ export function KnowledgeTransfer({ wsId, canEdit, onBrowse }: { wsId: string; c
       <ContextExport wsId={wsId} canEdit={canEdit} />
       {canEdit ? <ImportCard wsId={wsId} onImported={() => void packs.reload()} onBrowse={onBrowse} />
         : <p className="small" role="note">Editors and owners can import bundles.</p>}
+      <KnowledgeSources wsId={wsId} canEdit={canEdit} />
       <ErrorBox error={packs.error} onRetry={packs.reload} />
       {!packs.data && !packs.error && <Loading />}
       {packs.data && <ExportCard wsId={wsId} packs={packs.data} />}

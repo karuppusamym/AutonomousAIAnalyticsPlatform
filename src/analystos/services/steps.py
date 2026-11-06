@@ -216,9 +216,8 @@ def validate_spec(kind: str, spec: dict[str, Any]) -> dict[str, Any]:
         chart = spec.get("chart")
         if not isinstance(chart, dict) or not chart.get("type"):
             raise InvalidInput("a chart step needs chart: {type, x, y}")
-    elif kind == "claim":
-        if not isinstance(spec.get("text"), str):
-            raise InvalidInput("a claim step needs text")
+    elif kind == "claim" and not isinstance(spec.get("text"), str):
+        raise InvalidInput("a claim step needs text")
     return spec
 
 

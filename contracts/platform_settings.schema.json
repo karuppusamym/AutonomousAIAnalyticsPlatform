@@ -253,6 +253,34 @@
       "title": "FeatureFlags",
       "type": "object"
     },
+    "KnowledgeGapSettings": {
+      "description": "Knowledge-gap mining (knowledge/gaps.py): Ask outcomes the platform could not resolve, grouped by term.",
+      "properties": {
+        "window_days": {
+          "default": 14,
+          "maximum": 365,
+          "minimum": 1,
+          "title": "Window Days",
+          "type": "integer"
+        },
+        "min_conversations": {
+          "default": 3,
+          "maximum": 1000,
+          "minimum": 2,
+          "title": "Min Conversations",
+          "type": "integer"
+        },
+        "max_drafts_per_run": {
+          "default": 10,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Max Drafts Per Run",
+          "type": "integer"
+        }
+      },
+      "title": "KnowledgeGapSettings",
+      "type": "object"
+    },
     "LLMSettings": {
       "description": "How and when models are called.\n\nEach purpose runs a ladder (config/models.yaml `ladders`, spec v3 \u00a74.1). `ladders` here replaces a\npurpose's ladder outright; `purpose_modes` (the increment-3 modes, what presets set) derive one\nfrom the default: off = no model rung, auto = deterministic rungs first and the model only when\nthey are insufficient, always = model first. Precedence: ladders > purpose_modes > default.",
       "properties": {
@@ -632,6 +660,9 @@
     },
     "prompts": {
       "$ref": "#/$defs/PromptSettings"
+    },
+    "knowledge_gaps": {
+      "$ref": "#/$defs/KnowledgeGapSettings"
     }
   },
   "title": "PlatformSettings",

@@ -74,9 +74,24 @@ def write_drafts(session: Session, workspace_id: str, docs: Mapping[str, str], *
     """Merge `docs` ({pack path: document text}) into the workspace pack as one revision."""
     from analystos.knowledge import store
 
-    report = DraftWrite()
     if not docs:
-        return report
+        return DraftWrite()
+    files, report = prepare_drafts(session, workspace_id, docs)
+    if files:
+        pack = store.workspace_pack(session, workspace_id)
+        rev = store.commit(session, pack, files, author=author, reason=reason, origin=origin, merge=True,
+                           meta={**(meta or {}), "drafts": {"written": len(report.written),
+                                                            "kept_curated": report.kept_curated[:100]}})
+        report.revision = rev.number if rev is not None else None
+    return report
+
+
+def prepare_drafts(session: Session, workspace_id: str, docs: Mapping[str, str]) -> tuple[dict[str, bytes], DraftWrite]:
+    """The files `write_drafts` would commit (curated kept, tags tightened, unchanged skipped), without committing,
+    so another writer can put them in its own revision."""
+    from analystos.knowledge import store
+
+    report = DraftWrite()
     pack = store.workspace_pack(session, workspace_id)
     current = store.revision_files(session, pack)
     files: dict[str, bytes] = {}
@@ -91,9 +106,4 @@ def write_drafts(session: Session, workspace_id: str, docs: Mapping[str, str], *
             continue
         files[path] = data
         report.written.append(path)
-    if files:
-        rev = store.commit(session, pack, files, author=author, reason=reason, origin=origin, merge=True,
-                           meta={**(meta or {}), "drafts": {"written": len(report.written),
-                                                            "kept_curated": report.kept_curated[:100]}})
-        report.revision = rev.number if rev is not None else None
-    return report
+    return files, report

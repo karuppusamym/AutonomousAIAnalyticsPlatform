@@ -5,7 +5,9 @@ verified queries, datasets) published as typed tools. Governance reads the manif
 decides whether a hash-bound approval is needed, `execution.via` names the one deterministic path
 that runs it (never caller SQL), `limits` cap rows, time and rate, `exposure` says where it is
 offered and `signature` (ed25519, tenant key) proves the registry wrote it. `description` is data
-shown to people and models, never instructions (CLAUDE.md rule 7).
+shown to people and models, never instructions (CLAUDE.md rule 7). A data product may carry a `contract`
+(freshness SLA, quality-rule refs; review item P2-9) that a `data_contract` monitor checks; it is signed with the
+rest, and a manifest without one hashes exactly as before the field existed.
 """
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from analystos.contracts.quality import DataContract
 from analystos.core.ids import stable_hash
 
 API_VERSION = "analystos/tool.v2"
@@ -81,6 +84,7 @@ class ToolManifestV2(BaseModel):
     execution: ToolExecutionSpec
     limits: ToolLimits = Field(default_factory=ToolLimits)
     exposure: ToolExposure = Field(default_factory=ToolExposure)
+    contract: DataContract | None = None  # data products only (P2-9)
     signature: ToolSignature | None = None
 
     @field_validator("tool_id")
@@ -119,6 +123,8 @@ class ToolManifestV2(BaseModel):
             raise ValueError(f"a {self.kind} tool cannot execute via {self.execution.via}")
         if self.kind == "data_product" and self.side_effect != "none":
             raise ValueError("a data product is read-only (side_effect: none)")
+        if self.contract is not None and self.kind != "data_product":
+            raise ValueError("only a data product carries a contract")
         return self
 
     @property
@@ -130,8 +136,9 @@ class ToolManifestV2(BaseModel):
         return f"{self.tool_id}@{self.version}"
 
     def signing_payload(self) -> dict[str, Any]:
-        """What the signature covers: every field but the signature itself."""
-        return self.model_dump(mode="json", exclude={"signature"})
+        """What the signature covers: every field but the signature itself (no `contract` key when there is
+        none, so manifests signed before P2-9 still verify)."""
+        return self.model_dump(mode="json", exclude={"signature"} | ({"contract"} if self.contract is None else set()))
 
     def content_hash(self) -> str:
         return stable_hash(self.signing_payload())

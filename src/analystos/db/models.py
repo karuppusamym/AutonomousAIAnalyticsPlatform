@@ -1140,6 +1140,30 @@ class AuditChain(Base):
 
 
 # ------------------------------------------------------------------------------------------ Phase 3
+class KnowledgeSource(Base):
+    """A read-only remote knowledge source of a workspace (P2-10): a GitHub path or a Confluence space whose files
+    become untrusted drafts in the review queue. `config` is the location filter (never a credential); `secret_ref`
+    names the credential. `state` maps each remote path to its remote revision and content hash (incremental sync)."""
+
+    __tablename__ = "knowledge_source"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # github | confluence
+    name: Mapped[str] = mapped_column(String(200))
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    secret_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_status: Mapped[str | None] = mapped_column(String(20), nullable=True)  # ok | partial | failed
+    last_report: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    # The approval (action knowledge_source.bind) that binds this source's workspace, kind, host, target and secret_ref;
+    # a sync verifies it first. A change to the config or secret_ref asks for a new one.
+    binding_approval_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = _ts()
+
+
 class Schedule(Base):
     """Recurring work (§37). Executes with the owner's CURRENT permissions, re-checked at fire time."""
 
@@ -1524,6 +1548,10 @@ class McpGrant(Base):
     rate_per_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     quotas: Mapped[dict[str, int]] = mapped_column(JSON, default=dict)  # tool -> calls per UTC day
+    # P2-8: optional slice of the workspace (domains from the catalog's reviewed asset domain, and/or `schema.table`
+    # assets); empty = the whole workspace. Only context tools and resources are grantable with a slice.
+    domains: Mapped[list[str]] = mapped_column(JSON, default=list)
+    assets: Mapped[list[str]] = mapped_column(JSON, default=list)
     created_by: Mapped[str] = mapped_column(String(40))
     created_at: Mapped[datetime] = _ts()
 
@@ -2555,6 +2583,7 @@ from analystos.conversations.models import (  # noqa: E402,F401  (conversation m
 )
 from analystos.db import column_presence  # noqa: E402,F401  (registers the absent-column filter, P7-20)
 from analystos.desk.models import ClassBaseline, DeskDaily, Request, RequestEvent  # noqa: E402,F401  (Request Desk, S13)
+from analystos.quality.models import QualityRuleResult, QualityRuleRow  # noqa: E402,F401  (declared quality rules, P1-7)
 from analystos.tenancy.schema import attach_tenant_columns  # noqa: E402
 from analystos.triggers.models import (  # noqa: E402,F401  (triggers, alert groups, channels, S09)
     AlertGroup,

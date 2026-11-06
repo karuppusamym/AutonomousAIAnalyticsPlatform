@@ -1,0 +1,28 @@
+{
+  "description": "Ledger rerank with and without the usage factor (review P1-4). Pairs of entries that are equally relevant by name, one on a table people query and one on a copy nobody reads, plus control questions where a clearly better match must not be overtaken by a busier table.",
+  "entries": [
+    {"id": "cle_a_open_legacy", "kind": "glossary", "title": "Open incident", "summary": "An incident whose state is not closed or resolved.", "refs": ["itsm_legacy.incident.state"], "trust": "approved"},
+    {"id": "cle_b_open_live", "kind": "glossary", "title": "Open incident", "summary": "An incident whose state is not closed or resolved.", "refs": ["itsm.incident.state"], "trust": "approved"},
+    {"id": "cle_a_mttr_archive", "kind": "metric", "title": "MTTR", "summary": "Mean time to resolve incidents, in hours.", "refs": ["archive.incident.resolved_at"], "trust": "approved"},
+    {"id": "cle_b_mttr_live", "kind": "metric", "title": "MTTR", "summary": "Mean time to resolve incidents, in hours.", "refs": ["itsm.incident.resolved_at"], "trust": "approved"},
+    {"id": "cle_a_backlog_copy", "kind": "glossary", "title": "Backlog", "summary": "Open requests waiting for a team.", "refs": ["itsm_legacy.request.state"], "trust": "workspace"},
+    {"id": "cle_b_backlog_live", "kind": "glossary", "title": "Backlog", "summary": "Open requests waiting for a team.", "refs": ["itsm.request.state"], "trust": "workspace"},
+    {"id": "cle_sla_breach", "kind": "glossary", "title": "SLA breach", "summary": "A task resolved after its SLA target time.", "refs": ["itsm_legacy.task_sla.has_breached"], "trust": "certified"},
+    {"id": "cle_priority", "kind": "glossary", "title": "Priority", "summary": "Urgency and impact of an incident, P1 to P4.", "refs": ["itsm.incident.priority"], "trust": "approved"},
+    {"id": "cle_reassignment", "kind": "metric", "title": "Reassignment count", "summary": "How often an incident moved between groups.", "refs": ["itsm.incident.reassignment_count"], "trust": "approved"}
+  ],
+  "usage": {
+    "itsm.incident": {"users": 14, "runs": 30},
+    "itsm.request": {"users": 6, "runs": 9},
+    "itsm.task_sla": {"users": 3, "runs": 4},
+    "itsm_legacy.incident": {"users": 0, "runs": 0}
+  },
+  "questions": [
+    {"q": "open incident", "expected": "cle_b_open_live", "type": "tie"},
+    {"q": "MTTR", "expected": "cle_b_mttr_live", "type": "tie"},
+    {"q": "backlog", "expected": "cle_b_backlog_live", "type": "tie"},
+    {"q": "SLA breach", "expected": "cle_sla_breach", "type": "control"},
+    {"q": "incident priority", "expected": "cle_priority", "type": "control"},
+    {"q": "reassignment count", "expected": "cle_reassignment", "type": "control"}
+  ]
+}

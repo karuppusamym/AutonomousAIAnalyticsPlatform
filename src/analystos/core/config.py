@@ -244,6 +244,7 @@ class Settings(BaseSettings):
     oidc_provider_name: str = "Single sign-on"
     password_login: bool = True  # local accounts stay available (break-glass admin) unless turned off
     web_url: str = "http://localhost:5173"  # where the OIDC callback returns the browser
+    web_dist: Path | None = None  # a built web app (web/dist) the API serves on its own port (`analystos local`)
     agents_dir: Path = DATA_ROOT / "config" / "agents"
     artifact_dir: Path = STATE_ROOT / "var" / "artifacts"
     # Nightly audit-chain exports (S01-T5): gzipped JSONL, never overwritten. Point it at WORM storage

@@ -28,7 +28,7 @@ DETERMINISTIC_CAPABLE = {"planning", "hypothesis_generation", "follow_up_generat
                          "pipeline_proposal",
                          "ask_route", "clarify_needed", "metric_match", "join_path_choice", "semantic_query",
                          "ml_spec_proposal", "analyst_planning", "analyst_synthesis", "glossary_suggestion", "data_shape_proposal",
-                         "request_triage"}
+                         "request_triage", "knowledge_gap_note"}
 
 
 class LLMSettings(BaseModel):
@@ -67,6 +67,7 @@ class LLMSettings(BaseModel):
         "follow_up_generation",  # objective + tested results + catalog; the same round asks the same question
         "glossary_suggestion",  # screened candidate names, types and profile shape; the same scan asks the same
         "data_shape_proposal",  # column names, types and distinct counts only; the same catalog asks the same
+        "knowledge_gap_note",  # screened term, counts and redacted example questions; the same gap asks the same
         "request_triage",  # the request text and the R1-R9 options; the same request is classified the same
     ])
     max_prompt_tokens: int = Field(16000, ge=500, le=400_000)  # estimated input tokens per call; larger prompts are refused (deterministic fallback)
@@ -239,6 +240,14 @@ class PromptSettings(BaseModel):
     overrides: dict[str, str] = Field(default_factory=dict)
 
 
+class KnowledgeGapSettings(BaseModel):
+    """Knowledge-gap mining (knowledge/gaps.py): Ask outcomes the platform could not resolve, grouped by term."""
+
+    window_days: int = Field(14, ge=1, le=365)  # N: how far back Ask outcomes are read
+    min_conversations: int = Field(3, ge=2, le=1000)  # k: distinct conversations before a term becomes a draft
+    max_drafts_per_run: int = Field(10, ge=1, le=100)  # a pass never floods the review queue
+
+
 class PlatformSettings(BaseModel):
     llm: LLMSettings = Field(default_factory=LLMSettings)
     context: ContextSettings = Field(default_factory=ContextSettings)
@@ -250,6 +259,7 @@ class PlatformSettings(BaseModel):
     outbound: OutboundSettings = Field(default_factory=OutboundSettings)
     decisions: DecisionSettings = Field(default_factory=DecisionSettings)
     prompts: PromptSettings = Field(default_factory=PromptSettings)
+    knowledge_gaps: KnowledgeGapSettings = Field(default_factory=KnowledgeGapSettings)
 
 
 PRESETS: dict[str, dict[str, LLMMode]] = {
