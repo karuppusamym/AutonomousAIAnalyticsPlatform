@@ -1362,6 +1362,25 @@
         "title": "Body_import_context_api_v2_context_import_post",
         "type": "object"
       },
+      "Body_import_glossary_api_workspaces__workspace_id__knowledge_glossary_import_post": {
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_glossary_api_workspaces__workspace_id__knowledge_glossary_import_post",
+        "type": "object"
+      },
       "Body_import_ossie_api_workspaces__workspace_id__semantic_import_ossie_post": {
         "properties": {
           "document": {
@@ -38026,6 +38045,171 @@
         "summary": "Upload Knowledge Document",
         "tags": [
           "catalog"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/knowledge/glossary/export": {
+      "get": {
+        "description": "The workspace glossary (term, definition, synonyms, linked columns, owner, trust, status) as a spreadsheet for\nstewards. Terms linked only to columns your data scope hides are left out and counted in `X-Omitted-Terms`.",
+        "operationId": "export_glossary_api_workspaces__workspace_id__knowledge_glossary_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "csv",
+              "enum": [
+                "csv",
+                "xlsx"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Glossary",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/knowledge/glossary/import": {
+      "post": {
+        "description": "Queue a glossary spreadsheet (.csv or .xlsx, the export format) as review drafts with provenance `import:csv`.\nNothing reaches the glossary until a reviewer approves; rows with problems are reported, the rest queue. Re-importing\nthe same file queues nothing twice. `dry_run` reports without queuing.",
+        "operationId": "import_glossary_api_workspaces__workspace_id__knowledge_glossary_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_glossary_api_workspaces__workspace_id__knowledge_glossary_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Glossary",
+        "tags": [
+          "knowledge"
         ]
       }
     },

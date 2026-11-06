@@ -5469,6 +5469,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{workspace_id}/knowledge/glossary/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Glossary
+         * @description The workspace glossary (term, definition, synonyms, linked columns, owner, trust, status) as a spreadsheet for
+         *     stewards. Terms linked only to columns your data scope hides are left out and counted in `X-Omitted-Terms`.
+         */
+        get: operations["export_glossary_api_workspaces__workspace_id__knowledge_glossary_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/knowledge/glossary/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Glossary
+         * @description Queue a glossary spreadsheet (.csv or .xlsx, the export format) as review drafts with provenance `import:csv`.
+         *     Nothing reaches the glossary until a reviewer approves; rows with problems are reported, the rest queue. Re-importing
+         *     the same file queues nothing twice. `dry_run` reports without queuing.
+         */
+        post: operations["import_glossary_api_workspaces__workspace_id__knowledge_glossary_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{workspace_id}/knowledge/glossary/scan": {
         parameters: {
             query?: never;
@@ -9394,6 +9437,16 @@ export interface components {
         };
         /** Body_import_context_api_v2_context_import_post */
         Body_import_context_api_v2_context_import_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_import_glossary_api_workspaces__workspace_id__knowledge_glossary_import_post */
+        Body_import_glossary_api_workspaces__workspace_id__knowledge_glossary_import_post: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run?: boolean;
             /** File */
             file: string;
         };
@@ -24551,6 +24604,78 @@ export interface operations {
         requestBody: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_upload_knowledge_document_api_workspaces__workspace_id__knowledge_documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_glossary_api_workspaces__workspace_id__knowledge_glossary_export_get: {
+        parameters: {
+            query?: {
+                format?: "csv" | "xlsx";
+            };
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_glossary_api_workspaces__workspace_id__knowledge_glossary_import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_glossary_api_workspaces__workspace_id__knowledge_glossary_import_post"];
             };
         };
         responses: {

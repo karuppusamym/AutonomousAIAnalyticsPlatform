@@ -122,6 +122,44 @@ def scan_glossary(workspace_id: str, body: GlossaryScanIn | None = None, user: U
     return out
 
 
+@router.get("/workspaces/{workspace_id}/knowledge/glossary/export", response_class=Response)
+def export_glossary(workspace_id: str, format: Literal["csv", "xlsx"] = "csv", user: User = Depends(current_user),  # noqa: A002
+                    session: Session = Depends(db, scope="function")):
+    """The workspace glossary (term, definition, synonyms, linked columns, owner, trust, status) as a spreadsheet for
+    stewards. Terms linked only to columns your data scope hides are left out and counted in `X-Omitted-Terms`."""
+    from analystos.core.ids import utcnow
+    from analystos.governance.audit import audit
+    from analystos.knowledge import glossary_sheet as sheet
+
+    require_role(session, user, workspace_id, "viewer")
+    export = sheet.collect(session, user, workspace_id)
+    data = sheet.render(export, format)
+    audit(f"user:{user.id}", "knowledge.glossary_exported", workspace_id=workspace_id, target=workspace_id, decision="allow",
+          details={"format": format, "bytes": len(data), **export.summary()}, session=session)
+    return Response(data, media_type=sheet.FORMATS[format][0], headers={
+        "Content-Disposition": f'attachment; filename="glossary-{workspace_id}-{utcnow().date().isoformat()}.{format}"',
+        "X-Terms": str(len(export.rows)), "X-Omitted-Terms": str(export.omitted_terms),
+        "X-Omitted-Links": str(export.omitted_links), "Access-Control-Expose-Headers": "X-Terms, X-Omitted-Terms, X-Omitted-Links"})
+
+
+@router.post("/workspaces/{workspace_id}/knowledge/glossary/import")
+async def import_glossary(workspace_id: str, file: UploadFile = File(...), dry_run: bool = Form(False),
+                          user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    """Queue a glossary spreadsheet (.csv or .xlsx, the export format) as review drafts with provenance `import:csv`.
+    Nothing reaches the glossary until a reviewer approves; rows with problems are reported, the rest queue. Re-importing
+    the same file queues nothing twice. `dry_run` reports without queuing."""
+    from analystos.governance.audit import audit
+    from analystos.knowledge import glossary_sheet as sheet
+
+    require_role(session, user, workspace_id, "editor")
+    data = await file.read(sheet.MAX_BYTES + 1)
+    out = sheet.import_rows(session, user, workspace_id, file.filename or "glossary.csv", data, dry_run=dry_run)
+    audit(f"user:{user.id}", "knowledge.glossary_imported", workspace_id=workspace_id, target=out["batch"] or workspace_id,
+          decision="allow", details={k: v for k, v in out.items() if isinstance(v, int | bool | str) or k == "batch"},
+          session=session)
+    return out
+
+
 @router.post("/workspaces/{workspace_id}/knowledge/context")
 def preview_context(workspace_id: str, body: ContextPreviewIn, user: User = Depends(current_user),
                     session: Session = Depends(db, scope="function")):
