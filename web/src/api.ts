@@ -3085,6 +3085,9 @@ export interface McpGrantRow {
   tool_patterns: string[];
   rate_per_min: number | null;
   expires_at: string | null;
+  /** P2-8: a slice of the workspace (context tools only); empty = the whole workspace */
+  domains?: string[];
+  assets?: string[];
 }
 
 /** An MCP / API client of the platform (GET /api/admin/mcp/clients). */

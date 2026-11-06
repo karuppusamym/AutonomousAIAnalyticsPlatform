@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -38,6 +39,9 @@ MIN_RELEVANCE = 0.12
 CHARS_PER_TOKEN = 3.6  # the platform's estimate (agents/common.py budgets prompts the same way)
 ITEM_CHARS = 600
 PINNED_SECTION = "pinned_brief"
+INDEX_SECTION = "index"
+INDEX_ITEM_CHARS = 160  # with the index read first, an item is a pointer; `context.get` returns the full text
+INDEX_LISTED = 25       # titles per kind in the compiled index digest
 _WS = re.compile(r"\s+")
 
 
@@ -52,9 +56,24 @@ class Access:
     denied: set[str]
     known_assets: set[str]
     scope: Any = None
+    # P2-8: an MCP grant's slice. None = the whole workspace; otherwise the `schema.table` assets (and the domain
+    # keys) an entry must stay inside: an entry that is out of the slice is withheld before ranking, like a denied one
+    slice_assets: frozenset[str] | None = None
+    slice_domains: frozenset[str] = frozenset()
+
+    def in_slice(self, entry: Any) -> bool:
+        if self.slice_assets is None:
+            return True
+        refs = [".".join(str(r).split(".")[:2]) for r in entry.refs or []]
+        if refs:
+            return all(r in self.slice_assets for r in refs)
+        # no table reference: only an entry that names its domain pack (provenance) can be placed in a domain
+        return str((entry.provenance or {}).get("domain_pack") or "") in self.slice_domains
 
     def allows(self, entry: Any) -> bool:
         if entry.trust == "personal" and entry.owner_id != self.user_id:
+            return False
+        if not self.in_slice(entry):
             return False
         for ref in entry.refs or []:
             parts = str(ref).split(".")
@@ -69,7 +88,24 @@ class Access:
         return all(".".join(str(r).split(".")[:2]) in self.assets for r in entry.refs or [])
 
 
-def access_for(session: Session, user: Any, workspace_id: str) -> Access:
+def slice_assets(session: Session, workspace_id: str, domains: Iterable[str] = (), assets: Iterable[str] = ()) -> frozenset[str]:
+    """`schema.table` assets of a grant's slice: the named assets plus every asset whose reviewed/derived catalog
+    domain (`semantics.domain`) is one of `domains`. Names are matched case-insensitively against the catalog."""
+    from analystos.db.models import SourceAsset
+
+    want_domains = {str(d).lower() for d in domains}
+    want_assets = {str(a).lower() for a in assets}
+    out: set[str] = set()
+    for schema, name, sem in session.execute(select(SourceAsset.schema_name, SourceAsset.name, SourceAsset.semantics)
+                                             .where(SourceAsset.workspace_id == workspace_id)):
+        key = f"{schema}.{name}"
+        if key.lower() in want_assets or str((sem or {}).get("domain") or "").lower() in want_domains:
+            out.add(key)
+    return frozenset(out)
+
+
+def access_for(session: Session, user: Any, workspace_id: str, *, domains: Iterable[str] = (),
+               assets: Iterable[str] = ()) -> Access:
     from analystos.db.models import SourceAsset
     from analystos.governance.policy import require_role, resolve_scope
 
@@ -77,8 +113,12 @@ def access_for(session: Session, user: Any, workspace_id: str) -> Access:
     scope = resolve_scope(session, session.merge(user), workspace_id, minimum_role="viewer")
     known = {f"{s}.{n}" for s, n in session.execute(select(SourceAsset.schema_name, SourceAsset.name)
                                                      .where(SourceAsset.workspace_id == workspace_id))}
+    domains, assets = [str(d) for d in domains], [str(a) for a in assets]
+    sliced = bool(domains or assets)
     return Access(workspace_id=workspace_id, user_id=user.id, role=role, assets=set(scope.assets),
-                  denied=set(scope.denied_columns), known_assets=known, scope=scope)
+                  denied=set(scope.denied_columns), known_assets=known, scope=scope,
+                  slice_assets=slice_assets(session, workspace_id, domains, assets) if sliced else None,
+                  slice_domains=frozenset(d.lower() for d in domains))
 
 
 def _norm(text: Any) -> str:
@@ -166,13 +206,13 @@ def rank(entries: list[Any], query: str, access: Access, *, now: datetime | None
 
 def search(session: Session, user: Any, workspace_id: str, query: str, *, kinds: list[str] | None = None,
            include_suggested: bool = False, limit: int = 20, access: Access | None = None,
-           use_usage: bool = True) -> list[Hit]:
+           use_usage: bool = True, domains: Iterable[str] = (), assets: Iterable[str] = ()) -> list[Hit]:
     from analystos.context.ledger import KINDS
 
     unknown = [k for k in kinds or [] if k not in KINDS]
     if unknown:
         raise InvalidInput(f"unknown context kinds: {', '.join(unknown)} (known: {', '.join(KINDS)})")
-    access = access or access_for(session, user, workspace_id)
+    access = access or access_for(session, user, workspace_id, domains=domains, assets=assets)
     trusts = (*MODEL_TRUSTS, "suggested") if include_suggested else MODEL_TRUSTS
     entries = candidates(session, access, kinds=kinds, trusts=trusts)
     usage = None
@@ -184,12 +224,13 @@ def search(session: Session, user: Any, workspace_id: str, query: str, *, kinds:
 
 
 @scoped_loader
-def get(session: Session, user: Any, entry_id: str, *, workspace_id: str | None = None) -> dict[str, Any]:
+def get(session: Session, user: Any, entry_id: str, *, workspace_id: str | None = None,
+        domains: Iterable[str] = (), assets: Iterable[str] = ()) -> dict[str, Any]:
     """One entry with its body read from the owner table, if the caller may see it (else 404, never 403)."""
     from analystos.context.ledger import owner_of
 
     entry = load_in_workspace(session, ContextLedgerEntry, entry_id, workspace_id, user=user, label="context entry")
-    access = access_for(session, user, entry.workspace_id)
+    access = access_for(session, user, entry.workspace_id, domains=domains, assets=assets)
     if not access.allows(entry):
         raise NotFound("context entry not found")
     owner = owner_of(session, entry)
@@ -288,12 +329,18 @@ def _size(value: Any) -> int:
 
 def compile_bundle(session: Session, user: Any, workspace_id: str, *, purpose: str, objective: str,
                    budget_tokens: int = 2000, kinds: list[str] | None = None, pinned: dict[str, Any] | None = None,
-                   pinned_receipts: list[dict[str, Any]] | None = None, run_id: str | None = None) -> dict[str, Any]:
+                   pinned_receipts: list[dict[str, Any]] | None = None, run_id: str | None = None,
+                   domains: Iterable[str] = (), assets: Iterable[str] = (),
+                   index_first: bool = False, domain: str | None = None) -> dict[str, Any]:
     """`ContextBundle{sections, receipts, omissions, identity_hash, budget_used}` for one model purpose.
 
     Suggested entries never enter it. A run's reviewed brief (`run_id`) or a caller's `pinned` section is
     mandatory: if it alone does not fit the budget the compile is refused (ContextOverBudget), never trimmed.
-    Conflicting certified definitions raise ContextConflict."""
+    Conflicting certified definitions raise ContextConflict.
+
+    `index_first` (P2-8, progressive disclosure): the bundle opens with the caller's context index (counts and titles per
+    kind, built over the same access filter) and carries each item as a short pointer instead of its long excerpt, so the
+    same budget covers more of the workspace; `domain` limits both to one domain."""
     from analystos.context.compiler import focused_excerpt, terms
     from analystos.security.injection import is_injection
 
@@ -301,7 +348,7 @@ def compile_bundle(session: Session, user: Any, workspace_id: str, *, purpose: s
         raise InvalidInput("purpose is required")
     budget_tokens = max(50, min(int(budget_tokens or 2000), 200_000))
     budget = int(budget_tokens * CHARS_PER_TOKEN)
-    access = access_for(session, user, workspace_id)
+    access = access_for(session, user, workspace_id, domains=domains, assets=assets)
     receipts: list[dict[str, Any]] = []
     if run_id:
         pinned, pinned_receipts = _run_brief(session, user, workspace_id, run_id, access)
@@ -314,6 +361,14 @@ def compile_bundle(session: Session, user: Any, workspace_id: str, *, purpose: s
         raise ContextOverBudget(f"the pinned brief is {mandatory} chars, above the budget of {budget}: refused, not trimmed",
                                 details={"section": PINNED_SECTION, "mandatory_chars": mandatory, "budget_chars": budget,
                                          "purpose": purpose})
+    item_chars = INDEX_ITEM_CHARS if index_first else ITEM_CHARS
+    if index_first:
+        digest = _index_digest(session, workspace_id, access, domain)
+        if digest:
+            sections[INDEX_SECTION] = digest
+            mandatory = _size(sections)
+            if mandatory > budget:
+                del sections[INDEX_SECTION]  # the index is a convenience: it never makes a compile refuse
     hits = search(session, user, workspace_id, objective, kinds=kinds, include_suggested=False, limit=80, access=access)
     conflicts = _conflicts(session, access, hits)
     if conflicts:
@@ -321,10 +376,10 @@ def compile_bundle(session: Session, user: Any, workspace_id: str, *, purpose: s
                               details={"conflicts": conflicts})
     focus = terms(objective)
     omissions: list[dict[str, Any]] = []
-    used = mandatory
+    used = _size(sections)
     for h in hits:
         e = h.entry
-        text = focused_excerpt(e.summary, focus, ITEM_CHARS) if focus else e.summary[:ITEM_CHARS]
+        text = focused_excerpt(e.summary, focus, item_chars) if focus else e.summary[:item_chars]
         if is_injection(text) or is_injection(e.title):  # context is data: text that instructs a model is withheld
             omissions.append({"id": e.id, "kind": e.kind, "reason": "screened: reads like an instruction to a model"})
             continue
@@ -337,14 +392,30 @@ def compile_bundle(session: Session, user: Any, workspace_id: str, *, purpose: s
         used += cost
         receipts.append({"id": e.id, "section": e.kind, "kind": e.kind, "version": e.version, "trust": e.trust,
                          "ref": f"{e.ref_table}:{e.ref_id}", "sha256": e.content_hash[:16], "score": round(h.score, 4)})
-    ordered = {k: sections[k] for k in (PINNED_SECTION, *SECTION_ORDER) if k in sections}
+    ordered = {k: sections[k] for k in (PINNED_SECTION, INDEX_SECTION, *SECTION_ORDER) if k in sections}
     identity = stable_hash({"workspace": workspace_id, "purpose": purpose, "budget": budget_tokens,
+                            "index": [index_first, domain] if index_first else None,
                             "pinned": stable_hash(pinned) if pinned else None,
                             "items": sorted((r["id"], r.get("version"), r.get("sha256")) for r in receipts)})
     return {"bundle": {"sections": ordered, "receipts": receipts, "omissions": omissions, "identity_hash": identity,
                        "budget_used": {"chars": used, "tokens": math.ceil(used / CHARS_PER_TOKEN),
                                        "budget_tokens": budget_tokens}},
             "receipts": receipts, "identity_hash": identity}
+
+
+def _index_digest(session: Session, workspace_id: str, access: Access, domain: str | None) -> dict[str, Any]:
+    """The compiled form of the context index: per section the count and the first titles (the full index is the
+    `analystos://<workspace>/index/...` resource). Empty sections are left out."""
+    from analystos.context import index as ctx_index
+    from analystos.security.injection import is_injection
+
+    model = ctx_index.build(session, workspace_id, domain=domain, access=access)
+    out: dict[str, Any] = {}
+    for name, items in model["sections"].items():
+        titles = [r["title"] for r in items if not is_injection(r["title"])][:INDEX_LISTED]
+        if titles:
+            out[name] = {"count": len(items), "titles": titles}
+    return out
 
 
 def _run_brief(session: Session, user: Any, workspace_id: str, run_id: str,
@@ -357,10 +428,11 @@ def _run_brief(session: Session, user: Any, workspace_id: str, run_id: str,
 
 
 # ------------------------------------------------------------------------------------------- change feed
-def changes(session: Session, user: Any, workspace_id: str, since: int = 0, limit: int = 200) -> dict[str, Any]:
+def changes(session: Session, user: Any, workspace_id: str, since: int = 0, limit: int = 200,
+            domains: Iterable[str] = (), assets: Iterable[str] = ()) -> dict[str, Any]:
     """Ledger changes after cursor `since`, oldest first, for entries the caller may see. `cursor` is the
     position to pass next time (it advances past withheld changes too, so a poller never stalls)."""
-    access = access_for(session, user, workspace_id)
+    access = access_for(session, user, workspace_id, domains=domains, assets=assets)
     limit = max(1, min(int(limit), 1000))
     rows = session.execute(select(ContextLedgerChange, ContextLedgerEntry)
                            .join(ContextLedgerEntry, ContextLedgerEntry.id == ContextLedgerChange.entry_id)

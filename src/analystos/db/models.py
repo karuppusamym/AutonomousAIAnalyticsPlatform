@@ -1524,6 +1524,10 @@ class McpGrant(Base):
     rate_per_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     quotas: Mapped[dict[str, int]] = mapped_column(JSON, default=dict)  # tool -> calls per UTC day
+    # P2-8: optional slice of the workspace (domains from the catalog's reviewed asset domain, and/or `schema.table`
+    # assets); empty = the whole workspace. Only context tools and resources are grantable with a slice.
+    domains: Mapped[list[str]] = mapped_column(JSON, default=list)
+    assets: Mapped[list[str]] = mapped_column(JSON, default=list)
     created_by: Mapped[str] = mapped_column(String(40))
     created_at: Mapped[datetime] = _ts()
 

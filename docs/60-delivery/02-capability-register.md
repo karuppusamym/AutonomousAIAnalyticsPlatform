@@ -1479,3 +1479,13 @@ separation of duties, nothing sent before approval, changed filters re-approve a
 revoke, signed metadata-only payload, workspace scope and hidden trusts, retry/backoff/dead-letter/redrive, internal
 re-check); `web/src/test/context_webhooks.test.tsx`. Not verified: a live run against Postgres RLS and a real receiver;
 the dispatch pass is unit tested with a fake HTTP transport.
+## 2026-11-05 — P2-8 context index and MCP grant slice (Google Knowledge Catalog review)
+
+| Capability | Where | Evidence |
+|---|---|---|
+| Generated context index (machine draft) | `context/index.py`: deterministic `index.md` per workspace and `domains/<d>/index.md` per catalog domain (`semantics.domain`, reviewed or rule-derived) listing verified queries, tables, metrics, glossary terms and documents, one line and a path each. Written by `knowledge/drafts.write_drafts` (curated documents kept, unchanged index writes no revision), kind `index` / `trusted: false` so retrieval and the ledger never treat it as knowledge. Refreshed after a crawl (`services/crawler.py::_knowledge`) and after a knowledge review (`knowledge/suggestions.review`) | `tests/unit/test_context_index.py` (determinism, curated kept, idempotent, not projected into the ledger) |
+| Index read first | `retrieval.compile_bundle(index_first=True, domain=...)` opens with the caller's index digest and carries items as short pointers; MCP `context.compile` args `index_first`, `domain`; MCP resources `analystos://<ws>/index/<workspace\|domain>` built per caller over their `Access`. Savings measured by `context/benchmark.index_first_savings` | `test_index_first_compile_reads_the_index_and_spends_fewer_tokens`; tokens saved asserted > 20% on a 16-entry fixture, live figure not measured |
+| Grant slice (`domains`, `assets`) | `mcp_grant.domains/assets` (migration `0077_mcp_grant_slice`, based on head 0076), `mcp/grants.set_grant`/`check_grant` (a sliced grant holds only context tools; the gate refuses any other), `retrieval.Access.slice_assets`: an entry outside the slice is withheld in `candidates` before ranking, so it is never scored, counted, omitted or put in a receipt; same for `get`, `changes`, resources and the index. Entries with no table reference are in a domain only through their `domain_pack` provenance. Admin UI: Domains/Assets fields in the grant editor (`ToolRegistry.tsx`) | `test_slice_hides_out_of_domain_entries_before_ranking_and_counts`, `test_grant_slice_is_context_only_and_enforced_at_the_gate`, `test_mcp_tools_and_resources_follow_the_slice` |
+
+Not done: a domain hierarchy (deferred per the review); removing the index document of a domain that has disappeared;
+no UI test for the new fields; live MCP client run against a sliced grant.

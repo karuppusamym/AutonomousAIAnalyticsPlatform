@@ -92,6 +92,21 @@ def _check_patterns(patterns: list[str]) -> list[str]:
     return out
 
 
+SLICE_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}$")
+
+
+def _check_slice(values: list[str] | None, *, asset: bool = False) -> list[str]:
+    out = sorted(dict.fromkeys(str(v).strip() for v in values or [] if str(v).strip()))
+    bad = [v for v in out if not SLICE_NAME.match(v) or (asset and v.count(".") != 1)]
+    if bad:
+        raise InvalidInput(f"{'assets must be schema.table' if asset else 'domains must be domain keys'}: {', '.join(bad)}")
+    return out
+
+
+def is_sliced(grant: dict[str, Any]) -> bool:
+    return bool(grant.get("domains") or grant.get("assets"))
+
+
 def expired(grant: dict[str, Any]) -> bool:
     exp = grant.get("expires_at")
     if exp is None:
@@ -157,7 +172,8 @@ def revoke_client(session: Session, admin: User, client_id: str) -> McpClient:
 def set_grant(session: Session, admin: User, client_id: str, workspace_id: str, *, role: str = "viewer",
               tools: list[str] | None = None, quotas: dict[str, int] | None = None,
               tool_patterns: list[str] | None = None, rate_per_min: int | None = None,
-              expires_at: datetime | None = None) -> McpGrant:
+              expires_at: datetime | None = None, domains: list[str] | None = None,
+              assets: list[str] | None = None) -> McpGrant:
     client = _client(session, client_id)
     if client.status != "active":
         raise Forbidden("the client is revoked")
@@ -177,6 +193,11 @@ def set_grant(session: Session, admin: User, client_id: str, workspace_id: str, 
         raise InvalidInput("rate_per_min must be a positive integer (calls per minute across the grant)")
     if expires_at is not None and expires_at.tzinfo is None:
         raise InvalidInput("expires_at must carry a time zone")
+    domains, assets = _check_slice(domains), _check_slice(assets, asset=True)
+    outside = [t for t in tools if (domains or assets) and t not in (*CONTEXT_TOOLS, CONTEXT_READ)]
+    if outside or ((domains or assets) and patterns):
+        raise InvalidInput("a grant limited to domains or assets can hold only the context tools "
+                           f"({', '.join(CONTEXT_TOOLS)}, {CONTEXT_READ}); remove {', '.join([*outside, *patterns])}")
     quotas = dict(quotas or {})
     for k, v in quotas.items():
         if (k not in (*TOOLS, RESOURCE_READ) and not _patternable(k)) or not isinstance(v, int) or v < 1:
@@ -187,6 +208,7 @@ def set_grant(session: Session, admin: User, client_id: str, workspace_id: str, 
         session.add(grant)
     grant.role, grant.tools, grant.quotas = role, tools, quotas
     grant.tool_patterns, grant.rate_per_min, grant.expires_at = patterns, rate_per_min, expires_at
+    grant.domains, grant.assets = domains, assets
     member = session.scalar(select(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id,
                                                           WorkspaceMember.user_id == client.service_user_id))
     if member is None:
@@ -196,7 +218,8 @@ def set_grant(session: Session, admin: User, client_id: str, workspace_id: str, 
     session.flush()
     audit(f"user:{admin.id}", "mcp.grant_set", workspace_id=workspace_id, target=client_id, decision="allow",
           details={"role": role, "tools": tools, "quotas": quotas, "tool_patterns": patterns, "rate_per_min": rate_per_min,
-                   "expires_at": expires_at.isoformat() if expires_at else None}, session=session)
+                   "expires_at": expires_at.isoformat() if expires_at else None,
+                   "domains": domains, "assets": assets}, session=session)
     return grant
 
 
@@ -222,7 +245,7 @@ def authenticate(session: Session, token: str | None) -> ClientPrincipal:
     client.last_used_at = utcnow()
     grants = {g.workspace_id: {"role": g.role, "tools": list(g.tools or []), "quotas": dict(g.quotas or {}),
                                "tool_patterns": list(g.tool_patterns or []), "rate_per_min": g.rate_per_min,
-                               "expires_at": g.expires_at}
+                               "expires_at": g.expires_at, "domains": list(g.domains or []), "assets": list(g.assets or [])}
               for g in session.scalars(select(McpGrant).where(McpGrant.client_id == client.id))}
     return ClientPrincipal(client_id=client.id, user_id=user.id, grants=grants, tenant_id=user.tenant_id)
 
@@ -246,6 +269,8 @@ def check_grant(principal: ClientPrincipal, workspace_id: str | None, tool: str)
         raise Forbidden(f"the grant for workspace {workspace_id} expired")
     if tool != RESOURCE_READ and not grants_tool(grant["tools"], tool, grant.get("tool_patterns") or ()):
         raise Forbidden(f"the grant for workspace {workspace_id} does not include tool {tool}")
+    if is_sliced(grant) and tool != RESOURCE_READ and tool not in CONTEXT_TOOLS:  # defence in depth: no data-plane tool on a slice
+        raise Forbidden(f"the grant for workspace {workspace_id} is limited to a domain slice and covers context tools only")
     return grant
 
 
@@ -285,6 +310,7 @@ def list_clients(session: Session) -> list[dict[str, Any]]:
                     "last_used_at": c.last_used_at.isoformat() if c.last_used_at else None,
                     "grants": [{"workspace_id": g.workspace_id, "role": g.role, "tools": g.tools, "quotas": g.quotas,
                                 "tool_patterns": g.tool_patterns or [], "rate_per_min": g.rate_per_min,
-                                "expires_at": g.expires_at.isoformat() if g.expires_at else None}
+                                "expires_at": g.expires_at.isoformat() if g.expires_at else None,
+                                "domains": g.domains or [], "assets": g.assets or []}
                                for g in grants]})
     return out

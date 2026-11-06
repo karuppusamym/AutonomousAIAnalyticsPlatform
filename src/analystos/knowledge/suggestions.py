@@ -556,6 +556,10 @@ def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[
         from analystos.conversations.corrections import on_suggestions_decided
 
         on_suggestions_decided(session, [(r, st) for r, st, _ in decided])  # S04: team corrections from conversations
+        from analystos.context.index import refresh_quietly  # P2-8: a reviewed domain or term changes what is listed
+
+        session.flush()
+        refresh_quietly(session, workspace_id, reason="context index after knowledge review")
         emit(workspace_id, "knowledge.suggestions_reviewed", {"approved": len(out["approved"]), "rejected": len(out["rejected"]),
                                                               "revision": revision}, actor=f"user:{user.id}", session=session)
     return {"revision": revision, **out, "errors": errors}
