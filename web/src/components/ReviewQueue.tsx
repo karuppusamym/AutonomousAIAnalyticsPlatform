@@ -1,5 +1,7 @@
 import { useId, useMemo, useState } from "react";
-import { api, type GlossaryScanResult, type KnowledgeSuggestion, type ReviewDecisionBody, type ReviewResult } from "../api";
+import {
+  api, ApiError, type GlossaryScanResult, type GoldenEffect, type KnowledgeSuggestion, type ReviewDecisionBody, type ReviewResult,
+} from "../api";
 import {
   batchDecisions, editableFields, editedFields, evidenceLines, fieldText, needsAnswer, primaryField, provenanceLine, QUESTION_KINDS,
   scanSummary,
@@ -32,6 +34,11 @@ export function ReviewQueue({ wsId, canDecide, onOpenDocument }: {
   const [reasonMissing, setReasonMissing] = useState(false);
   const [result, setResult] = useState<ReviewResult | null>(null);
   const act = useAction();
+  const peek = useAction();
+  const [effect, setEffect] = useState<GoldenEffect | null>(null);
+  // A batch that breaks a passing golden question waits here until the reviewer writes why (knowledge/effect.py).
+  const [blocked, setBlocked] = useState<{ decisions: ReviewDecisionBody[]; effect: GoldenEffect } | null>(null);
+  const [override, setOverride] = useState("");
   const scan = useAction();
   const [scanned, setScanned] = useState<GlossaryScanResult | null>(null);
   const rows = useMemo(() => list.data ?? [], [list.data]);
@@ -46,14 +53,32 @@ export function ReviewQueue({ wsId, canDecide, onOpenDocument }: {
     else n.delete(sid);
     return n;
   });
-  const decide = async (decisions: Parameters<typeof api.reviewSuggestions>[1]) => {
-    const r = await act.run(() => api.reviewSuggestions(wsId, decisions));
+  const decide = async (decisions: ReviewDecisionBody[], overrideReason?: string) => {
+    const r = await act.run(async () => {
+      try {
+        return await api.reviewSuggestions(wsId, decisions, overrideReason);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409 && err.details.code === "golden_regression") {
+          setBlocked({ decisions, effect: err.details.effect as GoldenEffect });
+          setEffect(null);
+          return null;
+        }
+        throw err;
+      }
+    });
     if (r) {
       setResult(r);
       setSelected(new Set());
       setReason("");
+      setEffect(null);
+      setBlocked(null);
+      setOverride("");
       await list.reload();
     }
+  };
+  const checkEffect = async () => {
+    const r = await peek.run(() => api.previewSuggestions(wsId, batchDecisions([...selected], "approve", "")));
+    if (r) setEffect(r);
   };
   const runScan = async () => {
     const r = await scan.run(() => api.glossaryScan(wsId));
@@ -95,6 +120,7 @@ export function ReviewQueue({ wsId, canDecide, onOpenDocument }: {
           {result.revision !== null ? <>Workspace pack revision {result.revision}: </> : null}
           {result.approved.length} approved, {result.rejected.length} rejected
           {result.rejected.some((r) => r.path) && <> (recorded as negative knowledge)</>}.
+          {result.effect?.evaluated && <> {goldenSummary(result.effect)}</>}
           {result.approved.some((a) => a.catalog) && (
             <ul className="small plain-list">{result.approved.filter((a) => a.catalog).map((a) => <li key={a.id}>{a.catalog}</li>)}</ul>
           )}
@@ -129,7 +155,25 @@ export function ReviewQueue({ wsId, canDecide, onOpenDocument }: {
               Approve selected ({selected.size})</button>
             <button type="button" className="btn btn-danger btn-sm" disabled={!selected.size || act.busy} onClick={() => void batch("reject")}>
               Reject selected ({selected.size})</button>
+            <button type="button" className="btn btn-sm" disabled={!selected.size || peek.busy || act.busy} onClick={() => void checkEffect()}>
+              {peek.busy ? "Checking…" : "Check effect on golden questions"}</button>
           </div>
+          <ErrorBox error={peek.error} />
+          {effect && !blocked && <GoldenEffectPanel effect={effect} />}
+          {blocked && (
+            <Notice tone="warning">
+              <p><strong>Not approved.</strong> This batch makes {blocked.effect.counts.newly_failing} golden question(s) fail that pass
+                today. Remove the drafts that cause it, or approve with a written reason (it is kept in the audit log).</p>
+              <GoldenEffectPanel effect={blocked.effect} />
+              <label className="small" htmlFor={`${id}-override`}>Why approve anyway</label>
+              <textarea id={`${id}-override`} value={override} maxLength={2000} rows={2} onChange={(e) => setOverride(e.target.value)} />
+              <div className="review-batch">
+                <button type="button" className="btn btn-success btn-sm" disabled={!override.trim() || act.busy}
+                  onClick={() => void decide(blocked.decisions, override.trim())}>Approve anyway</button>
+                <button type="button" className="btn btn-sm btn-ghost" onClick={() => { setBlocked(null); setOverride(""); }}>Cancel</button>
+              </div>
+            </Notice>
+          )}
           {reasonMissing && <p id={`${id}-reason-err`} className="field-error" role="alert">Say why: a rejection is kept as negative knowledge.</p>}
           <ErrorBox error={act.error} />
         </Card>
@@ -149,6 +193,44 @@ export function ReviewQueue({ wsId, canDecide, onOpenDocument }: {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+const CHANGE_LABEL: Record<GoldenEffect["cases"][number]["change"], string> = {
+  newly_failing: "newly failing", fixed: "fixed", still_failing: "still failing", still_passing: "still passing",
+};
+
+/** "Golden questions: 3 of 5 pass now, 4 of 5 with this batch (+20 points)." */
+function goldenSummary(e: GoldenEffect): string {
+  if (!e.evaluated) return "No golden questions to check yet: add some under Grounding so reviews show their effect.";
+  const sign = e.delta_points > 0 ? "+" : "";
+  return `Golden questions: ${e.baseline.passed} of ${e.baseline.total} pass now, ${e.projected.passed} of ${e.projected.total} `
+    + `with this batch (${sign}${e.delta_points} points).`;
+}
+
+/** Per-question effect of a batch, newly failing first; columns and served query shown only where they change. */
+function GoldenEffectPanel({ effect }: { effect: GoldenEffect }) {
+  const changed = effect.cases.filter((c) => c.change === "newly_failing" || c.change === "fixed");
+  return (
+    <div className="stack small" aria-live="polite">
+      <p>{goldenSummary(effect)}</p>
+      {changed.length > 0 && (
+        <ul className="plain-list" aria-label="Golden questions this batch changes">
+          {changed.map((c) => (
+            <li key={c.id}>
+              <Tag tone={c.change === "fixed" ? "success" : "danger"}>{CHANGE_LABEL[c.change]}</Tag> {c.question}
+              {c.columns_before.join(",") !== c.columns_after.join(",") && (
+                <span className="muted"> · columns {c.columns_before.join(", ") || "none"} → {c.columns_after.join(", ") || "none"}</span>
+              )}
+              {c.served_before !== c.served_after && (
+                <span className="muted"> · verified query {c.served_before ?? "none"} → {c.served_after ?? "none"}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {effect.errors.length > 0 && <p className="muted">{effect.errors.length} draft(s) in the selection cannot be applied as they stand.</p>}
     </div>
   );
 }

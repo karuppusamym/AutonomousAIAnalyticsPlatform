@@ -4052,6 +4052,18 @@
             "title": "Expected Columns",
             "type": "array"
           },
+          "expected_query": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Query"
+          },
           "notes": {
             "default": "",
             "maxLength": 2000,
@@ -6925,6 +6937,24 @@
         "title": "PresetIn",
         "type": "object"
       },
+      "PreviewIn": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewDecision"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Decisions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "decisions"
+        ],
+        "title": "PreviewIn",
+        "type": "object"
+      },
       "ProcessAnalyzeIn": {
         "properties": {
           "activity_column": {
@@ -8209,6 +8239,18 @@
             "minItems": 1,
             "title": "Decisions",
             "type": "array"
+          },
+          "override_reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Reason"
           }
         },
         "required": [
@@ -38104,9 +38146,92 @@
         ]
       }
     },
+    "/api/workspaces/{workspace_id}/knowledge/suggestions/preview": {
+      "post": {
+        "description": "Golden-question scores now and with this batch applied; nothing is changed.",
+        "operationId": "preview_suggestions_api_workspaces__workspace_id__knowledge_suggestions_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Suggestions",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
     "/api/workspaces/{workspace_id}/knowledge/suggestions/review": {
       "post": {
-        "description": "Approve, edit-then-approve or reject drafts in one batch: one workspace-pack revision.",
+        "description": "Approve, edit-then-approve or reject drafts in one batch: one workspace-pack revision. A batch that\nmakes a passing golden question fail is refused (409 `golden_regression`) unless `override_reason` is set.",
         "operationId": "review_suggestions_api_workspaces__workspace_id__knowledge_suggestions_review_post",
         "parameters": [
           {

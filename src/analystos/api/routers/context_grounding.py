@@ -145,8 +145,14 @@ def create_golden(workspace_id: str, body: GoldenIn, user: User = Depends(curren
     scope = resolve_scope(session, session.merge(user), workspace_id, minimum_role="editor")
     if any(not svc.allowed_ref(c, scope) for c in body.expected_columns):
         raise InvalidInput("Expected columns must be authorized catalog references")
-    if not body.expected_columns and not body.expect_clarification:
-        raise InvalidInput("Choose expected columns or expect clarification")
+    if not body.expected_columns and not body.expect_clarification and not body.expected_query:
+        raise InvalidInput("Choose expected columns, an expected verified query or expect clarification")
+    if body.expected_query:
+        from analystos.db.models import VerifiedQuery
+
+        vq = session.get(VerifiedQuery, body.expected_query)
+        if vq is None or vq.workspace_id != workspace_id:
+            raise InvalidInput("The expected verified query is not in this workspace")
     case = GoldenQuestion(id=new_id("gold"), workspace_id=workspace_id, definition=body.model_dump(), created_by=user.id)
     session.add(case)
     session.flush()
@@ -161,21 +167,7 @@ def create_golden(workspace_id: str, body: GoldenIn, user: User = Depends(curren
 @router.post("/golden/evaluate")
 def evaluate(workspace_id: str, body: GoldenEvaluateIn, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
     require_role(session, user, workspace_id, "analyst")
-    scope = resolve_scope(session, session.merge(user), workspace_id, minimum_role="analyst")
-    cases = list(session.scalars(select(GoldenQuestion).where(GoldenQuestion.workspace_id == workspace_id).limit(30)))
-    results = []
-    for case in cases:
-        expected = case.definition
-        if not all(svc.allowed_ref(c, scope) for c in expected.get("expected_columns", [])):
-            continue
-        report = svc.resolve(session, user, workspace_id, ResolveIn(question=expected["question"], use_model=body.use_model))
-        # grounding by reviewed knowledge; a field named in the question and found in the catalog is not a mapping
-        actual = {c for r in report["resolutions"] if r["state"] == "resolved" and r.get("by") != "catalog" for c in r["columns"]}
-        expected_refs = set(expected["expected_columns"])
-        columns_match = expected_refs <= actual if expected["expect_clarification"] else expected_refs == actual
-        passed = bool(report["needs_clarification"]) == expected["expect_clarification"] and columns_match
-        results.append({"id": case.id, "question": expected["question"], "passed": passed,
-                        "expected": expected, "actual_columns": sorted(actual), "grounding": report})
+    results = svc.run_golden(session, user, workspace_id, use_model=body.use_model)
     evaluation = GroundingEvaluation(id=new_id("geval"), workspace_id=workspace_id, reviewer_id=user.id,
                                     result={"cases": results, "passed": sum(r["passed"] for r in results), "total": len(results),
                                             "use_model": body.use_model, "kind": "grounding_evaluation"})

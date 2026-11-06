@@ -1396,3 +1396,19 @@ rules only, on a copy of the rehearsal database; no analyst results).
 
 Live evidence: [`evidence/pilot-fix-investigate-20261030.md`](evidence/pilot-fix-investigate-20261030.md) (rules only, no model
 call). Not verified: a live run with models; the guided source choice on a live two-source workspace (unit tested only).
+
+## 2026-11-05 — S03-T8: a knowledge review batch is tested against golden questions before approval
+
+From the Google Knowledge Catalog review ([`70-reviews/2026-11-05-google-knowledge-catalog-review.md`](../70-reviews/2026-11-05-google-knowledge-catalog-review.md), P0-1).
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| Effect preview | `knowledge/effect.preview`: the selected decisions run through `suggestions.review` inside a savepoint, `services/context_grounding.run_golden` scores the golden questions before and after (no model call), the savepoint rolls back; per case `fixed / newly_failing / still_failing / still_passing`, baseline, projected and delta in points. `POST /api/workspaces/{ws}/knowledge/suggestions/preview` (editor) | `tests/unit/test_knowledge_effect.py`; `tests/integration/test_knowledge_effect_api.py::test_preview_scores_the_batch_without_applying_it_then_review_reports_the_effect` (draft still pending, no glossary entry, no cached synonym after the preview) |
+| Regression gate | `knowledge/effect.review_checked` behind `POST .../suggestions/review`: a batch that makes a passing golden case fail answers 409 `details.code = golden_regression` with the effect; with `override_reason` it applies and audits `knowledge.review.golden_effect` (decision `override`, reason, case ids, both scores, revision). An improving or neutral batch applies and returns `effect` | unit gate tests; the existing knowledge/glossary/studio/grounding integration tests pass through the gate (21 passed, Postgres 16, 2026-11-05) |
+| Golden question names a verified query | `GoldenIn.expected_query` (must be a verified query of the workspace, 422 otherwise); the case passes only when `verified_queries.match` serves it, so a synonym change that breaks or fixes Ask's tool-first answer shows | `test_golden_question_must_name_a_verified_query_of_its_own_workspace`; served query before/after in the preview |
+| Lexicon cache safety | `verified_queries.forget_lexicon` before the projected run and after the rollback: the 60 s workspace lexicon cache never keeps an unapproved batch's synonyms for Ask | asserted in the integration test |
+| Web | `ReviewQueue.tsx`: "Check effect on golden questions", blocked-approval panel with a required reason, effect line in the result; `web/openapi.json` and generated types regenerated | `web/src/test/knowledge.test.tsx` (2 new: preview, 409, approve with reason; improving batch) |
+
+Limits: golden cases are capped at 30 per workspace (as before), and an approved glossary term is stored with origin `agent`,
+which grounding does not use, so glossary drafts change only the verified-query part of a case. Optional auto-approve for
+low-risk kinds is not built. Not run against a live model or the compose stack.

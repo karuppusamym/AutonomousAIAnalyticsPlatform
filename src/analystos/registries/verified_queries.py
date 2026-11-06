@@ -91,6 +91,11 @@ def lexicon(session: Session, workspace_id: str) -> Lexicon:
     return out
 
 
+def forget_lexicon(workspace_id: str) -> None:
+    """Drop the cached lexicon so the next match reads the session's knowledge (after an apply or a rollback)."""
+    _lexicons.pop(workspace_id, None)
+
+
 def _plain_phrase(text: str | None) -> str:
     return " ".join(_WORD.findall((text or "").lower().replace("_", " ")))
 

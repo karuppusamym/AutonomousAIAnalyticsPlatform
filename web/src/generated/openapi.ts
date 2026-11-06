@@ -5520,6 +5520,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{workspace_id}/knowledge/suggestions/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Suggestions
+         * @description Golden-question scores now and with this batch applied; nothing is changed.
+         */
+        post: operations["preview_suggestions_api_workspaces__workspace_id__knowledge_suggestions_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{workspace_id}/knowledge/suggestions/review": {
         parameters: {
             query?: never;
@@ -5531,7 +5551,8 @@ export interface paths {
         put?: never;
         /**
          * Review Suggestions
-         * @description Approve, edit-then-approve or reject drafts in one batch: one workspace-pack revision.
+         * @description Approve, edit-then-approve or reject drafts in one batch: one workspace-pack revision. A batch that
+         *     makes a passing golden question fail is refused (409 `golden_regression`) unless `override_reason` is set.
          */
         post: operations["review_suggestions_api_workspaces__workspace_id__knowledge_suggestions_review_post"];
         delete?: never;
@@ -10109,6 +10130,8 @@ export interface components {
             expect_clarification?: boolean;
             /** Expected Columns */
             expected_columns?: string[];
+            /** Expected Query */
+            expected_query?: string | null;
             /**
              * Notes
              * @default
@@ -11109,6 +11132,11 @@ export interface components {
             /** Switch Override Reason */
             switch_override_reason?: string | null;
         };
+        /** PreviewIn */
+        PreviewIn: {
+            /** Decisions */
+            decisions: components["schemas"]["ReviewDecision"][];
+        };
         /** ProcessAnalyzeIn */
         ProcessAnalyzeIn: {
             /** Activity Column */
@@ -11511,6 +11539,8 @@ export interface components {
         ReviewIn: {
             /** Decisions */
             decisions: components["schemas"]["ReviewDecision"][];
+            /** Override Reason */
+            override_reason?: string | null;
         };
         /** RollbackIn */
         RollbackIn: {
@@ -24351,6 +24381,44 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_suggestions_api_workspaces__workspace_id__knowledge_suggestions_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

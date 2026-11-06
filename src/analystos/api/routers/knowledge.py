@@ -31,6 +31,12 @@ class ReviewDecision(BaseModel):
 
 class ReviewIn(BaseModel):
     decisions: list[ReviewDecision] = Field(min_length=1, max_length=200)
+    # Required only when the batch makes a passing golden question fail (knowledge/effect.py).
+    override_reason: str | None = Field(None, max_length=2000)
+
+
+class PreviewIn(BaseModel):
+    decisions: list[ReviewDecision] = Field(min_length=1, max_length=200)
 
 
 class DocumentSaveIn(BaseModel):
@@ -68,9 +74,23 @@ def list_suggestions(workspace_id: str, status: str | None = "pending", kind: st
 
 @router.post("/workspaces/{workspace_id}/knowledge/suggestions/review")
 def review_suggestions(workspace_id: str, body: ReviewIn, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
-    """Approve, edit-then-approve or reject drafts in one batch: one workspace-pack revision."""
+    """Approve, edit-then-approve or reject drafts in one batch: one workspace-pack revision. A batch that
+    makes a passing golden question fail is refused (409 `golden_regression`) unless `override_reason` is set."""
+    from analystos.knowledge import effect
+
     require_role(session, user, workspace_id, "editor")
-    return suggestions.review(session, workspace_id, user, [d.model_dump() for d in body.decisions])
+    return effect.review_checked(session, workspace_id, user, [d.model_dump() for d in body.decisions],
+                                 override_reason=body.override_reason)
+
+
+@router.post("/workspaces/{workspace_id}/knowledge/suggestions/preview")
+def preview_suggestions(workspace_id: str, body: PreviewIn, user: User = Depends(current_user),
+                        session: Session = Depends(db, scope="function")):
+    """Golden-question scores now and with this batch applied; nothing is changed."""
+    from analystos.knowledge import effect
+
+    require_role(session, user, workspace_id, "editor")
+    return effect.preview(session, workspace_id, user, [d.model_dump() for d in body.decisions])
 
 
 @router.get("/workspaces/{workspace_id}/knowledge/suggestions/summary")

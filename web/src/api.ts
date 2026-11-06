@@ -1427,6 +1427,36 @@ export interface ReviewResult {
   approved: { id: string; path: string | null; catalog?: string }[];
   rejected: { id: string; path: string | null; catalog?: string }[];
   errors: { id: string; error: string; [k: string]: unknown }[];
+  effect?: GoldenEffect;
+}
+
+/** How one golden question fares before and with a review batch (knowledge/effect.py). */
+export interface GoldenEffectCase {
+  id: string;
+  question: string;
+  before: boolean;
+  after: boolean;
+  change: "newly_failing" | "fixed" | "still_failing" | "still_passing";
+  expected_columns: string[];
+  columns_before: string[];
+  columns_after: string[];
+  served_before: string | null;
+  served_after: string | null;
+}
+
+export interface GoldenScore { passed: number; total: number; rate: number | null }
+
+/** Golden scores now and with the batch applied; 409 `details.effect` when a batch would break a passing case. */
+export interface GoldenEffect {
+  evaluated: boolean;
+  reason?: string;
+  baseline: GoldenScore;
+  projected: GoldenScore;
+  delta_points: number;
+  counts: Record<GoldenEffectCase["change"], number>;
+  cases: GoldenEffectCase[];
+  errors: { id: string; error: string; [k: string]: unknown }[];
+  fingerprint?: string;
 }
 
 /** Stream D: the workspace context as one download (OKF zip, versioned JSON, or one Markdown file). */
@@ -4632,8 +4662,12 @@ export const api = {
       Promise<{ document_id: string; pack_id: string; path: string; title: string; revision: number }>,
   knowledgeSuggestions: (ws: string, status: string = "pending") =>
     get("/api/workspaces/{workspace_id}/knowledge/suggestions", { path: W(ws), query: { status } }) as Promise<KnowledgeSuggestion[]>,
-  reviewSuggestions: (ws: string, decisions: ReviewDecisionBody[]) =>
-    post("/api/workspaces/{workspace_id}/knowledge/suggestions/review", { path: W(ws), body: { decisions } }) as Promise<ReviewResult>,
+  reviewSuggestions: (ws: string, decisions: ReviewDecisionBody[], overrideReason?: string) =>
+    post("/api/workspaces/{workspace_id}/knowledge/suggestions/review", {
+      path: W(ws), body: overrideReason ? { decisions, override_reason: overrideReason } : { decisions },
+    }) as Promise<ReviewResult>,
+  previewSuggestions: (ws: string, decisions: ReviewDecisionBody[]) =>
+    post("/api/workspaces/{workspace_id}/knowledge/suggestions/preview", { path: W(ws), body: { decisions } }) as Promise<GoldenEffect>,
   suggestionSummary: (ws: string) =>
     get("/api/workspaces/{workspace_id}/knowledge/suggestions/summary", { path: W(ws) }) as Promise<SuggestionSummary>,
   glossaryScan: (ws: string, body: { use_model?: boolean; include_ask?: boolean; include_descriptions?: boolean } = {}) =>

@@ -13,7 +13,7 @@ import {
 } from "../lib/knowledge";
 import { SCREEN_BUDGET, SCREENS, to } from "../routes";
 import { mockBackend, resetMockState, USER, WS } from "./mockBackend";
-import { SUGGESTION_TERM, WS_PACK } from "./mockKnowledge";
+import { setGoldenRegression, SUGGESTION_TERM, WS_PACK } from "./mockKnowledge";
 
 vi.setConfig({ testTimeout: 20000 });
 
@@ -232,6 +232,42 @@ describe("Knowledge studio: review queue", () => {
     expect(bodyOf(calls(f, "POST", /suggestions\/review$/)[0][1])).toEqual({
       decisions: [{ id: SUGGESTION_TERM, action: "edit", fields: { body: "Share of resolved incidents reopened within 14 days." } }] });
     expect(await screen.findByText(/1 approved/)).toBeTruthy();
+  });
+});
+
+describe("Knowledge studio: golden-question effect of a review batch", () => {
+  it("previews the effect, refuses a batch that breaks a passing golden question, and approves it with a reason", async () => {
+    const f = mockFetch();
+    setGoldenRegression(true);
+    const { container } = renderAt(`/w/${WS}/knowledge/catalog?tab=review`);
+    fireEvent.click(await screen.findByLabelText(/^Select all/));
+    fireEvent.click(screen.getByRole("button", { name: "Check effect on golden questions" }));
+    expect(await screen.findByText("Golden questions: 1 of 2 pass now, 0 of 2 with this batch (-50 points).")).toBeTruthy();
+    const changed = screen.getByRole("list", { name: "Golden questions this batch changes" });
+    expect(within(changed).getByText("newly failing")).toBeTruthy();
+    expect(changed.textContent).toContain("columns itsm.incident.reopen_count → none");
+    expect(calls(f, "POST", /suggestions\/review$/)).toHaveLength(0); // a preview decides nothing
+
+    fireEvent.click(screen.getByRole("button", { name: /^Approve selected/ }));
+    expect(await screen.findByText(/Not approved\./)).toBeTruthy();
+    const anyway = screen.getByRole("button", { name: "Approve anyway" });
+    expect((anyway as HTMLButtonElement).disabled).toBe(true);
+    expect(await axeClean(container)).toEqual([]);
+    fireEvent.change(screen.getByLabelText("Why approve anyway"), { target: { value: "The golden case is outdated" } });
+    fireEvent.click(anyway);
+    expect(await screen.findByText(/\d+ approved, 0 rejected/)).toBeTruthy();
+    const sent = calls(f, "POST", /suggestions\/review$/).map(([, init]) => bodyOf(init));
+    expect(sent[0].override_reason).toBeUndefined();
+    expect(sent[1].override_reason).toBe("The golden case is outdated");
+    expect(screen.getByText(/0 of 2 with this batch/)).toBeTruthy();
+  });
+
+  it("an improving batch is approved at once and the result names the gain", async () => {
+    mockFetch();
+    renderAt(`/w/${WS}/knowledge/catalog?tab=review`);
+    fireEvent.click(await screen.findByLabelText(/^Select all/));
+    fireEvent.click(screen.getByRole("button", { name: /^Approve selected/ }));
+    expect(await screen.findByText(/\d+ approved, 0 rejected\. Golden questions: 1 of 2 pass now, 2 of 2 with this batch \(\+50 points\)\./)).toBeTruthy();
   });
 });
 
