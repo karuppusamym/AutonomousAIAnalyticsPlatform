@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 
 from analystos.api.deps import current_user, db
 from analystos.api.serialize import row
+from analystos.context.lookup import guidelines_of
 from analystos.core.errors import InvalidInput
+from analystos.core.ids import utcnow
 from analystos.db.models import CrawlRun, Source, SourceAsset, SourceColumn, User
 from analystos.governance.audit import audit
 from analystos.governance.policy import load_in_workspace, require_role
@@ -199,6 +201,7 @@ def catalog(workspace_id: str, q: str = "", domain: str | None = None, role: str
                     "time_column": event_time.get(fq) or _time_column(cols),
                     "relationships": dict(rels[a.id]) if a.id in rels else {"outgoing": 0, "incoming": 0, "validated": 0},
                     "model_description_draft": sem.get("model_description_draft"),
+                    "guidelines": guidelines_of(a),
                     "renamed_to": sem.get("renamed_to"), "renamed_from": sem.get("renamed_from"),
                     "snapshot": a.snapshot or None,  # staged population: rows staged vs origin, truncated, sampling
                     "columns": [_column_view(c, fq, curated, profiled=bool(a.stats)) for c in cols]})
@@ -225,15 +228,26 @@ class AssetMetadataIn(BaseModel):
     business_name: str | None = Field(default=None, max_length=200)
     description: str | None = Field(default=None, max_length=4000)
     reviewed: bool | None = None
+    # Notes for agents reading this table ("prefer closed_at for resolution time"), served by context.lookup.
+    # Human-curated only: an empty string clears them.
+    guidelines: str | None = Field(default=None, max_length=4000)
 
 
 @router.patch("/assets/{asset_id}/metadata")
 def curate_asset(asset_id: str, body: AssetMetadataIn, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
     """A person's curation wins over every crawler/model description from now on."""
+    from analystos.core.errors import PolicyDenied
+
     a = load_in_workspace(session, SourceAsset, asset_id, user=user, minimum="editor", label="asset")
     patch = body.model_dump(exclude_none=True)
     if not patch:
         raise InvalidInput("nothing to change")
+    if "guidelines" in patch:
+        if (user.attributes or {}).get("service_account"):  # an MCP client or other service identity
+            raise PolicyDenied("asset guidelines are written by a person, not by a service account")
+        text = patch["guidelines"].strip()
+        sem = {k: v for k, v in (a.semantics or {}).items() if k != "guidelines"}
+        a.semantics = {**sem, "guidelines": {"text": text, "by": user.id, "at": utcnow().isoformat()}} if text else sem
     if "business_name" in patch:
         a.business_name, a.business_name_origin = patch["business_name"].strip() or None, "user"
     if "description" in patch:
@@ -242,4 +256,4 @@ def curate_asset(asset_id: str, body: AssetMetadataIn, user: User = Depends(curr
         a.reviewed = patch["reviewed"]
     audit(f"user:{user.id}", "asset.curated", workspace_id=a.workspace_id, target=f"{a.schema_name}.{a.name}",
           details=patch, session=session)
-    return row(a)
+    return {**row(a), "guidelines": guidelines_of(a)}

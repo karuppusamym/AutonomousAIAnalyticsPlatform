@@ -2,6 +2,8 @@
 Context Ledger, plus OKF export/import (S03-T6). Every read applies the caller's access before ranking
 (`context/retrieval.py`); a workspace the caller cannot see is a 404.
 
+`/lookup` (S03 §5, review P0-2) returns the context of up to ten named assets in one block (YAML or JSON).
+
 Served under `/api/v2/context` (the spec's `/v2/context`): `/api/context/search` already names the v1 search.
 An export is built for the requesting user's view and downloadable by that user only; like the workspace context
 download it stays inside the platform, so it needs no approval and is audited (`context.exported`).
@@ -20,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from analystos.api.deps import current_user, db
 from analystos.context import federation, interchange, ledger, retrieval
+from analystos.context import lookup as context_lookup
 from analystos.core.errors import NotFound, UnsupportedCapability
 from analystos.db.models import Artifact, User
 from analystos.governance.audit import audit
@@ -67,6 +70,26 @@ def compile_context(body: CompileIn, user: User = Depends(current_user), session
                                    budget_tokens=body.budget_tokens, kinds=body.kinds, run_id=body.run_id)
     audit(f"user:{user.id}", "context.compiled", workspace_id=body.workspace, target=out["identity_hash"][:40],
           decision="allow", details={"purpose": body.purpose, "receipts": len(out["receipts"])}, session=session)
+    return out
+
+
+class LookupIn(BaseModel):
+    workspace: str
+    assets: list[str] = Field(min_length=1, max_length=context_lookup.MAX_ASSETS)
+    format: Literal["yaml", "json"] = "yaml"
+    budget_chars: int = Field(default=context_lookup.DEFAULT_BUDGET_CHARS, ge=context_lookup.MIN_BUDGET_CHARS,
+                              le=context_lookup.MAX_BUDGET_CHARS)
+
+
+@router.post("/lookup")
+def lookup_context(body: LookupIn, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    """`{content, format, assets, omissions, receipts, identity_hash, budget}` for the named `schema.table` assets
+    the caller may see (others are absent and not counted); 422 when the identities alone exceed the budget."""
+    out = context_lookup.lookup(session, user, body.workspace, body.assets, format=body.format,
+                                budget_chars=body.budget_chars)
+    audit(f"user:{user.id}", "context.looked_up", workspace_id=body.workspace, target=out["identity_hash"][:40],
+          decision="allow", details={"assets": out["assets"], "omissions": len(out["omissions"]), "format": body.format},
+          session=session)
     return out
 
 

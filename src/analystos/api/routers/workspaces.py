@@ -300,10 +300,32 @@ def curate_column(asset_id: str, column: str, body: ColumnMetadataIn, user: User
 
 @router.get("/workspaces/{workspace_id}/relationships")
 def relationships(workspace_id: str, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    """Every recorded join with where it came from (`origin`), its measured confidence and, for a validated one, the
+    join as a runnable value-free statement (`join_sql`) in the source's dialect."""
+    from analystos.db.models import Source
+    from analystos.governance.policy import source_dialect
+    from analystos.skills.relationships import join_sql
+
     require_role(session, user, workspace_id, "viewer")
-    names = {a.id: f"{a.schema_name}.{a.name}" for a in session.scalars(select(SourceAsset).where(SourceAsset.workspace_id == workspace_id))}
-    return [{**row(r), "from_asset": names.get(r.from_asset_id), "to_asset": names.get(r.to_asset_id)}
-            for r in session.scalars(select(Relationship).where(Relationship.workspace_id == workspace_id))]
+    assets = {a.id: a for a in session.scalars(select(SourceAsset).where(SourceAsset.workspace_id == workspace_id))}
+    names = {i: f"{a.schema_name}.{a.name}" for i, a in assets.items()}
+    dialects = {s.id: source_dialect(s.kind, s.execution_mode)
+                for s in session.scalars(select(Source).where(Source.workspace_id == workspace_id))}
+
+    def sql_of(r: Relationship) -> str | None:
+        ev = r.evidence or {}
+        f, t = names.get(r.from_asset_id), names.get(r.to_asset_id)
+        fc, tc = list(ev.get("from_columns") or [r.from_column]), list(ev.get("to_columns") or [r.to_column])
+        if not (r.validated and f and t) or ev.get("rejected") or len(fc) != len(tc):
+            return None
+        try:
+            return join_sql(f, fc, t, tc, dialects.get(assets[r.from_asset_id].source_id, "postgres"))
+        except Exception:  # noqa: BLE001 - an unusual name or dialect: the row is still listed, without SQL
+            return None
+
+    rels = session.scalars(select(Relationship).where(Relationship.workspace_id == workspace_id).order_by(Relationship.id))
+    return [{**row(r), "from_asset": names.get(r.from_asset_id), "to_asset": names.get(r.to_asset_id), "join_sql": sql_of(r)}
+            for r in rels]
 
 
 @router.get("/workspaces/{workspace_id}/activity")

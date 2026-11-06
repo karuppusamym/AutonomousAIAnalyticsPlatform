@@ -2142,6 +2142,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/context/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lookup Context
+         * @description `{content, format, assets, omissions, receipts, identity_hash, budget}` for the named `schema.table` assets
+         *     the caller may see (others are absent and not counted); 422 when the identities alone exceed the budget.
+         */
+        post: operations["lookup_context_api_v2_context_lookup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/context/reconcile": {
         parameters: {
             query?: never;
@@ -6939,7 +6960,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Relationships */
+        /**
+         * Relationships
+         * @description Every recorded join with where it came from (`origin`), its measured confidence and, for a validated one, the
+         *     join as a runnable value-free statement (`join_sql`) in the source's dialect.
+         */
         get: operations["relationships_api_workspaces__workspace_id__relationships_get"];
         put?: never;
         post?: never;
@@ -9054,6 +9079,8 @@ export interface components {
             business_name?: string | null;
             /** Description */
             description?: string | null;
+            /** Guidelines */
+            guidelines?: string | null;
             /** Reviewed */
             reviewed?: boolean | null;
         };
@@ -10445,6 +10472,24 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /** LookupIn */
+        LookupIn: {
+            /** Assets */
+            assets: string[];
+            /**
+             * Budget Chars
+             * @default 16000
+             */
+            budget_chars?: number;
+            /**
+             * Format
+             * @default yaml
+             * @enum {string}
+             */
+            format?: "yaml" | "json";
+            /** Workspace */
+            workspace: string;
         };
         /**
          * MLSpec
@@ -16650,6 +16695,42 @@ export interface operations {
         requestBody: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_import_context_api_v2_context_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lookup_context_api_v2_context_lookup_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LookupIn"];
             };
         };
         responses: {

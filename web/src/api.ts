@@ -227,6 +227,8 @@ export interface Relationship {
   origin: string;
   from_asset: string | null;
   to_asset: string | null;
+  /** A validated join as a runnable, value-free statement in the source's dialect; null when not validated. */
+  join_sql?: string | null;
 }
 
 export interface RunTask {
@@ -2636,7 +2638,15 @@ export interface CatalogAsset {
   time_column?: string | null;
   profile_meta?: ProfileMeta | null;
   snapshot?: Dict | null;
+  /** A person's notes for agents reading this table (served by context.lookup); edited by people only. */
+  guidelines?: AssetGuidelines | null;
   columns: CatalogColumn[];
+}
+
+export interface AssetGuidelines {
+  text: string;
+  by: string | null;
+  at: string | null;
 }
 
 /** Query of GET …/catalog (generated parameters). */
@@ -2651,6 +2661,7 @@ export interface CuratedAsset {
   description: string | null;
   description_origin: string | null;
   reviewed: boolean;
+  guidelines?: AssetGuidelines | null;
 }
 
 export interface SqlExplanation {

@@ -1,5 +1,21 @@
 # Capability register (evidence)
 
+## 2026-11-05 — `context.lookup` and usage as a ranking signal (GKC-P0-2, GKC-P1-4)
+
+From the Google Knowledge Catalog review (`docs/70-reviews/2026-11-05-google-knowledge-catalog-review.md`).
+
+| Capability | Code | Evidence |
+|---|---|---|
+| `POST /api/v2/context/lookup {workspace, assets[≤10], format: yaml\|json, budget_chars}`: one deterministic block per call. Fill order identity+keys → curated description + guidelines → validated joins between the requested assets (with join SQL) → glossary/metrics/verified queries → quality → profile → usage. Identities over budget are refused (422), later sections left out with omissions | `context/lookup.py`, `api/routers/context_v2.py` (audited `context.looked_up`) | `tests/unit/test_context_lookup.py::test_yaml_contract_is_sorted_deterministic_and_in_fill_order`, `test_a_small_budget_keeps_keys_and_joins_and_records_omissions`, `test_identities_over_budget_are_refused_not_trimmed` |
+| Scope: same `access_for` as search/compile; an out-of-scope or unknown asset is absent and not counted; denied columns never named; profile values only for untagged columns from stored vocabulary; quality value-free (no message text) | `context/lookup.py` | `test_an_out_of_scope_asset_is_absent_and_not_counted`, `test_denied_columns_and_values_never_appear`, `test_profile_values_are_withheld_for_a_sensitive_column_the_caller_may_see` |
+| MCP tool `context.lookup` (read-only; granted by `context.lookup` or `context.read`) | `mcp/server.py`, `mcp/grants.py`, `web/src/lib/toolRegistry.ts` | `test_mcp_tool_is_a_read_only_context_grant` (handler called directly; the `mcp` extra is not installed on this dev host, so the HTTP transport was not run) |
+| `guidelines` on an asset: written by a person only (a service account is refused), kept across crawls, in the table's OKF document and the Catalog editor | `SourceAsset.semantics["guidelines"]` (no migration), `api/routers/catalog.py`, `services/crawler.KEPT_SEMANTICS`, `knowledge/crawl_docs.py`, `web/src/pages/Catalog.tsx` | `test_guidelines_are_written_by_people_only_and_survive_a_crawl`, `test_table_document_carries_the_guidelines`, `increment3.test.tsx` "shows each join's origin…" |
+| Usage factor in the ledger rerank (trust × freshness × in-scope × usage): distinct users and runs over 30 days from audited `query_execution`, platform statements excluded, bounded to [1.0, 1.10]; common filter columns by operator class (no literals) in the lookup block | `context/usage.py`, `context/retrieval.rank/search` | `test_usage_factor_is_bounded_and_neutral_without_usage`, `test_asset_usage_counts_distinct_users_and_runs_in_the_window_only`, `test_rerank_lifts_the_used_table_but_never_beats_a_clearly_better_match` |
+| Usage benchmark configuration `ledger_rank` vs `ledger_rank_usage` | `context/benchmark.usage_run`, `tests/fixtures/context/usage-benchmark.json` | `test_usage_benchmark_configuration_measures_the_gain`: on the fixture, tie questions recall@1 0.0 → 1.0, control questions 1.0 → 1.0. The fixture is synthetic: it shows the factor breaks ties without overriding relevance, not a gain on a customer corpus |
+| Catalog shows each join's origin, confidence, validated state and the validated join SQL | `GET /api/workspaces/{ws}/relationships` (`join_sql`), `skills/relationships.join_sql`, `Catalog.tsx` `AssetRelationships` | `increment3.test.tsx`, `test_join_sql_is_value_free_and_dialect_aware` |
+
+Not run: a live call on the compose stack. OpenAPI regenerated (`web/openapi.json`, `web/src/generated/openapi.ts`).
+
 ## 2026-10-30 — Registry screens fixed; MCP endpoint shipped; prompts editable (REG-FIX-01/02, PROMPT-01)
 
 Found in the browser on the redeployed stack (Settings → Capability registry):

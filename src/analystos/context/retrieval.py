@@ -9,7 +9,8 @@ catalogue reveals no data and does not withhold the entry.
 
 Ranking is hybrid and deterministic: exact name/alias match → glossary synonyms (term overlap) → lineage
 proximity (shares a table with an exact match) → vector similarity (the platform's local hashing embedding),
-reranked by trust × freshness × in-scope. Context is data: compiled text is screened and stays inside the
+reranked by trust × freshness × in-scope × usage (a bounded lift for tables that distinct users and runs read in the
+last 30 days, `context/usage.py`; it never admits what the filter withheld). Context is data: compiled text is screened and stays inside the
 untrusted-context envelope of whichever prompt it reaches; nothing in it changes tools, scope or policy.
 """
 from __future__ import annotations
@@ -117,10 +118,13 @@ def _freshness(valid_from: datetime | None, now: datetime) -> float:
     return 0.7 + 0.3 * math.exp(-days / 365)
 
 
-def rank(entries: list[Any], query: str, access: Access, *, now: datetime | None = None) -> list[Hit]:
-    """Score already-permitted entries for `query`. Pure apart from the embedding, so it is unit-tested directly."""
+def rank(entries: list[Any], query: str, access: Access, *, now: datetime | None = None,
+         usage: dict[str, float] | None = None) -> list[Hit]:
+    """Score already-permitted entries for `query`. Pure apart from the embedding, so it is unit-tested directly.
+    `usage` maps `schema.table` to its bounded usage factor (`context.usage.factors`); absent means no usage signal."""
     from analystos.context.compiler import terms
     from analystos.context.embeddings import embed
+    from analystos.context.usage import entry_factor
 
     now = now or utcnow()
     q = _norm(query)
@@ -152,15 +156,17 @@ def rank(entries: list[Any], query: str, access: Access, *, now: datetime | None
         prox = 0.15 if anchors and tables & anchors and not (h.why["exact"] or h.why["mention"]) else 0.0
         h.why["lineage"] = prox
         h.relevance += prox
+        h.why["usage"] = entry_factor(h.entry.refs, usage)
         h.score = (h.relevance * TRUST_WEIGHT.get(h.entry.trust, 0.4) * _freshness(h.entry.valid_from, now)
-                   * (1.0 if access.in_scope(h.entry) else 0.9))
+                   * (1.0 if access.in_scope(h.entry) else 0.9) * h.why["usage"])
     hits = [h for h in hits if not q or h.relevance >= MIN_RELEVANCE]
     hits.sort(key=lambda h: (-h.score, h.entry.kind, h.entry.title, h.entry.id))
     return hits
 
 
 def search(session: Session, user: Any, workspace_id: str, query: str, *, kinds: list[str] | None = None,
-           include_suggested: bool = False, limit: int = 20, access: Access | None = None) -> list[Hit]:
+           include_suggested: bool = False, limit: int = 20, access: Access | None = None,
+           use_usage: bool = True) -> list[Hit]:
     from analystos.context.ledger import KINDS
 
     unknown = [k for k in kinds or [] if k not in KINDS]
@@ -168,7 +174,13 @@ def search(session: Session, user: Any, workspace_id: str, query: str, *, kinds:
         raise InvalidInput(f"unknown context kinds: {', '.join(unknown)} (known: {', '.join(KINDS)})")
     access = access or access_for(session, user, workspace_id)
     trusts = (*MODEL_TRUSTS, "suggested") if include_suggested else MODEL_TRUSTS
-    return rank(candidates(session, access, kinds=kinds, trusts=trusts), query, access)[: max(1, min(int(limit), 200))]
+    entries = candidates(session, access, kinds=kinds, trusts=trusts)
+    usage = None
+    if use_usage and any(e.refs for e in entries):
+        from analystos.context.usage import factors
+
+        usage = factors(session, workspace_id)
+    return rank(entries, query, access, usage=usage)[: max(1, min(int(limit), 200))]
 
 
 @scoped_loader

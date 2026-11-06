@@ -109,7 +109,8 @@ def safe_for_domain_assist(column: SourceColumn) -> bool:
 
 
 # Asset semantics a re-derivation keeps: a model's description draft waits for review; a person's domain decision.
-KEPT_SEMANTICS = ("model_description_draft", "domain_reviewed", "renamed_from", "renamed_to", "shape")
+KEPT_SEMANTICS = ("model_description_draft", "domain_reviewed", "renamed_from", "renamed_to", "shape",
+                  "guidelines")  # guidelines: a person's notes for agents (context.lookup); never re-derived
 RENAME_CARRY_SIMILARITY = 0.9  # at or above: curation moves to the renamed table; below: the old one only leaves scope
 
 
