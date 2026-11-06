@@ -33,6 +33,7 @@ from analystos.api.routers import knowledge as knowledge_router
 from analystos.api.routers import mcp as mcp_router
 from analystos.api.routers import ml as ml_router
 from analystos.api.routers import models_admin as models_admin_router
+from analystos.api.routers import number_checks as number_checks_router
 from analystos.api.routers import ops_v2 as ops_v2_router
 from analystos.api.routers import pilot as pilot_router
 from analystos.api.routers import pipelines as pipelines_router
@@ -151,6 +152,8 @@ app.include_router(desk_router.router)  # Analyst Request Desk (S13)
 app.include_router(conversations_router.router)  # API v2 conversations and memory (S04)
 app.include_router(goals_v2_router.router)  # Goal API v2 (S06): goals, signals, run state, SSE, evidence, plans
 app.include_router(goals_v2_router.router, prefix="/api")  # the same, for the web client (/api/v2/...)
+app.include_router(number_checks_router.router)  # S07-T8: check a number quoted elsewhere against the governed path
+app.include_router(number_checks_router.router, prefix="/api")
 # before S08's /schemas/{kind}: /schemas/report-document is this router's
 app.include_router(report_docs_router.router)  # CONV-04/05: report documents by conversation, dashboard stories
 app.include_router(dashboards_v2_router.router)  # S08 dashboard builder: typed ops, versions, publish, embed, exports

@@ -1396,3 +1396,47 @@ rules only, on a copy of the rehearsal database; no analyst results).
 
 Live evidence: [`evidence/pilot-fix-investigate-20261030.md`](evidence/pilot-fix-investigate-20261030.md) (rules only, no model
 call). Not verified: a live run with models; the guided source choice on a live two-source workspace (unit tested only).
+
+## 2026-10-30 — S07-T8 Number check (from the blue ocean discovery)
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| Check a quoted number | `evidence/number_check.py`: the question runs through Ask under the caller's scope (new thread "Number check: …"); `parse_claim` keeps the written precision, `pick_value` singles out one number (scalar, `label` row, `column`), `compare` applies the numbers guard's rounding rule (percent ↔ fraction, optional relative `tolerance`). Verdict confirmed / contradicted with authority certified (verified query, certified metric) or ad_hoc, or unverifiable with the reason and a remedy. The claimed value is never in a model prompt. Audit `number_check.completed` | `tests/unit/test_number_check.py` (parsing, rounding, picking, verdicts); `tests/integration/test_number_check.py` (Postgres RLS + strict tenancy: confirmed/contradicted equal a reference query, labelled breakdown row, unverifiable cases, 422 on a non-number, claim absent from every model call, audit rows, non-member refused) |
+| Surfaces | `POST /v2/number-checks` and `/api/v2/number-checks`; MCP tool `number.check` (grant role analyst); "Check a number" card on the Ask screen with verdict, difference, authority, tables, freshness, SQL receipt and "Open the answer"; `web/openapi.json` + generated types regenerated; `number.check` in the web's built-in MCP tool list | `web/src/test/numberCheck.test.tsx`; live walkthrough below. MCP over HTTP not run (the `mcp` extra is not installed on this host) |
+
+Live evidence: [`evidence/number-check-20261030.md`](evidence/number-check-20261030.md) (5/5, rules rung, $0.000012 total).
+Not verified: a certified verdict live (no certified incident metric in the demo workspace); a model-written answer live.
+
+## 2026-10-31 — S07-T9 Trust loop (label, certification coverage, check → Desk)
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| One trust label | `web/src/lib/trust.ts` (`trustOf`, `trustOfAuthority`), `components/TrustBadge.tsx`: Certified / Checked / Unchecked with the same words and hint everywhere; Ask "Answered by" line, number-check result | `web/src/test/numberCheck.test.tsx` ("trust label") |
+| Check → Desk | `evidence/number_check.handoff`, `POST /v2/number-checks/handoff`: escalated R7 request (assignee, SLA, data pack with the check and the Ask turn as evidence), verdict recomputed from the stored turn; refused for a confirmed certified number; "Send to an analyst" button | `tests/integration/test_number_check.py::test_handoff_to_the_desk_and_trust_coverage`; live `rq_ede96ebb4daa` (2026-10-31) |
+| Certification coverage | `evidence/number_check.coverage` → `trust` in `GET /api/value` (answered, certified, certified share, check outcomes); Trust card on Value with the way to raise it | Same integration test; live: 0 of 12 certified, 10 checks |
+
+Not done: plain names for the remaining internal terms outside expert view.
+
+## 2026-10-30 — S10-MCP-LIVE: MCP over streamable HTTP, live
+
+The official MCP Python SDK client (`mcp` 2.3.0, protocol `2026-07-28`) called this worktree's API at `/mcp` over
+streamable HTTP, with the API running against the compose stack. Two admin-created clients had analyst grants on
+`ws_c0f6d56a3ce0`. `tools/list` listed `number.check` with its schema. `ask` returned 20000. `number.check`: `20,000`
+confirmed, `20037` contradicted, `775` with label `1` confirmed (all equal to psql, rules rung, $0 model cost). A client
+without the grant did not see the tool and was refused (SDK `MCPError`; raw HTTP 403 at the gate). With no token the
+endpoint returned 401. The trail reads as follows: `mcp.request` allow/deny audit rows; `number_check.completed` with
+channel `mcp`; every query receipt's actor is the client's service user (one gateway); denied calls are not counted in
+`mcp_usage`. This closes the "MCP over HTTP not run" gap in the S07-T8 entry above.
+
+Live evidence: [`evidence/mcp-live-20261030.md`](evidence/mcp-live-20261030.md) (+ `.json`, 9/9). Not verified: a
+certified verdict over MCP, MCP resources, a third-party MCP client application as the caller.
+
+## 2026-10-30 — S05-T7 air-gapped §62 run: blocked (no local model server)
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| §62 scenario on an air-gapped install with a real local model | unchanged: `services/airgap.py`, `config/models.airgapped.yaml`, runbook `docs/30-runbooks/08-local-models.md` | ❌ not run: the dev host has no local model server (no Ollama, LM Studio or vLLM; no GPU; CPU-only, 32 GB RAM). Nothing installed, compose stack untouched, no model call |
+
+Blocked report: [`evidence/airgap-e2e-20261030.md`](evidence/airgap-e2e-20261030.md) — what was checked, what is
+missing, and the exact commands (Ollama native or in Docker, `qwen3:8b`, a local models file, the API env, the
+posture check, `scripts/e2e_demo.py`). Still evidenced by unit tests only (`test_model_switch_gate.py::test_airgap_posture_*`).

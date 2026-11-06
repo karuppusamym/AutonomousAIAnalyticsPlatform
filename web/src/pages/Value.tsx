@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, saveBlob, type ClassBaseline, type RequestClass, type ValueReport, type ValueSummary } from "../api";
+import { api, saveBlob, type ClassBaseline, type RequestClass, type TrustCoverage, type ValueReport, type ValueSummary } from "../api";
 import { useAuth } from "../auth";
 import { canvasSupported, EChart } from "../components/Chart";
 import { Card, DataTable, EmptyState, ErrorBox, Loading, Notice, PageHeader, Stat, Tabs, Value } from "../components/ui";
@@ -66,6 +66,7 @@ export function ValuePage() {
         tabs={[{ id: "7", label: "Last 7 days" }, { id: "30", label: "Last 30 days" }, { id: "90", label: "Last 90 days" }]} />
       <ErrorBox error={report.error ?? action.error} onRetry={report.reload} />
       {report.loading && !r && <Loading />}
+      {r?.trust && <TrustCoverageCard t={r.trust} wsId={wsId} />}
       {r && r.n === 0 && <EmptyState title="No requests in this period"
         action={<Link className="btn btn-sm" to={to.desk(wsId)}>Open the request desk</Link>}>
         The numbers appear once people send requests to the desk.
@@ -87,6 +88,26 @@ export function ValuePage() {
         </ul>
       </Card>
     </div>
+  );
+}
+
+/** How much of what people asked is answered from a certified definition (the certification loop's progress), and
+ * how number checks came out. Raising the certified share is what makes the platform's numbers authoritative. */
+function TrustCoverageCard({ t, wsId }: { t: TrustCoverage; wsId: string }) {
+  const checks = t.checks.confirmed + t.checks.contradicted + t.checks.unverifiable;
+  return (
+    <Card title="Trust" label="Trust coverage">
+      <div className="stats-row">
+        <Stat label="Answers from a certified definition" value={<Value value={t.certified_share} format="pct" digits={0} unknownLabel="no answers yet" />}
+          hint={`${t.certified} of ${t.answered} answered questions are Certified; the rest are Checked`} />
+        <Stat label="Number checks" value={checks}
+          hint={checks ? `${t.checks.confirmed} confirmed · ${t.checks.contradicted} contradicted · ${t.checks.unverifiable} could not be checked` : "none in this period"} />
+      </div>
+      {t.answered > 0 && t.certified < t.answered && (
+        <p className="small muted">Raise the certified share by saving answers people rely on as verified queries or metrics
+          (from the answer in <Link to={to.ask(wsId)}>Ask</Link>); an owner approves each one.</p>
+      )}
+    </Card>
   );
 }
 

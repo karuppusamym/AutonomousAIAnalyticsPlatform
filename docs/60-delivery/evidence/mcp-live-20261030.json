@@ -1,0 +1,433 @@
+{
+  "date": "2026-10-30",
+  "api": "http://127.0.0.1:8031",
+  "workspace_id": "ws_c0f6d56a3ce0",
+  "clients": {
+    "granted": {
+      "client_id": "mcpc_855334825704",
+      "grant": {
+        "client_id": "mcpc_855334825704",
+        "workspace_id": "ws_c0f6d56a3ce0",
+        "role": "analyst",
+        "tools": [
+          "ask",
+          "number.check",
+          "context.read"
+        ],
+        "quotas": {},
+        "tool_patterns": [],
+        "rate_per_min": null,
+        "expires_at": null
+      }
+    },
+    "no_number_check": {
+      "client_id": "mcpc_34a8848763d9",
+      "grant": {
+        "client_id": "mcpc_34a8848763d9",
+        "workspace_id": "ws_c0f6d56a3ce0",
+        "role": "analyst",
+        "tools": [
+          "ask",
+          "context.read"
+        ],
+        "quotas": {},
+        "tool_patterns": [],
+        "rate_per_min": null,
+        "expires_at": null
+      }
+    }
+  },
+  "calls": [
+    {
+      "call": "tools/list",
+      "ms": 264,
+      "tools": [
+        "ask",
+        "number.check",
+        "context.search",
+        "context.get",
+        "context.compile",
+        "context.changes"
+      ],
+      "number.check": {
+        "description": "Check a number quoted elsewhere (another BI tool, a spreadsheet, an agent) against this workspace's governed answer to the question. Returns confirmed, contradicted or unverifiable, the computed value, its authority (certified or ad_hoc) and evidence. The claimed value is never shown to a model.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Workspace id (optional when the client holds exactly one grant)."
+            },
+            "question": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 1000
+            },
+            "claimed": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "label": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "column": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "tolerance": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5
+            },
+            "source": {
+              "type": "string",
+              "maxLength": 120
+            }
+          },
+          "required": [
+            "question",
+            "claimed"
+          ]
+        },
+        "annotations": {
+          "read_only_hint": false,
+          "destructive_hint": false
+        }
+      }
+    },
+    {
+      "call": "tools/call ask",
+      "arguments": {
+        "workspace_id": "ws_c0f6d56a3ce0",
+        "question": "How many incidents are there in total?"
+      },
+      "ms": 12709,
+      "is_error": false,
+      "result": {
+        "sql": "SELECT COUNT(*) AS \"incident_count\" FROM \"src_src_56ec843c975e\".\"incident\"",
+        "explanation": "Number of incident records in src_src_56ec843c975e.incident. Built from the catalog by the Ask rules; no model call.",
+        "result": {
+          "query_id": "qry_2413bc1012a0",
+          "columns": [
+            "incident_count"
+          ],
+          "rows": [
+            [
+              20000
+            ]
+          ],
+          "row_count": 1,
+          "truncated": false,
+          "referenced_assets": [
+            "src_src_56ec843c975e.incident"
+          ],
+          "cache_hit": false,
+          "result_hash": "b1e78bf63358d25498d1b945fb31c18b75e7bdb450c3aefb1f889334111949ba",
+          "duration_ms": 2236,
+          "rows_returned": 1
+        },
+        "status": "answered",
+        "answered_by": "rules",
+        "missing": null
+      }
+    },
+    {
+      "call": "tools/call number.check",
+      "arguments": {
+        "workspace_id": "ws_c0f6d56a3ce0",
+        "question": "How many incidents are there in total?",
+        "claimed": "20,000",
+        "source": "mcp live proof"
+      },
+      "ms": 26719,
+      "is_error": false,
+      "result": {
+        "verdict": "confirmed",
+        "authority": "ad_hoc",
+        "claimed": {
+          "text": "20,000",
+          "value": 20000.0,
+          "percent": false
+        },
+        "computed": {
+          "value": 20000.0,
+          "column": "incident_count",
+          "row_label": null
+        },
+        "comparison": {
+          "agrees": true,
+          "scale": 1.0,
+          "compared_to": 20000.0,
+          "difference": 0.0,
+          "relative": 0.0,
+          "allowed": 0.5
+        },
+        "reason": null,
+        "label": null,
+        "question": "How many incidents are there in total?",
+        "evidence": {
+          "turn_id": "askt_2584baf1c674",
+          "thread_id": "ask_a32af827a0e5",
+          "sql": "SELECT COUNT(*) AS \"incident_count\" FROM \"src_src_56ec843c975e\".\"incident\"",
+          "query_id": "qry_52636f928e05",
+          "result_hash": "b1e78bf63358d25498d1b945fb31c18b75e7bdb450c3aefb1f889334111949ba",
+          "answered_by": "rules",
+          "governance": "ad_hoc",
+          "verified_query": null,
+          "semantic_model_version": null,
+          "assets": [
+            "src_src_56ec843c975e.incident"
+          ],
+          "staleness": {
+            "state": "fresh",
+            "label": "Data as of 6 hours ago",
+            "data_as_of": "2026-10-30T21:15:02.734392+00:00"
+          },
+          "row_count": 1,
+          "truncated": false,
+          "cost": {
+            "usd": 0.0,
+            "model_calls": 0,
+            "cache_hits": 0,
+            "avoided": 2,
+            "tokens_saved": 1019,
+            "rungs": [],
+            "models": []
+          }
+        },
+        "version": "number_check.v1",
+        "keys": [
+          "authority",
+          "claimed",
+          "column",
+          "comparison",
+          "computed",
+          "evidence",
+          "label",
+          "note",
+          "question",
+          "reason",
+          "source",
+          "tolerance",
+          "verdict",
+          "version",
+          "workspace_id"
+        ]
+      }
+    },
+    {
+      "call": "tools/call number.check",
+      "arguments": {
+        "workspace_id": "ws_c0f6d56a3ce0",
+        "question": "How many incidents are there in total?",
+        "claimed": "20037",
+        "source": "mcp live proof"
+      },
+      "ms": 12380,
+      "is_error": false,
+      "result": {
+        "verdict": "contradicted",
+        "authority": "ad_hoc",
+        "claimed": {
+          "text": "20037",
+          "value": 20037.0,
+          "percent": false
+        },
+        "computed": {
+          "value": 20000.0,
+          "column": "incident_count",
+          "row_label": null
+        },
+        "comparison": {
+          "agrees": false,
+          "scale": 1.0,
+          "compared_to": 20000.0,
+          "difference": 37.0,
+          "relative": 0.00185,
+          "allowed": 0.5
+        },
+        "reason": "claimed 20037, computed 20000",
+        "label": null,
+        "question": "How many incidents are there in total?",
+        "evidence": {
+          "turn_id": "askt_6cc185762376",
+          "thread_id": "ask_f0dc40d5ae86",
+          "sql": "SELECT COUNT(*) AS \"incident_count\" FROM \"src_src_56ec843c975e\".\"incident\"",
+          "query_id": "qry_61b6055c513d",
+          "result_hash": "b1e78bf63358d25498d1b945fb31c18b75e7bdb450c3aefb1f889334111949ba",
+          "answered_by": "rules",
+          "governance": "ad_hoc",
+          "verified_query": null,
+          "semantic_model_version": null,
+          "assets": [
+            "src_src_56ec843c975e.incident"
+          ],
+          "staleness": {
+            "state": "fresh",
+            "label": "Data as of 6 hours ago",
+            "data_as_of": "2026-10-30T21:15:02.734392+00:00"
+          },
+          "row_count": 1,
+          "truncated": false,
+          "cost": {
+            "usd": 0.0,
+            "model_calls": 0,
+            "cache_hits": 0,
+            "avoided": 2,
+            "tokens_saved": 1019,
+            "rungs": [],
+            "models": []
+          }
+        },
+        "version": "number_check.v1",
+        "keys": [
+          "authority",
+          "claimed",
+          "column",
+          "comparison",
+          "computed",
+          "evidence",
+          "label",
+          "note",
+          "question",
+          "reason",
+          "source",
+          "tolerance",
+          "verdict",
+          "version",
+          "workspace_id"
+        ]
+      }
+    },
+    {
+      "call": "tools/call number.check",
+      "arguments": {
+        "workspace_id": "ws_c0f6d56a3ce0",
+        "question": "Count of incidents by priority",
+        "claimed": "775",
+        "label": "1",
+        "source": "mcp live proof"
+      },
+      "ms": 6704,
+      "is_error": false,
+      "result": {
+        "verdict": "confirmed",
+        "authority": "ad_hoc",
+        "claimed": {
+          "text": "775",
+          "value": 775.0,
+          "percent": false
+        },
+        "computed": {
+          "value": 775.0,
+          "column": "incident_count",
+          "row_label": "1"
+        },
+        "comparison": {
+          "agrees": true,
+          "scale": 1.0,
+          "compared_to": 775.0,
+          "difference": 0.0,
+          "relative": 0.0,
+          "allowed": 0.5
+        },
+        "reason": null,
+        "label": "1",
+        "question": "Count of incidents by priority",
+        "evidence": {
+          "turn_id": "askt_9fdedc2db6b2",
+          "thread_id": "ask_4f63e0a6b46d",
+          "sql": "SELECT \"priority\" AS \"priority\", COUNT(*) AS \"incident_count\" FROM \"src_src_56ec843c975e\".\"incident\" GROUP BY \"priority\" ORDER BY \"incident_count\" DESC NULLS LAST, \"priority\"",
+          "query_id": "qry_241bb134cb12",
+          "result_hash": "c64b1eecf63184ced724615523beae3f79d5eb76d83e7b9c645250083162badf",
+          "answered_by": "rules",
+          "governance": "ad_hoc",
+          "verified_query": null,
+          "semantic_model_version": null,
+          "assets": [
+            "src_src_56ec843c975e.incident"
+          ],
+          "staleness": {
+            "state": "fresh",
+            "label": "Data as of 6 hours ago",
+            "data_as_of": "2026-10-30T21:15:02.734392+00:00"
+          },
+          "row_count": 5,
+          "truncated": false,
+          "cost": {
+            "usd": 0.0,
+            "model_calls": 0,
+            "cache_hits": 0,
+            "avoided": 2,
+            "tokens_saved": 1017,
+            "rungs": [],
+            "models": []
+          }
+        },
+        "version": "number_check.v1",
+        "keys": [
+          "authority",
+          "claimed",
+          "column",
+          "comparison",
+          "computed",
+          "evidence",
+          "label",
+          "note",
+          "question",
+          "reason",
+          "source",
+          "tolerance",
+          "verdict",
+          "version",
+          "workspace_id"
+        ]
+      }
+    },
+    {
+      "call": "tools/list (no number.check grant)",
+      "tools": [
+        "ask",
+        "context.search",
+        "context.get",
+        "context.compile",
+        "context.changes"
+      ]
+    },
+    {
+      "call": "tools/call number.check (no grant)",
+      "refused": true,
+      "error_type": "MCPError",
+      "message": "the grant for workspace ws_c0f6d56a3ce0 does not include tool number.check"
+    },
+    {
+      "call": "raw POST /mcp tools/call number.check (no grant)",
+      "http_status": 403,
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "error": {
+          "code": -32003,
+          "message": "the grant for workspace ws_c0f6d56a3ce0 does not include tool number.check",
+          "data": {
+            "code": "forbidden",
+            "message": "the grant for workspace ws_c0f6d56a3ce0 does not include tool number.check",
+            "retryable": false,
+            "details": {}
+          }
+        }
+      }
+    },
+    {
+      "call": "raw POST /mcp tools/list (no token)",
+      "http_status": 401,
+      "www_authenticate": "Bearer realm=\"analystos-mcp\""
+    }
+  ],
+  "server": {
+    "name": "analystos",
+    "version": "0.1.0",
+    "protocol_version": "2026-07-28"
+  }
+}

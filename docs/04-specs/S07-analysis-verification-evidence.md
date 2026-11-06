@@ -49,6 +49,8 @@ propagates to publication banner; adversarial: a data row containing instruction
 | S07-T5 | Investigation gates in `investigate.v1` | 2d |
 | S07-T6 | Time-series + forecast method pack | 4d |
 | S07-T7 | Void sweep → publication banner + Desk task | 1.5d |
+| S07-T8 | Number check: a number quoted elsewhere against the governed answer (API, MCP, Ask panel) | 1.5d |
+| S07-T9 | Trust loop: one trust label, certification coverage on Value, check → Desk in one step | 1d |
 
 ## 6. As built (2026-10-27, T1 and T3–T7; T2 was done earlier)
 
@@ -104,3 +106,27 @@ no new table. Upgrade from empty, downgrade -1 and re-upgrade checked on Postgre
   (`request.void_added`). A new verified record of the finding clears it (`publication.banner_cleared`). The web
   shows the banner on published dashboards (`PublishedOutputs`, `DashboardPreview`). Not done: writing the banner
   into the external BI dashboard itself (Superset), which would be a new approved publication.
+
+## 7. As built (2026-10-30, T8)
+
+Added from the [blue ocean discovery](../01-product/02-blue-ocean-discovery.md): buyers who already run another AI
+BI tool keep it, and check its numbers here.
+
+* **T8 number check.** `evidence/number_check.py`: `check(user, ws, question, claimed, label?, column?, tolerance?,
+  source?)` opens an Ask thread under the caller's scope (titled "Number check: …"), so the number comes only from
+  Ask's governed path (verified query, certified metric, rules or generated SQL through the gateway). The claimed
+  value is data and never reaches a model. The comparison is code with the numbers guard's rounding rule (half a unit
+  of the last written digit; a percent matches a fraction or ×100; `tolerance` only widens it). Verdict `confirmed` /
+  `contradicted` with `authority` `certified` (registry/semantic) or `ad_hoc` (with a note that a difference may be a
+  definition difference), or `unverifiable` (Ask did not answer, or the result does not single out one number:
+  `label` names the row, `column` the column). Evidence: the turn, SQL, query receipt, result hash, tables,
+  freshness, cost. Audit `number_check.completed` (decision = verdict). No table: the Ask turn is the record.
+  `POST /v2/number-checks` (and `/api/v2/...`), MCP tool `number.check` (grant role analyst, like `ask`), web panel
+  "Check a number" on the Ask screen (`components/NumberCheck.tsx`; no new screen). Tests:
+  `tests/unit/test_number_check.py`, `tests/integration/test_number_check.py` (Postgres, RLS; numbers equal a
+  reference query; the claimed value is absent from every model prompt), `web/src/test/numberCheck.test.tsx`. Live:
+  [`evidence/number-check-20261030.md`](../60-delivery/evidence/number-check-20261030.md). Not built: escalating a
+  contradicted ad hoc check to the Desk in one step; a certified verdict shown live.
+* **T9 trust loop (2026-10-31).** One label on every number (`web/src/lib/trust.ts`): Certified, Checked, Unchecked.
+  `number_check.handoff` sends a check to the Desk as an escalated R7 request (verdict recomputed from the stored
+  turn); `number_check.coverage` adds `trust` to the value report and a Trust card to Value. Tracker S07-T9.
