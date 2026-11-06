@@ -2544,6 +2544,23 @@ export interface Crawl {
   finished_at: string | null;
 }
 
+/** One column the impact report follows: changed by the crawl, or downstream of a changed one along lineage. */
+export interface ImpactColumn { asset: string; column: string; change: "removed" | "retyped" | "table_deprecated" | "downstream" | string; }
+export interface ImpactItem {
+  id: string; name: string; reads: ImpactColumn[]; via?: string[];
+  status?: string; kind?: string; enabled?: boolean; version?: number; revision?: number;
+}
+/** GET /api/crawls/{id}/impact (P1-5): what reads the columns a crawl saw change. */
+export interface CrawlImpact {
+  crawl_id: string; source_id: string;
+  changed: (ImpactColumn & { asset_id: string | null; key: string; from?: string; to?: string })[];
+  downstream: (ImpactColumn & { hops: number; from: string; origins: string[] })[];
+  metrics: ImpactItem[]; verified_queries: ImpactItem[]; dashboards: ImpactItem[]; monitors: ImpactItem[];
+  schedules: ImpactItem[];
+  counts: Record<string, number>;
+}
+export interface PauseRequest { approval_id: string; status: string; payload_hash: string; schedules: { id: string; revision: number }[]; expires_at: string | null; }
+
 /** Request body of POST …/sources/{id}/crawl (generated). */
 export type CrawlInput = Schemas["CrawlIn"];
 
@@ -4296,6 +4313,11 @@ export const api = {
   listCrawls: (ws: string, sourceId?: string) =>
     get("/api/workspaces/{workspace_id}/crawls", { path: W(ws), query: { source_id: sourceId } }) as Promise<Crawl[]>,
   getCrawl: (id: string) => get("/api/crawls/{crawl_id}", { path: { crawl_id: id } }) as Promise<Crawl>,
+  crawlImpact: (id: string) => get("/api/crawls/{crawl_id}/impact", { path: { crawl_id: id } }) as Promise<CrawlImpact>,
+  requestSchedulePause: (id: string, scheduleIds: string[]) =>
+    post("/api/crawls/{crawl_id}/impact/pause", { path: { crawl_id: id }, body: { schedule_ids: scheduleIds } }) as Promise<PauseRequest>,
+  executeSchedulePause: (approvalId: string) =>
+    post("/api/approvals/{approval_id}/execute-schedule-pause", { path: { approval_id: approvalId } }) as Promise<{ paused: string[]; approval_id: string }>,
   catalog: (ws: string, filter: CatalogFilter = {}) =>
     get("/api/workspaces/{workspace_id}/catalog", {
       path: W(ws),

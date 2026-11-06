@@ -6044,6 +6044,56 @@
         "title": "OwnershipOfferIn",
         "type": "object"
       },
+      "PauseIn": {
+        "properties": {
+          "schedule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Schedule Ids",
+            "type": "array"
+          }
+        },
+        "title": "PauseIn",
+        "type": "object"
+      },
+      "PiiLineageIn": {
+        "properties": {
+          "dbt_manifest": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dbt Manifest"
+          },
+          "dialect": {
+            "default": "postgres",
+            "title": "Dialect",
+            "type": "string"
+          },
+          "propose": {
+            "default": true,
+            "title": "Propose",
+            "type": "boolean"
+          },
+          "sql": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Sql",
+            "type": "array"
+          }
+        },
+        "title": "PiiLineageIn",
+        "type": "object"
+      },
       "PilotCheck": {
         "properties": {
           "action": {
@@ -13920,6 +13970,79 @@
         ]
       }
     },
+    "/api/approvals/{approval_id}/execute-schedule-pause": {
+      "post": {
+        "description": "Pause exactly the approved schedules after `verify_for_execution` re-checks the hash binding.",
+        "operationId": "execute_schedule_pause_api_approvals__approval_id__execute_schedule_pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute Schedule Pause",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/approvals/{approval_id}/reject": {
       "post": {
         "operationId": "reject_api_approvals__approval_id__reject_post",
@@ -16361,6 +16484,162 @@
           }
         },
         "summary": "Get Crawl",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/crawls/{crawl_id}/impact": {
+      "get": {
+        "description": "What reads the columns this crawl saw removed, retyped or deprecated (P1-5): downstream columns along\nrecorded lineage, metrics, verified queries, dashboards, monitors and schedules. Read-only.",
+        "operationId": "crawl_impact_api_crawls__crawl_id__impact_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "crawl_id",
+            "required": true,
+            "schema": {
+              "title": "Crawl Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Crawl Impact",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/crawls/{crawl_id}/impact/pause": {
+      "post": {
+        "description": "Request approval to pause impacted schedules. Nothing changes until the approval is decided and executed.",
+        "operationId": "request_schedule_pause_api_crawls__crawl_id__impact_pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "crawl_id",
+            "required": true,
+            "schema": {
+              "title": "Crawl Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Schedule Pause",
         "tags": [
           "catalog"
         ]
@@ -38628,6 +38907,89 @@
         "summary": "Lineage",
         "tags": [
           "artifacts"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/lineage/pii-scan": {
+      "post": {
+        "description": "Find untagged columns that receive values of pii / restricted / sensitive columns along column lineage and\nqueue review drafts that add the tag (P1-5). Never removes or applies a tag.",
+        "operationId": "pii_scan_api_workspaces__workspace_id__lineage_pii_scan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PiiLineageIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pii Scan",
+        "tags": [
+          "catalog"
         ]
       }
     },

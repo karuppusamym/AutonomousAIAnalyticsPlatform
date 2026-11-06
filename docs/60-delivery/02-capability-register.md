@@ -1428,3 +1428,21 @@ From the Google Knowledge Catalog review ([`70-reviews/2026-11-05-google-knowled
 Limits: golden cases are capped at 30 per workspace (as before), and an approved glossary term is stored with origin `agent`,
 which grounding does not use, so glossary drafts change only the verified-query part of a case. Optional auto-approve for
 low-risk kinds is not built. Not run against a live model or the compose stack.
+## 2026-11-05 — GKC-P1-5: PII along column lineage, impact report on a schema change
+
+From the Google Knowledge Catalog review ([P1-5](../70-reviews/2026-11-05-google-knowledge-catalog-review.md)). Rules
+decide; nothing is applied without a person. No migration.
+
+| Capability | Code | Evidence |
+|---|---|---|
+| Column edges from every recorded lineage | `evidence/lineage/propagation.py`: `edges_from_sql` (CTEs, subqueries; catalog resolves bare columns), `edges_from_dbt_manifest`, `edges_from_recipe` (`recipe_run.lineage`), `edges_from_openlineage` (`build_job.openlineage` column facets). FILTERED / `*` / INDIRECT edges move no values and are not followed | `tests/unit/test_pii_lineage_impact.py` (CTE chain over two statements, dbt model chain, OpenLineage + recipe adapters, filters raise nothing) |
+| Tag gaps, add-only | `propagate`: multi-source BFS per tag (pii, restricted, sensitive), shortest witness path, confidence from the weakest hop (copy 0.95, derivation 0.8, aggregate 0.6); cycles terminate | same file (missing tags listed, cycles) |
+| Review drafts that add the tag | `services/pii_lineage.scan` (crawl facet `pii_lineage`, `POST /api/workspaces/{ws}/lineage/pii-scan`): one `column_tag` draft per catalogued column via `knowledge/suggestions.propose`; uncatalogued targets reported only. Approval (`_apply_column_tag`) unions tags in the TAGGABLE set, sets `tags_origin=user`, audits `column.tags_added`; an edit to a non-sensitive tag or an empty list is refused; a rejected tag for a column is never proposed again, whatever path the lineage takes. Event `lineage.pii_gap_detected` | `test_scan_proposes_add_only_drafts_through_a_recipe_chain`, `test_approval_adds_tags_and_never_removes_one`, `test_uncatalogued_targets_are_reported_not_drafted` |
+| Impact report | `services/change_impact.py`, `GET /api/crawls/{id}/impact`: removed/retyped columns and deprecated tables, downstream columns along recorded lineage, then metrics, verified queries (parsed SQL, placeholders bound), dashboards, monitors, schedules (config + pins), with `via` links (a schedule of an impacted monitor). Counts on event `schema.impact_reported` and `crawl.stats.impact` | `test_impact_lists_what_reads_a_removed_column`, `test_a_deprecated_table_impacts_everything_reading_it` |
+| Pause impacted schedules (rule 6) | `POST /api/crawls/{id}/impact/pause` requests approval `schedule.pause_for_change` bound to schedule ids + revisions; `POST /api/approvals/{id}/execute-schedule-pause` re-derives the impact and payload, `verify_for_execution`, `consume` (single use), then disables. An edited schedule changes the hash | `test_pausing_impacted_schedules_needs_a_bound_approval`, `test_a_schedule_edited_after_approval_needs_a_new_one` |
+| UI | `CrawlPanel.tsx` `ImpactPanel` on a succeeded crawl with drift (counts, downstream columns, dependents, pause request → execute); ReviewQueue label `column_tag` | `web/src/test/crawlImpact.test.tsx` (2), `increment3.test.tsx` CrawlPanel still green |
+
+Not verified: a live crawl on the compose stack. Matching for dashboards, monitors and schedules is on identifiers
+(asset then column), so it over-reports rather than misses. Published Superset datasets are not a lineage source yet
+(they carry no column lineage). Found in passing: `evidence/lineage/dbt.py` loses a model's column lineage when its
+compiled SQL has a numeric literal (redaction writes `<NUM>`, which does not parse).

@@ -147,6 +147,71 @@ def get_crawl(crawl_id: str, user: User = Depends(current_user), session: Sessio
     return crawler.crawl_view(r)
 
 
+@router.get("/crawls/{crawl_id}/impact")
+def crawl_impact(crawl_id: str, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    """What reads the columns this crawl saw removed, retyped or deprecated (P1-5): downstream columns along
+    recorded lineage, metrics, verified queries, dashboards, monitors and schedules. Read-only."""
+    from analystos.services import change_impact
+
+    load_in_workspace(session, CrawlRun, crawl_id, user=user, label="crawl")
+    return change_impact.crawl_impact(session, user, crawl_id)
+
+
+class PauseIn(BaseModel):
+    schedule_ids: list[str] = Field(default_factory=list, max_length=200)
+
+
+@router.post("/crawls/{crawl_id}/impact/pause")
+def request_schedule_pause(crawl_id: str, body: PauseIn, user: User = Depends(current_user),
+                           session: Session = Depends(db, scope="function")):
+    """Request approval to pause impacted schedules. Nothing changes until the approval is decided and executed."""
+    from analystos.services import change_impact
+
+    load_in_workspace(session, CrawlRun, crawl_id, user=user, minimum="editor", label="crawl")
+    return change_impact.request_pause(session, session.merge(user), crawl_id, body.schedule_ids)
+
+
+@router.post("/approvals/{approval_id}/execute-schedule-pause")
+def execute_schedule_pause(approval_id: str, user: User = Depends(current_user),
+                           session: Session = Depends(db, scope="function")):
+    """Pause exactly the approved schedules after `verify_for_execution` re-checks the hash binding."""
+    from analystos.db.models import Approval
+    from analystos.services import change_impact
+
+    load_in_workspace(session, Approval, approval_id, user=user, minimum="editor", label="approval")
+    return change_impact.execute_pause(session, session.merge(user), approval_id)
+
+
+class PiiLineageIn(BaseModel):
+    dbt_manifest: dict | None = None  # optional: a dbt manifest.json whose column lineage joins the recorded one
+    sql: list[str] = Field(default_factory=list, max_length=50)  # optional CREATE/INSERT ... SELECT statements
+    dialect: str = "postgres"
+    propose: bool = True
+
+
+@router.post("/workspaces/{workspace_id}/lineage/pii-scan")
+def pii_scan(workspace_id: str, body: PiiLineageIn, user: User = Depends(current_user),
+             session: Session = Depends(db, scope="function")):
+    """Find untagged columns that receive values of pii / restricted / sensitive columns along column lineage and
+    queue review drafts that add the tag (P1-5). Never removes or applies a tag."""
+    from analystos.evidence.lineage import propagation as prop
+    from analystos.services import pii_lineage
+
+    require_role(session, user, workspace_id, "editor" if body.propose else "viewer")
+    extra = prop.edges_from_dbt_manifest(body.dbt_manifest, body.dialect) if body.dbt_manifest else []
+    if body.sql:
+        from analystos.governance.policy import resolve_scope
+
+        # unqualified columns resolve against what this caller may read (as POST /recipes/lineage does)
+        scope = resolve_scope(session, user, workspace_id, minimum_role="analyst")
+        catalog = {asset: [c for c in cols if f"{asset}.{c}" not in scope.denied_columns]
+                   for asset, cols in scope.columns.items()}
+        for stmt in body.sql:
+            extra += prop.edges_from_sql(stmt, body.dialect, catalog=catalog or None)
+    return pii_lineage.scan(session, workspace_id, actor=f"user:{user.id}", extra_edges=extra,
+                            propose_drafts=body.propose)
+
+
 @router.get("/workspaces/{workspace_id}/catalog")
 def catalog(workspace_id: str, q: str = "", domain: str | None = None, role: str | None = None, include_deprecated: bool = False,
             user: User = Depends(current_user), session: Session = Depends(db, scope="function")):

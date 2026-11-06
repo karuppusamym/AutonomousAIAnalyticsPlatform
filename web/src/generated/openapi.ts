@@ -712,6 +712,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/approvals/{approval_id}/execute-schedule-pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Schedule Pause
+         * @description Pause exactly the approved schedules after `verify_for_execution` re-checks the hash binding.
+         */
+        post: operations["execute_schedule_pause_api_approvals__approval_id__execute_schedule_pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/approvals/{approval_id}/reject": {
         parameters: {
             query?: never;
@@ -1283,6 +1303,47 @@ export interface paths {
         get: operations["get_crawl_api_crawls__crawl_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crawls/{crawl_id}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Crawl Impact
+         * @description What reads the columns this crawl saw removed, retyped or deprecated (P1-5): downstream columns along
+         *     recorded lineage, metrics, verified queries, dashboards, monitors and schedules. Read-only.
+         */
+        get: operations["crawl_impact_api_crawls__crawl_id__impact_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crawls/{crawl_id}/impact/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Schedule Pause
+         * @description Request approval to pause impacted schedules. Nothing changes until the approval is decided and executed.
+         */
+        post: operations["request_schedule_pause_api_crawls__crawl_id__impact_pause_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5616,6 +5677,27 @@ export interface paths {
         get: operations["lineage_api_workspaces__workspace_id__lineage_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/lineage/pii-scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pii Scan
+         * @description Find untagged columns that receive values of pii / restricted / sensitive columns along column lineage and
+         *     queue review drafts that add the tag (P1-5). Never removes or applies a tag.
+         */
+        post: operations["pii_scan_api_workspaces__workspace_id__lineage_pii_scan_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10863,6 +10945,30 @@ export interface components {
             /** To Owner */
             to_owner: string;
         };
+        /** PauseIn */
+        PauseIn: {
+            /** Schedule Ids */
+            schedule_ids?: string[];
+        };
+        /** PiiLineageIn */
+        PiiLineageIn: {
+            /** Dbt Manifest */
+            dbt_manifest?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Dialect
+             * @default postgres
+             */
+            dialect?: string;
+            /**
+             * Propose
+             * @default true
+             */
+            propose?: boolean;
+            /** Sql */
+            sql?: string[];
+        };
         /** PilotCheck */
         PilotCheck: {
             /** Action */
@@ -13896,6 +14002,40 @@ export interface operations {
             };
         };
     };
+    execute_schedule_pause_api_approvals__approval_id__execute_schedule_pause_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reject_api_approvals__approval_id__reject_post: {
         parameters: {
             query?: never;
@@ -14971,6 +15111,78 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crawl_impact_api_crawls__crawl_id__impact_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                crawl_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_schedule_pause_api_crawls__crawl_id__impact_pause_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                crawl_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PauseIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -24610,6 +24822,44 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pii_scan_api_workspaces__workspace_id__lineage_pii_scan_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiLineageIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
