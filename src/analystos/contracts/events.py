@@ -128,3 +128,7 @@ EVENT_TYPES |= {"trigger.received", "trigger.processed", "alert.deferred", "aler
 # P1-5 (review 2026-11-05): a tagged column's values reached an untagged one (a review draft adds the tag); what a
 # crawl's schema change impacts; impacted schedules paused through an approval
 EVENT_TYPES |= {"lineage.pii_gap_detected", "schema.impact_reported", "schedule.paused_for_change"}
+
+# Declared quality rules (P1-7) and data-product access requests (P2-9)
+EVENT_TYPES |= {"quality_rule.declared", "quality_rule.evaluated", "data_product.access_requested",
+                "data_product.access_granted"}

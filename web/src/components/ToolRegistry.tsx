@@ -22,6 +22,7 @@ import {
   signatureInfo, statusTone, type SourceType,
 } from "../lib/toolRegistry";
 import { to } from "../routes";
+import { ProductContract } from "./ProductContract";
 import { SchemaForm } from "./SchemaForm";
 import {
   Card, DataTable, EmptyState, EnabledToggle, ErrorBox, Field, JsonView, KeyValue, Loading, Notice, StateView, Tag,
@@ -264,6 +265,7 @@ function ToolBody({ ws, tool, onChanged }: { ws: string; tool: RegistryToolDetai
         ["Last success", h.last_ok_at ? fmtDate(h.last_ok_at) : "—"],
       ]} />
       {tool.kind === "external_mcp" && <ScreeningReview ws={ws} tool={tool} onClassified={onChanged} />}
+      {tool.kind === "data_product" && <ProductContract ws={ws} toolId={tool.tool_id} />}
       <Versions tool={tool} />
       <Usage ws={ws} toolId={tool.tool_id} />
       {h.invocable && m.exposure.rest && <TryTool ws={ws} tool={tool} />}

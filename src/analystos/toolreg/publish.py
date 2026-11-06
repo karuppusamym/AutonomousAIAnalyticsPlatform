@@ -7,6 +7,10 @@ with `additionalProperties: false`: a caller supplies names and literal values, 
 reference binds the exact source version (metric version, template hash, artifact content hash, definition
 version); a source that changed after publishing makes the tool stale (refused at invoke, shown in health).
 Re-publishing unchanged content is idempotent; a new source version is a new major version.
+
+`options.contract` (P2-9) adds a signed contract block to a data product: a freshness SLA over catalog assets and
+refs to active quality rules of this workspace (`quality/contracts.py` checks both before signing). A changed
+contract is a new minor version.
 """
 from __future__ import annotations
 
@@ -17,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from analystos.contracts.quality import DataContract
 from analystos.contracts.semantic import FilterOp, TimeGrain
 from analystos.contracts.tool_manifest import ToolExecutionSpec, ToolExposure, ToolLimits, ToolManifestV2
 from analystos.core.errors import Conflict, InvalidInput, NotFound, PolicyDenied
@@ -45,6 +50,7 @@ class PublishOptions(BaseModel):
     columns: list[str] | None = None  # dataset: the allowed subset of its columns
     limits: ToolLimits | None = None
     exposure: ToolExposure | None = None
+    contract: DataContract | None = None  # data products: freshness SLA + quality-rule refs (P2-9)
 
 
 def _slug(text: str) -> str:
@@ -264,7 +270,15 @@ def publish(session: Session, user: User, workspace_id: str, source_type: str, r
     if source_type not in BUILDERS:
         raise InvalidInput(f"source type must be one of {', '.join(SOURCE_TYPES)}")
     require_role(session, user, workspace_id, PUBLISH_ROLE)
-    candidate, source, source_version = BUILDERS[source_type](session, workspace_id, str(ref or "").strip(), options or PublishOptions())
+    opts = options or PublishOptions()
+    candidate, source, source_version = BUILDERS[source_type](session, workspace_id, str(ref or "").strip(), opts)
+    if opts.contract is not None:
+        from analystos.quality.contracts import validate_contract
+
+        if candidate.kind != "data_product":
+            raise InvalidInput("only a data product (metric, verified query, dataset) can carry a contract")
+        validate_contract(session, workspace_id, opts.contract)
+        candidate = candidate.model_copy(update={"contract": opts.contract})
     for other in store.versions(session, workspace_id, candidate.tool_id):
         if _identity(other.source or {}) != _identity(source):
             raise Conflict(f"tool id {candidate.tool_id} is already published from another {source_type}; pass a name")

@@ -454,9 +454,8 @@ def test_a_new_source_is_pending_and_cannot_sync_until_a_second_person_approves(
     assert made["binding_status"] == "pending"
     with pytest.raises(ApprovalRequired, match="pending"):
         svc.service.sync_source(made["id"], actor="user:usr_1", resolver=public)
-    with session_scope() as s:
-        with pytest.raises(Forbidden, match="separation of duties"):
-            decide(s, apr_id, s.get(svc.models.User, "usr_1"), approve=True)
+    with session_scope() as s, pytest.raises(Forbidden, match="separation of duties"):
+        decide(s, apr_id, s.get(svc.models.User, "usr_1"), approve=True)
     with session_scope() as s:
         decide(s, apr_id, s.get(svc.models.User, "usr_2"), approve=True)
     out = svc.service.sync_source(made["id"], actor="user:usr_1", resolver=public,

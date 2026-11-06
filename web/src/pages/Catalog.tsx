@@ -6,6 +6,7 @@ import { api, type CatalogAsset, type CatalogColumn, type Relationship } from ".
 import { ColumnCurationForm } from "../components/ColumnCuration";
 import { KpiEditor } from "../components/KpiEditor";
 import { ColumnProfilePanel, hasProfile, profileLine, profileMetaText } from "../components/ProfileView";
+import { QualityRulesPanel, QualityTrustBadge } from "../components/QualityRules";
 import { ConfidenceBar, EmptyState, ErrorBox, Field, Loading, Notice, PageHeader, StatusBadge, Tag, Card, Tabs } from "../components/ui";
 import { fmtDate, fmtNumber, fmtPct } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
@@ -191,6 +192,7 @@ function CatalogTab({ wsId, canEdit }: { wsId: string; canEdit: boolean }) {
                           {a.reviewed ? <Tag tone="success">reviewed</Tag> : <Tag>unreviewed</Tag>}
                           {a.lifecycle !== "active" && <StatusBadge status={a.lifecycle === "deprecated" ? "superseded" : a.lifecycle} label={a.lifecycle} />}
                           {a.selected && <Tag tone="info">selected</Tag>}
+                          <QualityTrustBadge trust={a.quality} />
                         </div>
                       </td>
                       <td>
@@ -209,6 +211,7 @@ function CatalogTab({ wsId, canEdit }: { wsId: string; canEdit: boolean }) {
                             <p className="muted small">{profileMetaText(a.profile_meta, fmtDate)}</p>}
                           <CatalogColumns columns={a.columns} rowCount={a.profile_meta?.rows_profiled}
                             curate={canEdit ? { wsId, assetId: a.id, fq: a.fq } : undefined} />
+                          <QualityRulesPanel wsId={wsId} assetId={a.id} fq={a.fq} trust={a.quality} canEdit={canEdit} />
                         </td>
                       </tr>
                     )}

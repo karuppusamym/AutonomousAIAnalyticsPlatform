@@ -2583,6 +2583,7 @@ from analystos.conversations.models import (  # noqa: E402,F401  (conversation m
 )
 from analystos.db import column_presence  # noqa: E402,F401  (registers the absent-column filter, P7-20)
 from analystos.desk.models import ClassBaseline, DeskDaily, Request, RequestEvent  # noqa: E402,F401  (Request Desk, S13)
+from analystos.quality.models import QualityRuleResult, QualityRuleRow  # noqa: E402,F401  (declared quality rules, P1-7)
 from analystos.tenancy.schema import attach_tenant_columns  # noqa: E402
 from analystos.triggers.models import (  # noqa: E402,F401  (triggers, alert groups, channels, S09)
     AlertGroup,
