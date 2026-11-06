@@ -123,3 +123,6 @@ EVENT_TYPES |= {"report_document.created", "report_document.version_created", "r
 EVENT_TYPES |= {"trigger.received", "trigger.processed", "alert.deferred", "alert.released", "alert_group.opened",
                 "alert_group.merged", "alert_group.resolved", "monitor.rule_approved", "channel.request_created",
                 "pack.reviewed"}
+# Declared quality rules (P1-7) and data-product access requests (P2-9)
+EVENT_TYPES |= {"quality_rule.declared", "quality_rule.evaluated", "data_product.access_requested",
+                "data_product.access_granted"}

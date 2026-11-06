@@ -24,7 +24,8 @@ from analystos.security.auth import APPROVER_ROLES, role_at_least
 ALWAYS_SEPARATE_DUTIES = {"semantic_model.approve", "semantic_relationship.accept",
                           "delivery_destination.authorize",  # N-3: external egress is never self-authorized
                           "monitor_rule.approve",  # S09: a rule's recipients and the work it starts, likewise
-                          "playbook.sign"}  # S06-T6: a playbook's author never signs it off
+                          "playbook.sign",  # S06-T6: a playbook's author never signs it off
+                          "data_product.access"}  # P2-9: a consumer never grants their own access
 
 
 def _expired(approval: Approval) -> bool:
@@ -129,8 +130,11 @@ def decide(session: Session, approval_id: str, user: User, *, approve: bool, rea
     return approval
 
 
-def verify_for_execution(session: Session, approval_id: str, *, payload: dict[str, Any], plan_hash: str | None) -> Approval:
-    """Called immediately before the side effect. Any mismatch blocks execution."""
+def verify_for_execution(session: Session, approval_id: str, *, payload: dict[str, Any], plan_hash: str | None,
+                         requester_min_role: str = "editor") -> Approval:
+    """Called immediately before the side effect. Any mismatch blocks execution. `requester_min_role` is the role the
+    requester must still hold: editor (publish rights) unless the action is a consumer's own request, such as a
+    data-product access request (P2-9), where the requester only needs to still be a member."""
     approval = session.get(Approval, approval_id)
     if approval is None:
         raise ApprovalRequired("no approval on record")
@@ -139,7 +143,7 @@ def verify_for_execution(session: Session, approval_id: str, *, payload: dict[st
     if _expired(approval):
         approval.status = "expired"
         raise ApprovalRequired("approval expired")
-    return _verify_binding(session, approval, payload=payload, plan_hash=plan_hash)
+    return _verify_binding(session, approval, payload=payload, plan_hash=plan_hash, requester_min_role=requester_min_role)
 
 
 def verify_for_reapply(session: Session, approval_id: str, *, payload: dict[str, Any], plan_hash: str | None) -> Approval:
@@ -156,7 +160,7 @@ def verify_for_reapply(session: Session, approval_id: str, *, payload: dict[str,
 
 
 def _verify_binding(session: Session, approval: Approval, *, payload: dict[str, Any], plan_hash: str | None,
-                    mark: bool = True) -> Approval:
+                    mark: bool = True, requester_min_role: str = "editor") -> Approval:
     """Payload, plan and policy binding plus both parties' current rights. `mark` records an invalidation
     on the approval (a re-apply check leaves an executed approval as it is)."""
     def invalid(reason: str) -> None:
@@ -177,8 +181,9 @@ def _verify_binding(session: Session, approval: Approval, *, payload: dict[str, 
     approver = session.get(User, approval.decided_by) if approval.decided_by else None
     requester_role = member_role(session, requester, approval.workspace_id) if requester and requester.active else None
     approver_role = member_role(session, approver, approval.workspace_id) if approver and approver.active else None
-    if not role_at_least(requester_role, "editor"):
-        raise PolicyDenied("requester no longer holds publish rights in this workspace")
+    if not role_at_least(requester_role, requester_min_role):
+        raise PolicyDenied("requester no longer holds publish rights in this workspace" if requester_min_role == "editor"
+                           else f"requester no longer holds the {requester_min_role} role in this workspace")
     if approver_role not in APPROVER_ROLES and not (approver and approver.is_admin):
         raise PolicyDenied("approver no longer holds approval rights in this workspace")
     return approval

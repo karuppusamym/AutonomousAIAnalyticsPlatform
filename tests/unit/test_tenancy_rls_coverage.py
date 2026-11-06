@@ -138,3 +138,13 @@ def test_session_hook_restricts_only_bound_transactions(monkeypatch):
     with system_scope():
         hook.on_after_begin(S(), None, Conn())
     assert calls == []
+
+
+def test_quality_rule_tables_are_owned_by_their_workspace():
+    """P1-7: declared rules and their results are tenant-owned through a real workspace FK, never shared or
+    nullable, so RLS confines one tenant's rules and pass rates to that tenant."""
+    sources = tenant_sources(Base.metadata)
+    for name in ("quality_rule", "quality_rule_result"):
+        src = sources[name]
+        assert (src.parent, src.fk, src.nullable, src.shared) == ("workspace", "workspace_id", False, False), name
+        assert Base.metadata.tables[name].c.workspace_id.foreign_keys, name

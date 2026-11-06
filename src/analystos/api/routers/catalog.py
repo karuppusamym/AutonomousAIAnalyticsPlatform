@@ -154,6 +154,7 @@ def catalog(workspace_id: str, q: str = "", domain: str | None = None, role: str
     from collections import defaultdict
 
     from analystos.db.models import Relationship
+    from analystos.quality.service import asset_trust
     from analystos.semantic.suggest import _time_column
     from analystos.services import brief as brief_svc
 
@@ -180,6 +181,7 @@ def catalog(workspace_id: str, q: str = "", domain: str | None = None, role: str
     curated = {(a.field, a.subject): a.value for a in brief if a.effective and a.subject
                and (a.group, a.field) in (("time_measures", "unit"), ("time_measures", "currency"), ("domain", "alias"))}
     event_time = {a.subject: a.value for a in brief if a.effective and a.group == "time_measures" and a.field == "event_time"}
+    trust = asset_trust(session, workspace_id) if assets else {}  # P1-7: declared rules' latest results, one query
     out = []
     for a in assets:
         sem = a.semantics or {}
@@ -201,6 +203,7 @@ def catalog(workspace_id: str, q: str = "", domain: str | None = None, role: str
                     "model_description_draft": sem.get("model_description_draft"),
                     "renamed_to": sem.get("renamed_to"), "renamed_from": sem.get("renamed_from"),
                     "snapshot": a.snapshot or None,  # staged population: rows staged vs origin, truncated, sampling
+                    "quality": trust.get(fq),  # declared-rule trust signal (P1-7): level, pass counts, by dimension
                     "columns": [_column_view(c, fq, curated, profiled=bool(a.stats)) for c in cols]})
     return out
 

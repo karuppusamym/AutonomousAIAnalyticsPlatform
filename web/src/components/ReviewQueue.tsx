@@ -13,6 +13,7 @@ const KIND_LABEL: Record<string, string> = {
   term: "glossary term", definition: "definition", metric: "metric", rule: "business rule", note: "note", negative: "negative knowledge",
   attested_computation: "attested computation", table_description: "table description", domain_candidate: "domain candidate",
   column_description: "column description", glossary_term: "suggested glossary term", description_question: "description needed",
+  quality_rule: "quality rule",
 };
 
 /**

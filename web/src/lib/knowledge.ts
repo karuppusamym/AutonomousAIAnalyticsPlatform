@@ -124,7 +124,7 @@ export function matchesDoc(d: KnowledgeDocSummary, q: string): boolean {
 // ------------------------------------------------------------------------------------ review queue
 /** The field that carries a draft's text (the server's `primary_field`). */
 export function primaryField(kind: string): string {
-  if (kind === "attested_computation") return "statement";
+  if (kind === "attested_computation" || kind === "quality_rule") return "statement";
   if (kind === "table_description" || kind === "column_description") return "description";
   return kind === "description_question" ? "question" : "body";
 }

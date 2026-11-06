@@ -2606,7 +2606,66 @@ export interface CatalogAsset {
   time_column?: string | null;
   profile_meta?: ProfileMeta | null;
   snapshot?: Dict | null;
+  /** Declared quality rules' trust signal (P1-7, quality/service.py `asset_trust`); null when no rule is declared. */
+  quality?: QualityTrust | null;
   columns: CatalogColumn[];
+}
+
+// ----------------------------------------------------------------------------------- declared quality rules (P1-7)
+export type QualityTrustLevel = "trusted" | "partial" | "unverified" | "at_risk" | "failing" | "none" | string;
+
+export interface QualityTrust {
+  level: QualityTrustLevel;
+  rules: number;
+  passing: number;
+  failing: number;
+  errors: number;
+  unrun: number;
+  score: number;
+  mean_pass_rate: number | null;
+  by_dimension: Record<string, { rules: number; passing: number }>;
+  last_run_at: string | null;
+  failing_rules: { id: string; name: string; severity: string; pass_rate: number | null }[];
+}
+
+/** A declared rule (contracts/quality.py `QualityRule`, generated). */
+export type QualityRuleSpec = Schemas["QualityRule"];
+
+export interface QualityRuleRow {
+  id: string;
+  workspace_id: string;
+  asset: string;
+  column: string | null;
+  name: string;
+  type: string;
+  dimension: string;
+  severity: string;
+  threshold: number;
+  definition: QualityRuleSpec;
+  status: "active" | "disabled" | string;
+  origin: "owner" | "recommended" | "import:okf" | string;
+  approved_by: string | null;
+  last_status: "passed" | "failed" | "error" | null;
+  last_pass_rate: number | null;
+  last_run_at: string | null;
+}
+
+export interface QualityRuleResultRow {
+  rule_id: string;
+  name: string;
+  asset: string;
+  status: "passed" | "failed" | "error";
+  pass_rate: number | null;
+  evaluated: number | null;
+  value: number | null;
+  error: string | null;
+  threshold: number;
+}
+
+export interface QualityRecommendation {
+  asset: string;
+  queued: { id: string; type: string; column: string; statement: string }[];
+  skipped: number;
 }
 
 /** Query of GET …/catalog (generated parameters). */
@@ -2884,6 +2943,8 @@ export interface ToolManifestV2 {
   limits: { timeout_s: number; max_rows: number; rate_per_min: number };
   exposure: { rest: boolean; mcp: boolean; grants_required: string[] };
   signature: { alg: string; key_id: string; value: string } | null;
+  /** Data products only (P2-9): freshness SLA and quality-rule refs, signed with the rest. */
+  contract?: Schemas["DataContract"] | null;
 }
 
 export interface ToolHealth {
@@ -2917,6 +2978,49 @@ export interface ToolVersionRow {
 export interface RegistryToolDetail extends ToolVersionRow {
   health: ToolHealth;
   versions: { version: string; status: string; status_reason: string | null; created_at: string | null }[];
+}
+
+/** A data product's contract and its state now (quality/contracts.py `contract_status`, P2-9). */
+export interface ProductContractCheck {
+  key: string;
+  kind: "freshness" | "quality_rule" | string;
+  state: "ok" | "breach" | "unknown";
+  severity: "info" | "warning" | "critical" | string;
+  message: string;
+  asset?: string;
+  rule_id?: string;
+  age_hours?: number;
+  max_age_hours?: number;
+  pass_rate?: number | null;
+}
+
+export interface ProductContractStatus {
+  tool_id: string;
+  version: string;
+  has_contract: boolean;
+  contract: Schemas["DataContract"] | null;
+  checks: ProductContractCheck[];
+  breaches: ProductContractCheck[];
+  ok: boolean;
+  unknown: number;
+  checked_at?: string;
+}
+
+/** A consumer access request: an approval bound to (product, version, requester, role or grant). */
+export interface ProductAccessRequest {
+  approval_id: string;
+  product: string;
+  version: string;
+  requester: string;
+  role: string | null;
+  grant: { client_id: string; tools: string[]; role: string } | null;
+  status: string;
+  risk_tier: string;
+  reason: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  created_at: string | null;
+  expires_at: string | null;
 }
 
 export interface ToolPublished extends ToolVersionRow {
@@ -4548,6 +4652,29 @@ export const api = {
     get("/v2/tools", { query: { workspace_id: ws, ...filter } }) as Promise<RegistryTool[]>,
   getRegistryTool: (ws: string, toolId: string) =>
     get("/v2/tools/{tool_id}", { path: { tool_id: toolId }, query: W(ws) }) as Promise<RegistryToolDetail>,
+  productContract: (ws: string, toolId: string) =>
+    get("/v2/tools/{tool_id}/contract", { path: { tool_id: toolId }, query: W(ws) }) as Promise<ProductContractStatus>,
+  productAccessRequests: (ws: string, toolId: string) =>
+    get("/v2/tools/{tool_id}/access-requests", { path: { tool_id: toolId }, query: W(ws) }) as Promise<ProductAccessRequest[]>,
+  requestProductAccess: (ws: string, toolId: string, body: { role?: string; mcp_client_id?: string; reason?: string } = {}) =>
+    post("/v2/tools/{tool_id}/access-requests", { path: { tool_id: toolId }, body: { workspace_id: ws, ...body } }) as
+      Promise<{ approval_id: string; status: string; risk_tier: string }>,
+  decideProductAccess: (approvalId: string, approve: boolean, reason?: string) =>
+    post("/v2/access-requests/{approval_id}:decide", { path: { approval_id: approvalId }, body: { approve, reason: reason ?? null } }) as
+      Promise<{ approval_id: string; status: string } & Dict>,
+  // declared quality rules (P1-7)
+  qualityRules: (ws: string, asset?: string) =>
+    get("/api/workspaces/{workspace_id}/quality-rules", { path: W(ws), query: asset ? { asset } : {} }) as Promise<QualityRuleRow[]>,
+  declareQualityRule: (ws: string, rule: QualityRuleSpec) =>
+    post("/api/workspaces/{workspace_id}/quality-rules", { path: W(ws), body: rule }) as Promise<QualityRuleRow & { created: boolean }>,
+  setQualityRuleStatus: (ruleId: string, status: "active" | "disabled") =>
+    post("/api/quality-rules/{rule_id}/status", { path: { rule_id: ruleId }, body: { status } }) as Promise<QualityRuleRow>,
+  runQualityRules: (ws: string, assets?: string[]) =>
+    post("/api/workspaces/{workspace_id}/quality-rules:run", { path: W(ws), body: { assets: assets ?? null } }) as
+      Promise<{ results: QualityRuleResultRow[]; trust: Record<string, QualityTrust> }>,
+  recommendQualityRules: (ws: string, assetId: string) =>
+    post("/api/workspaces/{workspace_id}/assets/{asset_id}/quality-rules:recommend", { path: { workspace_id: ws, asset_id: assetId } }) as
+      Promise<QualityRecommendation>,
   registryToolUsage: (ws: string, toolId: string, days = 7) =>
     get("/v2/tools/{tool_id}/usage", { path: { tool_id: toolId }, query: { workspace_id: ws, days } }) as Promise<ToolUsage>,
   publishTool: (body: ToolPublishBody) => post("/v2/tools:publish", { body }) as Promise<ToolPublished>,

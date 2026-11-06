@@ -18,7 +18,8 @@ wins. A draft for a subject supersedes that subject's older pending drafts.
 
 Two kinds come from the glossary scan (knowledge/glossary_scan.py) and are applied outside the pack:
 an approved `glossary_term` becomes a trusted workspace glossary entry, an answered
-`description_question` becomes catalog text (a person's words: origin `user`).
+`description_question` becomes catalog text (a person's words: origin `user`). A `quality_rule` draft
+(quality/recommend.py, from the stored profile) becomes an active rule declared by the approving owner.
 """
 from __future__ import annotations
 
@@ -50,11 +51,13 @@ KIND_SPEC: dict[str, tuple[str, str, str]] = {
     # Stream E (knowledge/glossary_scan.py): approval writes a glossary entry or catalog text, not a pack file.
     "glossary_term": ("Glossary Term", "glossary", "term"),
     "description_question": ("Note", "notes", "note"),
+    # P1-7 (quality/recommend.py): approval declares a quality rule on the asset, not a pack file.
+    "quality_rule": ("Quality Rule", "quality-rules", "quality_rule"),
 }
 PRIMARY_FIELD = {"attested_computation": "statement", "table_description": "description",
-                 "column_description": "description", "description_question": "question"}
-# Kinds whose approval is applied outside the pack (a glossary entry, catalog text): no pack document.
-APPLIED_KINDS = ("glossary_term", "description_question")
+                 "column_description": "description", "description_question": "question", "quality_rule": "statement"}
+# Kinds whose approval is applied outside the pack (a glossary entry, catalog text, a quality rule): no pack document.
+APPLIED_KINDS = ("glossary_term", "description_question", "quality_rule")
 STATUSES = ("pending", "approved", "rejected", "superseded")
 ACTIONS = ("approve", "edit", "reject")
 REVIEW_KEY = "review"  # `analystos.review` marks a document the queue wrote (and may replace)
@@ -454,6 +457,22 @@ def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[
             if problem:
                 errors.append({"id": sid, "error": problem})
                 continue
+        if row.kind == "quality_rule":
+            from analystos.quality import recommend
+
+            problem = recommend.rule_error(fields)
+            if not problem:
+                try:
+                    note = recommend.apply_suggestion(session, row, fields, user)
+                except recommend.ReviewRefused as exc:
+                    problem = str(exc)
+            if problem:
+                errors.append({"id": sid, "error": problem})
+                continue
+            if action == "edit":
+                row.fields = fields
+            decided.append((row, "approved", note))
+            continue
         if row.kind in APPLIED_KINDS:
             from analystos.knowledge import glossary_scan
 

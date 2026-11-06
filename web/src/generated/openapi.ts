@@ -1687,6 +1687,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/quality-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Rule */
+        get: operations["get_rule_api_quality_rules__rule_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-rules/{rule_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Rule Status */
+        post: operations["set_rule_status_api_quality_rules__rule_id__status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/queries/{query_id}": {
         parameters: {
             query?: never;
@@ -3903,6 +3937,26 @@ export interface paths {
         get: operations["assets_api_workspaces__workspace_id__assets_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/assets/{asset_id}/quality-rules:recommend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recommend Rules
+         * @description Deterministic recommendations from the stored profile, queued as review drafts (kind `quality_rule`).
+         */
+        post: operations["recommend_rules_api_workspaces__workspace_id__assets__asset_id__quality_rules_recommend_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6653,6 +6707,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{workspace_id}/quality-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Rules */
+        get: operations["list_rules_api_workspaces__workspace_id__quality_rules_get"];
+        put?: never;
+        /**
+         * Declare Rule
+         * @description An owner declares a rule on an asset of this workspace's catalog: active at once (a person decided it).
+         */
+        post: operations["declare_rule_api_workspaces__workspace_id__quality_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/quality-rules/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Rules
+         * @description Active rules as an OKF v0.2 pack (zip): rules kept as code.
+         */
+        get: operations["export_rules_api_workspaces__workspace_id__quality_rules_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/quality-rules/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Rules
+         * @description An OKF rules pack into the review queue: every rule is a draft until an owner approves it.
+         */
+        post: operations["import_rules_api_workspaces__workspace_id__quality_rules_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/quality-rules:run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Rules
+         * @description Run active rules now through the gateway, in the caller's own data scope (analyst or above).
+         */
+        post: operations["run_rules_api_workspaces__workspace_id__quality_rules_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/quality-trust": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quality Trust */
+        get: operations["quality_trust_api_workspaces__workspace_id__quality_trust_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{workspace_id}/query": {
         parameters: {
             query?: never;
@@ -8121,6 +8273,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/access-requests/{approval_id}:apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Product Access
+         * @description Apply a request approved elsewhere (the generic approvals screen). Needs an approver role.
+         */
+        post: operations["apply_product_access_v2_access_requests__approval_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/access-requests/{approval_id}:decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Product Access */
+        post: operations["decide_product_access_v2_access_requests__approval_id__decide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/admin/models/evaluations": {
         parameters: {
             query?: never;
@@ -8437,6 +8626,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/tools/{tool_id}/access-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Product Access
+         * @description Owners and approvers see every request for the product; anyone else sees their own.
+         */
+        get: operations["list_product_access_v2_tools__tool_id__access_requests_get"];
+        put?: never;
+        /** Request Product Access */
+        post: operations["request_product_access_v2_tools__tool_id__access_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/tools/{tool_id}/contract": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Product Contract
+         * @description The product's contract and its state now (freshness, rule results): breaches are shown on the product.
+         */
+        get: operations["product_contract_v2_tools__tool_id__contract_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/tools/{tool_id}/usage": {
         parameters: {
             query?: never;
@@ -8667,6 +8897,24 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccessDecisionIn */
+        AccessDecisionIn: {
+            /** Approve */
+            approve: boolean;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** AccessRequestIn */
+        AccessRequestIn: {
+            /** Mcp Client Id */
+            mcp_client_id?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Role */
+            role?: string | null;
+            /** Workspace Id */
+            workspace_id: string;
+        };
         /** AgentForm */
         AgentForm: {
             autonomy?: components["schemas"]["AgentFormAutonomy"];
@@ -9167,6 +9415,11 @@ export interface components {
             /** Slug */
             slug: string;
         };
+        /** Body_import_rules_api_workspaces__workspace_id__quality_rules_import_post */
+        Body_import_rules_api_workspaces__workspace_id__quality_rules_import_post: {
+            /** File */
+            file: string;
+        };
         /** Body_upload_api_workspaces__workspace_id__uploads_post */
         Body_upload_api_workspaces__workspace_id__uploads_post: {
             /** File */
@@ -9586,6 +9839,18 @@ export interface components {
              * @default false
              */
             refresh_saved?: boolean;
+        };
+        /**
+         * DataContract
+         * @description A data product's promise to its consumers (P2-9). Rule refs are `quality_rule` ids that must be active
+         *     when the product is published; the monitor reads their latest results and the freshness of `assets`.
+         */
+        DataContract: {
+            freshness?: components["schemas"]["FreshnessSla"] | null;
+            /** Min Pass Rate */
+            min_pass_rate?: number | null;
+            /** Quality Rules */
+            quality_rules?: string[];
         };
         /** DataScope */
         DataScope: {
@@ -10046,6 +10311,13 @@ export interface components {
             spec?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** FreshnessSla */
+        FreshnessSla: {
+            /** Assets */
+            assets: string[];
+            /** Max Age Hours */
+            max_age_hours: number;
         };
         /** GlossaryScanIn */
         GlossaryScanIn: {
@@ -11226,6 +11498,7 @@ export interface components {
         PublishOptions: {
             /** Columns */
             columns?: string[] | null;
+            contract?: components["schemas"]["DataContract"] | null;
             /** Description */
             description?: string | null;
             /** Dimensions */
@@ -11243,6 +11516,61 @@ export interface components {
         PushIn: {
             /** Approval Id */
             approval_id: string;
+        };
+        /**
+         * QualityRule
+         * @description One declared rule. `asset` is `schema.table` as the gateway sees it; `column` is set for every column
+         *     rule (all but sql_row / sql_aggregate and a composite unique, which uses `columns`).
+         */
+        QualityRule: {
+            /**
+             * Allow Null
+             * @default true
+             */
+            allow_null?: boolean;
+            /** Asset */
+            asset: string;
+            /** Column */
+            column?: string | null;
+            /** Columns */
+            columns?: string[];
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /** Dimension */
+            dimension?: ("completeness" | "uniqueness" | "validity" | "accuracy" | "consistency" | "timeliness") | null;
+            /** Max */
+            max?: number | null;
+            /** Min */
+            min?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Pattern */
+            pattern?: string | null;
+            /**
+             * Severity
+             * @default warning
+             * @enum {string}
+             */
+            severity?: "info" | "warning" | "critical";
+            /** Sql */
+            sql?: string | null;
+            /** Statistic */
+            statistic?: ("mean" | "min" | "max" | "sum" | "stddev" | "median" | "count" | "distinct_count" | "null_rate") | null;
+            /**
+             * Threshold
+             * @default 1
+             */
+            threshold?: number;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "not_null" | "unique" | "accepted_values" | "range" | "regex" | "statistic_range" | "sql_row" | "sql_aggregate";
+            /** Values */
+            values?: (string | number | boolean)[];
         };
         /** QueryHistoryIn */
         QueryHistoryIn: {
@@ -11519,6 +11847,11 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** RuleStatusIn */
+        RuleStatusIn: {
+            /** Status */
+            status: string;
+        };
         /** RunIn */
         RunIn: {
             /** Analysis Context */
@@ -11559,6 +11892,13 @@ export interface components {
             max_scan_bytes?: number | null;
             /** Max Steps */
             max_steps?: number | null;
+        };
+        /** RunRulesIn */
+        RunRulesIn: {
+            /** Assets */
+            assets?: string[] | null;
+            /** Rule Ids */
+            rule_ids?: string[] | null;
         };
         /**
          * ScenarioAdjustment
@@ -15631,6 +15971,78 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_rule_api_quality_rules__rule_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_rule_status_api_quality_rules__rule_id__status_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleStatusIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -20722,6 +21134,41 @@ export interface operations {
             };
             path: {
                 workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recommend_rules_api_workspaces__workspace_id__assets__asset_id__quality_rules_recommend_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+                asset_id: string;
             };
             cookie?: never;
         };
@@ -26877,6 +27324,227 @@ export interface operations {
             };
         };
     };
+    list_rules_api_workspaces__workspace_id__quality_rules_get: {
+        parameters: {
+            query?: {
+                asset?: string | null;
+                status?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    declare_rule_api_workspaces__workspace_id__quality_rules_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualityRule"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_rules_api_workspaces__workspace_id__quality_rules_export_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_rules_api_workspaces__workspace_id__quality_rules_import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_rules_api_workspaces__workspace_id__quality_rules_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_rules_api_workspaces__workspace_id__quality_rules_run_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunRulesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quality_trust_api_workspaces__workspace_id__quality_trust_get: {
+        parameters: {
+            query?: {
+                assets?: string[] | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     query_api_workspaces__workspace_id__query_post: {
         parameters: {
             query?: never;
@@ -30161,6 +30829,78 @@ export interface operations {
             };
         };
     };
+    apply_product_access_v2_access_requests__approval_id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_product_access_v2_access_requests__approval_id__decide_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessDecisionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     model_evaluations_v2_admin_models_evaluations_get: {
         parameters: {
             query?: {
@@ -30796,6 +31536,118 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_product_access_v2_tools__tool_id__access_requests_get: {
+        parameters: {
+            query: {
+                workspace_id: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                tool_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_product_access_v2_tools__tool_id__access_requests_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                tool_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    product_contract_v2_tools__tool_id__contract_get: {
+        parameters: {
+            query: {
+                workspace_id: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                tool_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

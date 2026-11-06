@@ -1,5 +1,31 @@
 # Capability register (evidence)
 
+## 2026-11-05 — Declared quality rules and data-product contracts (GKC-P1-7, GKC-P2-9)
+
+From the Google Knowledge Catalog review (`docs/70-reviews/2026-11-05-google-knowledge-catalog-review.md`, P1-7 and
+P2-9). Migration `0077_quality_rules` is based on head `0076_run_leases`.
+
+| Capability | Code path | Evidence (2026-11-05) |
+|---|---|---|
+| An owner declares a quality rule on a catalog asset or column: not_null, unique, accepted_values, range (the recipe gate types), regex, statistic range, owner SQL row condition or aggregate; each with a pass threshold, dimension and severity | `contracts/quality.py`, `quality/service.py::declare`, `POST /api/workspaces/{ws}/quality-rules` | `tests/unit/test_quality_rules.py::test_rule_contract_shapes`, `test_declare_validates_against_the_catalog_and_is_idempotent`, `test_named_source_owners_decide_their_assets_rules` |
+| Rules render to one read-only aggregate statement through `skills/sqlbuild`, run through `QueryGateway.execute` in the runner's scope; owner SQL is refused unless it is an expression over the asset's own columns; a refused statement is an error, never a pass | `skills/quality_rules.py`, `quality/service.py::run_rules` | `test_rules_compile_run_and_judge_on_duckdb` (13 rule shapes on DuckDB), `test_rule_sql_is_one_aggregate_statement_in_every_dialect`, `test_owner_sql_is_an_expression_over_the_asset_only`, `test_a_refused_statement_is_an_error_never_a_pass`, `test_rule_on_an_asset_outside_the_runner_scope_is_an_error` |
+| Persisted with tenant isolation | `quality/models.py`, `migrations/versions/0077_quality_rules.py` | `tests/unit/test_tenancy_rls_coverage.py::test_quality_rule_tables_are_owned_by_their_workspace`; on a throwaway Postgres 16 (pgvector/pg16): `alembic upgrade head` from empty to 0077, both tables with RLS on, `tenant_isolation` policy, `tenancy_fill` trigger, `tenant_id NOT NULL`; downgrade to 0076 drops them, re-upgrade restores |
+| Recommendations from the stored profile land as review drafts; an owner approves (or edits) them; never a literal on a PII column | `quality/recommend.py`, `knowledge/suggestions.py` kind `quality_rule` | `test_profile_recommendations_land_as_drafts_and_an_owner_approves` |
+| Monitors run approved rules on schedule and alert on failing warning/critical rules | `quality/monitoring.py`, `services/monitors.py` kind `quality_rules` | `test_quality_rules_monitor_alerts_on_failing_rules` |
+| Pass rate as a trust signal on the asset (API + Catalog) | `quality/service.py::asset_trust`, `api/routers/catalog.py` (`quality`), `web/src/components/QualityRules.tsx` | `test_run_rules_through_the_gateway_records_counts_and_trust`, `web/src/test/qualityRules.test.tsx` |
+| Rules as code: OKF v0.2 export, import as drafts, identical bytes after a round trip | `quality/okf_rules.py`, `GET/POST /api/workspaces/{ws}/quality-rules/{export,import}` | `test_rules_round_trip_through_okf` |
+| A data product's signed `contract` block (freshness SLA, rule refs), validated at publish; old manifests still verify | `contracts/tool_manifest.py`, `toolreg/publish.py`, `quality/contracts.py` | `tests/unit/test_data_product_contracts.py::test_contract_block_is_signed_and_absent_blocks_hash_as_before`, `test_publish_validates_and_signs_the_contract`; `tests/unit/test_tool_registry.py` unchanged and passing |
+| Contract breaches judged without a query, shown on the product, alerted by a `data_contract` monitor | `quality/contracts.py::contract_status`, `GET /v2/tools/{id}/contract`, `web/src/components/ProductContract.tsx` | `test_contract_status_and_monitor_report_breaches`, `web/src/test/qualityRules.test.tsx` |
+| Consumer access request = approval bound to (product, version, requester, role); a person decides, code applies the role or MCP grant after `verify_for_execution`, once | `toolreg/access.py`, `governance/approvals.py` (`data_product.access` always separate duties; `requester_min_role`) | `test_access_request_is_decided_by_a_person_and_applied_by_code`, `test_separation_of_duties_and_binding`, `test_a_new_product_version_invalidates_an_open_request`, `test_mcp_grant_request_adds_the_product_to_the_clients_grant` |
+
+Live: `tests/integration/test_quality_rules_live.py` 2 passed (2026-11-05) on a throwaway Postgres 16 with strict
+tenancy: rules declared over HTTP on a staged parquet table ran through the real `QueryGateway` (query ids recorded;
+accepted_values 199/200), the catalog showed `quality.level = at_risk`, the OKF export zip held 4 rule documents; a
+verified query published with a contract showed `ok`, a viewer's access request was refused to the requester and
+applied by the approver (viewer → analyst). Without Postgres the file skips cleanly. Not verified: Redis, Temporal and
+the scheduler were not running (rules ran on request, not on a schedule tick); no live browser check of the two panels. The context lookup
+(`context/lookup.py`, another branch) does not yet read rule pass rates; `quality.service.asset_trust` is the call.
+
 ## 2026-10-30 — Registry screens fixed; MCP endpoint shipped; prompts editable (REG-FIX-01/02, PROMPT-01)
 
 Found in the browser on the redeployed stack (Settings → Capability registry):
