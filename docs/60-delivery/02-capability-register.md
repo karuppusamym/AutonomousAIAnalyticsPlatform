@@ -1565,3 +1565,21 @@ Source: [`70-reviews/2026-11-05-google-knowledge-catalog-review.md`](../70-revie
 
 Not verified: a live scheduler pass against real Ask history with a model (unit tested only; no migration, no new table).
 Cross-reference: [`01-tracker.md`](01-tracker.md) is untouched; this item is a review follow-up, not a v2 task ID.
+
+## 2026-11-06 — Local mode with nothing installed; MCP for any application (S12-LOCAL, S10-T6)
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| One-command local run | `analystos local [--demo]` (`local.py`): Postgres 16.2 + pgvector 0.6 from the `pgserver` wheel in a data folder, 127.0.0.1 only; roles and databases of `deploy/postgres/01-init.sql`; `migrate` + `seed`; API, MCP and the built web app on one port; a per-install JWT secret; waits out crash recovery after a hard kill | Live, Windows 11, 2026-11-06: fresh folder → health 200 in 90 s; `--demo` loaded 4 ServiceNow tables (118k rows) and the process-mining workspace; restart after a kill recovered (WAL redo) and answered |
+| Local database hardened | every role, the superuser included, gets a generated password kept owner-only in the data folder; pg_hba trust becomes scram-sha-256; the API binds loopback only unless --allow-remote with no dev defaults (governance review 2026-11-06) | live: after upgrading an existing folder, a passwordless superuser login is refused; unit test_trust_rules_become_scram_and_comments_stay, test_a_local_run_listens_on_loopback_unless_shared_without_dev_defaults |
+| No vector store to run | embeddings stay a pgvector column of the bundled database; `ANALYSTOS_VECTOR_BACKEND=array` still works | SQLite was rejected for the control plane: RLS tenancy, per-workspace analytics roles, run leases and spend locks are Postgres features (runbook 15 §1) |
+| Web on the API port | `api/web_static.py`: registered after every route; API-shaped paths keep their JSON 404; files only from inside `web/dist`; the web CSP of `web/nginx.conf` (the API default `default-src 'none'` blanked the page) | `test_web_static_serves_the_app_but_never_shadows_api_paths`; checked in the browser: sign-in and the workspace home render |
+| Metadata for an application's own SQL | MCP `catalog.tables` (sources, dialect, tables, columns minus denied ones; scope and grant slice) and the existing `context.lookup` | live: 6 tables in 2 sources |
+| Stored queries for any application | MCP `queries.list` (visible = every table in scope and slice, no denied column; enum values and defaults only with `context.lookup.values`; `question` returns the best match with extracted values) and `queries.run` (one-pass typed binding: a value cannot capture another placeholder; `needs_input`, hit counted) | live: "priority 3" extracted from a new question; no value → `needs_input`; `"2; DROP TABLE x"` refused as not a number; run returned 5 rows |
+| The application's own SQL | MCP `sql.run` through `_governed_run`: on a slice the parsed table list is checked first (one generic refusal, before the validator's hints), then the validator under the client's scope, `QueryGateway.execute` (masking, caps, audit), ≤ 200 rows back | unit: row cap, refusal audited and never executed, outside-slice refused before running; live: COUNT(*) = 3000, DELETE refused (`sql_rejected`) |
+| Connect a client | `analystos mcp-client create` (client + grant as the admin screens, audited; VS Code `mcp.json` with a password prompt instead of the token; generic `mcpServers` JSON) and `analystos mcp-client check` | live: client created for the demo workspace, `check` all ok |
+| Knowledge source approval in the UI | `KnowledgeSources.tsx`: binding state tag, note with the approvals inbox link, Sync now enabled only when approved | `web/src/test/knowledgeSources.test.tsx` |
+
+Not verified: GitHub Copilot in VS Code itself (the check uses the same MCP SDK transport Copilot speaks; VS Code was
+not driven here); macOS/Linux local runs; the `ask` tool without any model configured answers only from stored queries.
+

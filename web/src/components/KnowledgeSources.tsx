@@ -11,7 +11,15 @@ interface SyncReport {
 interface KnowledgeSource {
   id: string; kind: "github" | "confluence"; name: string; config: Record<string, string>; secret_ref: string | null;
   enabled: boolean; tracked_files: number; last_sync_at: string | null; last_status: string | null; last_report: SyncReport;
+  /** The second-person approval of (host, target, secret_ref); a source syncs only once it is approved. */
+  binding_approval_id?: string | null; binding_status?: string;
 }
+
+const BINDING: Record<string, { label: string; tone: string }> = {
+  approved: { label: "approved", tone: "success" }, pending: { label: "awaiting approval", tone: "warning" },
+  rejected: { label: "approval rejected", tone: "danger" }, invalidated: { label: "approval out of date", tone: "danger" },
+  expired: { label: "approval expired", tone: "danger" }, none: { label: "no approval yet", tone: "warning" },
+};
 
 const base = (ws: string) => `/api/workspaces/${encodeURIComponent(ws)}/knowledge/sources`;
 
@@ -52,6 +60,8 @@ export function KnowledgeSources({ wsId, canEdit }: { wsId: string; canEdit: boo
               <span className="chip-row small">
                 <Tag>{s.kind}</Tag>
                 {!s.enabled && <Tag tone="warning">paused</Tag>}
+                {(() => { const b = BINDING[s.binding_status ?? "none"] ?? { label: s.binding_status ?? "", tone: "warning" };
+                  return <Tag tone={b.tone}>{b.label}</Tag>; })()}
                 {s.last_status && <Tag tone={s.last_status === "ok" ? "success" : s.last_status === "partial" ? "warning" : "danger"}>{s.last_status}</Tag>}
               </span>
             </div>
@@ -60,6 +70,10 @@ export function KnowledgeSources({ wsId, canEdit }: { wsId: string; canEdit: boo
               {" · "}credential {s.secret_ref ?? "none (public)"} · {s.tracked_files} files tracked
               {s.last_sync_at ? ` · last sync ${fmtDate(s.last_sync_at)}` : " · never synced"}
             </p>
+            {s.binding_status !== "approved" && (
+              <p className="small" role="note">A second person must approve this source's host, target and credential before it can
+                sync{s.binding_status === "pending" ? <> (<a href={`/w/${encodeURIComponent(wsId)}/operate/approvals`}>approvals inbox</a>)</> : ""}.</p>
+            )}
             {s.last_report?.error && <p className="small" role="alert">{s.last_report.error}</p>}
             {s.last_status && !s.last_report?.error && (
               <p className="small muted">
@@ -71,7 +85,8 @@ export function KnowledgeSources({ wsId, canEdit }: { wsId: string; canEdit: boo
             )}
             {canEdit && (
               <div className="btn-row">
-                <button type="button" className="btn btn-sm" disabled={act.busy || !s.enabled}
+                <button type="button" className="btn btn-sm" disabled={act.busy || !s.enabled || s.binding_status !== "approved"}
+                  title={s.binding_status !== "approved" ? "Waiting for the approval of this source" : undefined}
                   onClick={() => void call("POST", `${base(wsId)}/${s.id}/sync`)}>Sync now</button>
                 <button type="button" className="btn btn-sm" disabled={act.busy}
                   onClick={() => void call("PATCH", `${base(wsId)}/${s.id}`, { enabled: !s.enabled })}>{s.enabled ? "Pause" : "Resume"}</button>

@@ -34,7 +34,10 @@ CONTEXT_READ = "context.read"
 # A grant flag, not a tool: context.lookup returns profiled data values (top values, min/max) only when the grant
 # names it explicitly. `context.read` does not imply it.
 LOOKUP_VALUES = "context.lookup.values"
-TOOLS = ("ask", "investigate", "get_finding_evidence", "validate_sql", "request.create", "request.status",
+# Any MCP application (Copilot, Claude, Cursor, an in-house app) uses the metadata to write SQL or runs a stored,
+# verified query by id; the gateway decides either way (validate, scope, masking, row cap, audit). Read-only.
+ASSISTANT_TOOLS = ("catalog.tables", "sql.run", "queries.list", "queries.run")
+TOOLS = ("ask", "investigate", "get_finding_evidence", "validate_sql", *ASSISTANT_TOOLS, "request.create", "request.status",
          "conversation.start", "conversation.say", "conversation.summary", *CONTEXT_TOOLS)
 GRANTABLE = (*TOOLS, CONTEXT_READ, LOOKUP_VALUES)
 # P7-11: a workspace's published query tools and tested/certified read-only HTTP tools, granted by name
@@ -47,6 +50,7 @@ RATE_KEY = "__rate__"  # mcp_usage row counting a grant's calls in one UTC minut
 RESOURCE_READ = "resources/read"  # quota key for resource reads
 GRANT_ROLES = ("viewer", "analyst")
 TOOL_MIN_ROLE = {"ask": "analyst", "investigate": "analyst", "validate_sql": "analyst",
+                 "catalog.tables": "viewer", "sql.run": "analyst", "queries.list": "viewer", "queries.run": "analyst",
                  "get_finding_evidence": "viewer", RESOURCE_READ: "viewer",
                  # Request Desk (S13): a request may run Ask or start an investigation, so it needs the grant those need
                  "request.create": "analyst", "request.status": "viewer",
@@ -202,10 +206,11 @@ def set_grant(session: Session, admin: User, client_id: str, workspace_id: str, 
     if expires_at is not None and expires_at.tzinfo is None:
         raise InvalidInput("expires_at must carry a time zone")
     domains, assets = _check_slice(domains), _check_slice(assets, asset=True)
-    outside = [t for t in tools if (domains or assets) and t not in (*CONTEXT_TOOLS, CONTEXT_READ)]
+    outside = [t for t in tools if (domains or assets) and t not in (*CONTEXT_TOOLS, CONTEXT_READ, *ASSISTANT_TOOLS)]
     if outside or ((domains or assets) and patterns):
-        raise InvalidInput("a grant limited to domains or assets can hold only the context tools "
-                           f"({', '.join(CONTEXT_TOOLS)}, {CONTEXT_READ}); remove {', '.join([*outside, *patterns])}")
+        raise InvalidInput("a grant limited to domains or assets can hold only the context and assistant tools "
+                           f"({', '.join((*CONTEXT_TOOLS, *ASSISTANT_TOOLS))}, {CONTEXT_READ}); "
+                           f"remove {', '.join([*outside, *patterns])}")
     quotas = dict(quotas or {})
     for k, v in quotas.items():
         if (k not in (*TOOLS, RESOURCE_READ) and not _patternable(k)) or not isinstance(v, int) or v < 1:
@@ -277,8 +282,10 @@ def check_grant(principal: ClientPrincipal, workspace_id: str | None, tool: str)
         raise Forbidden(f"the grant for workspace {workspace_id} expired")
     if tool != RESOURCE_READ and not grants_tool(grant["tools"], tool, grant.get("tool_patterns") or ()):
         raise Forbidden(f"the grant for workspace {workspace_id} does not include tool {tool}")
-    if is_sliced(grant) and tool != RESOURCE_READ and tool not in CONTEXT_TOOLS:  # defence in depth: no data-plane tool on a slice
-        raise Forbidden(f"the grant for workspace {workspace_id} is limited to a domain slice and covers context tools only")
+    # defence in depth: on a slice only the context tools and the assistant tools, which enforce the slice themselves
+    if is_sliced(grant) and tool != RESOURCE_READ and tool not in (*CONTEXT_TOOLS, *ASSISTANT_TOOLS):
+        raise Forbidden(f"the grant for workspace {workspace_id} is limited to a domain slice and covers context and "
+                        "assistant tools only")
     return grant
 
 

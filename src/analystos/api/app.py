@@ -385,3 +385,10 @@ def health_problems(checks: dict[str, dict]) -> list[dict]:
             problems.append({"dependency": name, "severity": severity, "message": message,
                              "detail": c.get("error") or c.get("detail")})
     return problems
+
+
+
+# Last: the built web app on the same port (`analystos local`), answering only paths no route above claimed.
+from analystos.api import web_static  # noqa: E402
+
+web_static.mount(app, get_settings().web_dist)

@@ -73,6 +73,9 @@ dev = [
 sqlserver = ["pymssql>=2.3"]
 # MCP client and server (P4-X05/X06): the official SDK, streamable HTTP, protocol 2026-07-28.
 mcp = ["mcp>=2.2"]
+# `analystos local`: the whole platform on one machine with nothing else installed. Postgres 16 + pgvector come
+# from the pgserver wheel (no Docker, no installer, no admin rights, no separate vector store).
+local = ["pgserver>=0.1.4", "analystos[mcp]"]
 # The customer's dbt runner for playbook.elt_build (P4-E04). The platform only runs the `dbt`
 # executable as a separate process (ANALYSTOS_DBT_EXECUTABLE), so installing it into its own venv or
 # image is preferred: dbt pins protobuf/networkx versions that can differ from the platform's.

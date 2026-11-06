@@ -1,4 +1,4 @@
-"""analystos CLI: migrate | provision-analytics-roles | seed | demo-seed | worker | driver | scheduler | api | export-contracts | replay-run | packs | calibrate | knowledge | check-semantics | audit | ops"""
+"""analystos CLI: local | mcp-client | migrate | provision-analytics-roles | seed | demo-seed | worker | driver | scheduler | api | export-contracts | replay-run | packs | calibrate | knowledge | check-semantics | audit | ops"""
 from __future__ import annotations
 
 import argparse
@@ -302,7 +302,7 @@ def bi_sync(workspace_ids: list[str] | None = None) -> dict:
 
 
 # Long-running servers bind tenants per request, per run and per claimed item; demo-seed goes through the API.
-_SELF_BINDING = ("worker", "driver", "scheduler", "api", "demo-seed")
+_SELF_BINDING = ("worker", "driver", "scheduler", "api", "demo-seed", "local", "mcp-client")
 
 
 def certify_connector_main(argv: list[str]) -> int:
@@ -353,6 +353,14 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _main(argv: list[str]) -> int:
+    if argv[:1] == ["local"]:  # the whole platform on one machine, bundled Postgres (`analystos local --help`)
+        from analystos.local import main as local_main
+
+        return local_main(argv[1:])
+    if argv[:1] == ["mcp-client"]:  # connect Copilot / Claude Code / Cursor (`analystos mcp-client create --help`)
+        from analystos.mcp.setup_cli import main as mcp_client_main
+
+        return mcp_client_main(argv[1:])
     if argv[:1] == ["knowledge"]:
         from analystos.knowledge.cli import main as knowledge_main
 
