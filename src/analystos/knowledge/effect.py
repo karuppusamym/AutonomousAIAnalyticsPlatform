@@ -6,6 +6,10 @@ suite runs with no model so the result is deterministic and free, and the savepo
 projected score therefore comes from the same code that will apply the batch, not from a second
 implementation of it.
 
+The verified-query lexicon is the only in-process cache built from workspace knowledge (checked 2026-11-05;
+`_semantics_cache` is keyed by SQL text). It is dropped around the preview, so nothing from the unapproved batch
+outlives the rollback. A new knowledge cache on the golden path must be dropped here too.
+
 Gate: a batch that makes a passing golden case fail is refused unless the reviewer writes a reason. The
 reason, the cases and both scores are audited. Models never decide here: nothing in this path calls one.
 """
