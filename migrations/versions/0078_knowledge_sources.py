@@ -4,16 +4,16 @@ isolation (column, fill trigger, row-level security) is installed here.
 
 Expand-only: one new table; the previous release ignores it.
 
-Revision ID: 0077_knowledge_sources
-Revises: 0076_run_leases
+Revision ID: 0078_knowledge_sources
+Revises: 0077_context_webhooks
 """
 from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0077_knowledge_sources"
-down_revision = "0076_run_leases"
+revision = "0078_knowledge_sources"
+down_revision = "0077_context_webhooks"
 branch_labels = None
 depends_on = None
 

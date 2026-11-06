@@ -28,6 +28,7 @@ Governance:
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
@@ -246,9 +247,11 @@ def _normalise(assets: list[str]) -> list[str]:
 
 
 def lookup(session: Session, user: Any, workspace_id: str, assets: list[str], *, format: str = "yaml",
-           budget_chars: int = DEFAULT_BUDGET_CHARS, now: datetime | None = None) -> dict[str, Any]:
+           budget_chars: int = DEFAULT_BUDGET_CHARS, now: datetime | None = None,
+           domains: Iterable[str] = (), slice_assets: Iterable[str] = ()) -> dict[str, Any]:
     """`{content, format, assets, omissions, receipts, identity_hash, budget}` for the named assets the caller may
-    see. `content` is the rendered block; `budget_chars` bounds it (the envelope around it is not counted)."""
+    see. `content` is the rendered block; `budget_chars` bounds it (the envelope around it is not counted).
+    `domains` / `slice_assets` are an MCP grant's slice (P2-8): an asset outside it is absent, like one out of scope."""
     from analystos.context import usage
     from analystos.db.models import SourceAsset, SourceColumn
 
@@ -256,8 +259,9 @@ def lookup(session: Session, user: Any, workspace_id: str, assets: list[str], *,
         raise InvalidInput(f"format must be one of {', '.join(FORMATS)}")
     budget = max(MIN_BUDGET_CHARS, min(int(budget_chars or DEFAULT_BUDGET_CHARS), MAX_BUDGET_CHARS))
     names = _normalise(assets)
-    access = retrieval.access_for(session, user, workspace_id)
-    wanted = [n for n in names if n in access.assets]  # outside scope or not catalogued: absent, not counted
+    access = retrieval.access_for(session, user, workspace_id, domains=domains, assets=slice_assets)
+    # outside scope, outside the grant's slice, or not catalogued: absent, not counted
+    wanted = [n for n in names if n in access.assets and (access.slice_assets is None or n in access.slice_assets)]
     rows: dict[str, Any] = {}
     if wanted:
         for a in session.scalars(select(SourceAsset).where(SourceAsset.workspace_id == workspace_id)):

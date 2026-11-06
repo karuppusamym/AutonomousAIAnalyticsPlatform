@@ -3,16 +3,16 @@ workspace's context. Empty lists mean the whole workspace, so existing grants ar
 
 Expand-only: two nullable-free JSON columns with an empty-list default.
 
-Revision ID: 0077_mcp_grant_slice
-Revises: 0076_run_leases
+Revision ID: 0079_mcp_grant_slice
+Revises: 0078_knowledge_sources
 """
 from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0077_mcp_grant_slice"
-down_revision = "0076_run_leases"
+revision = "0079_mcp_grant_slice"
+down_revision = "0078_knowledge_sources"
 branch_labels = None
 depends_on = None
 

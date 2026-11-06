@@ -329,3 +329,13 @@ def test_mcp_tool_is_a_read_only_context_grant():
     assert "context.lookup" in TOOL_DEFS and "context.lookup" in TOOL_IMPLS and TOOL_DEFS["context.lookup"]["read_only"]
     assert TOOL_DEFS["context.lookup"]["schema"]["properties"]["assets"]["maxItems"] == L.MAX_ASSETS
     assert grants.grants_tool(["context.read"], "context.lookup") and not grants.grants_tool(["ask"], "context.lookup")
+
+
+def test_an_mcp_grant_slice_hides_assets_outside_it_like_out_of_scope_ones(db):
+    """A grant sliced to one table (P2-8) must not reach another through `context.lookup` (P0-2)."""
+    inside = _lookup(["itsm.incident"], slice_assets=["itsm.incident"])
+    assert inside["assets"] == 1
+    outside = _lookup(["itsm.incident"], slice_assets=["itsm.team"])
+    assert outside["assets"] == 0 and outside["omissions"] == [] and outside["receipts"] == []
+    assert "Priority" not in outside["content"]
+    assert outside["content"] == _lookup(["nope.missing"])["content"]

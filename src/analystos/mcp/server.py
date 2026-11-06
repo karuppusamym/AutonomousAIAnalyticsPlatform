@@ -300,7 +300,8 @@ def _tool_context_lookup(principal: G.ClientPrincipal, ws: str, args: dict[str, 
     with session_scope() as s:
         out = lookup.lookup(s, _service_user(s, principal), ws, list(args.get("assets") or []),
                             format=str(args.get("format") or "yaml"),
-                            budget_chars=int(args.get("budget_chars") or lookup.DEFAULT_BUDGET_CHARS))
+                            budget_chars=int(args.get("budget_chars") or lookup.DEFAULT_BUDGET_CHARS),
+                            domains=_slice(principal, ws)["domains"], slice_assets=_slice(principal, ws)["assets"])
         audit(f"mcp_client:{principal.client_id}", "context.looked_up", workspace_id=ws, target=out["identity_hash"][:40],
               decision="allow", details={"assets": out["assets"], "omissions": len(out["omissions"])}, session=s)
         return out

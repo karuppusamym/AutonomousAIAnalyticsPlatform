@@ -5737,6 +5737,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{workspace_id}/knowledge/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Knowledge Sources
+         * @description Read-only GitHub / Confluence knowledge sources of the workspace and their last sync.
+         */
+        get: operations["list_knowledge_sources_api_workspaces__workspace_id__knowledge_sources_get"];
+        put?: never;
+        /** Create Knowledge Source */
+        post: operations["create_knowledge_source_api_workspaces__workspace_id__knowledge_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/knowledge/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Knowledge Source */
+        delete: operations["delete_knowledge_source_api_workspaces__workspace_id__knowledge_sources__source_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Knowledge Source */
+        patch: operations["update_knowledge_source_api_workspaces__workspace_id__knowledge_sources__source_id__patch"];
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/knowledge/sources/{source_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Knowledge Source
+         * @description Sync now: fetch the source and merge the files into the pack as untrusted drafts (a person reviews them).
+         */
+        post: operations["sync_knowledge_source_api_workspaces__workspace_id__knowledge_sources__source_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{workspace_id}/knowledge/suggestions": {
         parameters: {
             query?: never;
@@ -10709,6 +10768,37 @@ export interface components {
             max_unmatched_pct?: number | null;
             /** Node */
             node: string;
+        };
+        /** KnowledgeSourceIn */
+        KnowledgeSourceIn: {
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Secret Ref */
+            secret_ref?: string | null;
+        };
+        /** KnowledgeSourcePatch */
+        KnowledgeSourcePatch: {
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            } | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Secret Ref */
+            secret_ref?: string | null;
         };
         /** LegalHoldIn */
         LegalHoldIn: {
@@ -25156,6 +25246,187 @@ export interface operations {
             path: {
                 workspace_id: string;
                 pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_knowledge_sources_api_workspaces__workspace_id__knowledge_sources_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_knowledge_source_api_workspaces__workspace_id__knowledge_sources_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeSourceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_knowledge_source_api_workspaces__workspace_id__knowledge_sources__source_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_knowledge_source_api_workspaces__workspace_id__knowledge_sources__source_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeSourcePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_knowledge_source_api_workspaces__workspace_id__knowledge_sources__source_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-correlation-id"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+                source_id: string;
             };
             cookie?: never;
         };
