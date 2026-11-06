@@ -574,9 +574,14 @@ def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[
             files.update({p: b for p, b in index_files.items() if p not in files})
         elif index_files:
             from analystos.context.index import INDEX_ACTOR
+            from analystos.context.index import log as index_log
 
-            store.commit(session, store.workspace_pack(session, workspace_id), index_files, author=INDEX_ACTOR,
-                         origin="index", merge=True, reason="context index after knowledge review")
+            try:  # the index alone: best effort, the owner's decisions must not fail because of it
+                with session.begin_nested():
+                    store.commit(session, store.workspace_pack(session, workspace_id), index_files, author=INDEX_ACTOR,
+                                 origin="index", merge=True, reason="context index after knowledge review")
+            except Exception as exc:  # noqa: BLE001
+                index_log.warning("context index: refresh of %s after review failed: %s", workspace_id, exc)
     if files:
         pack = store.workspace_pack(session, workspace_id)
         approved = sum(1 for _, s, _ in decided if s == "approved")
