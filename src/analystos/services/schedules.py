@@ -610,6 +610,12 @@ def housekeeping() -> dict[str, Any]:
         out["deliveries"] = process_due()
     except Exception:
         log.exception("external delivery failed")
+    try:  # P1-6: push ledger changes to approved webhooks; schema changes re-check data quality (bounded retries)
+        from analystos.context.webhooks import dispatch_due
+
+        out["context_webhooks"] = dispatch_due()
+    except Exception:
+        log.exception("context webhook dispatch failed")
     try:  # S03-T7: follow subscribed context ledgers (each subscription at most every SYNC_INTERVAL)
         from analystos.context.federation import sync_due
 

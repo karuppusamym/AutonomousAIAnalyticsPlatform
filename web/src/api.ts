@@ -1938,6 +1938,40 @@ export interface Schedule {
   pins?: Dict | null;
 }
 
+/** A push subscription to the context change feed (P1-6): metadata only, sent while an approval bound to its filters and
+ *  destination stands. `internal` rows are platform consumers (schema change re-checks data quality). */
+export interface ContextWebhook {
+  id: string;
+  workspace_id: string;
+  name: string;
+  kind: "webhook" | "internal";
+  url: string | null;
+  has_secret: boolean;
+  filters: { kinds: string[]; changes: string[]; tag_added: string[]; schema_changed: boolean };
+  status: "pending" | "authorized" | "rejected" | "revoked" | "lapsed" | string;
+  authorized: boolean;
+  authorized_until: string | null;
+  approval_id: string | null;
+  destination_hash: string;
+  cursor: number | null;
+  revision: number;
+  summary: string;
+}
+
+export interface ContextWebhookDelivery {
+  id: string;
+  webhook_id: string;
+  seq: number;
+  entry_id: string;
+  status: "queued" | "sending" | "retrying" | "delivered" | "dead_letter" | "refused" | string;
+  attempts: number;
+  max_attempts: number;
+  last_error: string | null;
+  next_attempt_at: string | null;
+  delivered_at: string | null;
+  created_at: string | null;
+}
+
 /** An external email/webhook target (N-3): sends only while an approval bound to its hash stands. */
 export interface DeliveryDestination {
   id: string;
@@ -4328,6 +4362,20 @@ export const api = {
     get("/api/workspaces/{workspace_id}/deliveries", { path: W(ws) }) as Promise<Delivery[]>,
   redriveDelivery: (id: string) =>
     post("/api/deliveries/{delivery_id}/redrive", { path: { delivery_id: id } }) as Promise<Delivery>,
+
+  // context change push subscriptions (P1-6): authorization is decided in the approvals inbox
+  listContextWebhooks: (ws: string) =>
+    get("/api/v2/context/webhooks", { query: { workspace: ws } }) as Promise<ContextWebhook[]>,
+  createContextWebhook: (body: Schemas["WebhookIn"]) =>
+    post("/api/v2/context/webhooks", { body }) as Promise<ContextWebhook>,
+  reauthorizeContextWebhook: (id: string) =>
+    post("/api/v2/context/webhooks/{webhook_id}/reauthorize", { path: { webhook_id: id } }) as Promise<ContextWebhook>,
+  revokeContextWebhook: (id: string) =>
+    post("/api/v2/context/webhooks/{webhook_id}/revoke", { path: { webhook_id: id } }) as Promise<ContextWebhook>,
+  listContextWebhookDeliveries: (ws: string) =>
+    get("/api/v2/context/webhook-deliveries", { query: { workspace: ws } }) as Promise<ContextWebhookDelivery[]>,
+  redriveContextWebhookDelivery: (id: string) =>
+    post("/api/v2/context/webhook-deliveries/{delivery_id}/redrive", { path: { delivery_id: id } }) as Promise<ContextWebhookDelivery>,
 
   // monitors & alerts (§38)
   listMonitors: (ws: string) => get("/api/workspaces/{workspace_id}/monitors", { path: W(ws) }) as Promise<Monitor[]>,

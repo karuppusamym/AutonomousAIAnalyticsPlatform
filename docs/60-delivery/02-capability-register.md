@@ -1396,3 +1396,37 @@ rules only, on a copy of the rehearsal database; no analyst results).
 
 Live evidence: [`evidence/pilot-fix-investigate-20261030.md`](evidence/pilot-fix-investigate-20261030.md) (rules only, no model
 call). Not verified: a live run with models; the guided source choice on a live two-source workspace (unit tested only).
+
+## 2026-11-05 — Review P1-6 Context change push subscriptions (S03 §5)
+
+Filtered push of the ledger change stream to a webhook (`context/webhooks.py`, migration `0077_context_webhooks`, based
+on head `0076_run_leases`: `context_webhook` and `context_webhook_delivery`, both owned by the workspace with RLS, policy
+and fill trigger; `tests/unit/test_tenancy_rls_coverage.py::test_context_webhook_tables_are_owned_by_their_workspace`).
+Not the federation `context_subscription` (that pulls another workspace's ledger).
+* Filters: `kinds`, `changes` (`create|update|deprecate`), `tag_added` (`pii|sensitive|restricted`) and `schema_changed`.
+  `kinds` and `changes` narrow; when a signal filter is set the change must raise one of them. The signals are diffs of
+  consecutive dataset versions: the dataset projection (`context/ledger._datasets`) now records the asset's structural
+  fingerprint and sensitive column tags in provenance (one new dataset version per asset at rollout; a version without a
+  fingerprint is never a schema change). Column tags change the dataset only once the asset row is flushed or `analystos
+  context reconcile` runs.
+* Approval (rule 6): create/update asks `context_webhook.authorize` bound to the hash of filters + URL + secret reference
+  (`ALWAYS_SEPARATE_DUTIES`; decided in the approvals inbox, `artifacts._decide`). A rename needs nothing. Every send
+  calls `verify_for_execution` right before the POST and re-checks the outbound guard; a row edited behind the API is
+  refused and the subscription shows `lapsed`. A new subscription starts at the ledger head (no replay).
+* Delivery: `services/deliveries` URL guard, HMAC signature and pinned outbound call are reused. The body is ledger
+  metadata only (ids, kind, change, version, signals), never a title or body; personal and suggested entries are not
+  announced; scanning is by workspace. At least once with an idempotency key, one delivery per `(subscription, seq)`;
+  bounded exponential backoff, `dead_letter` after `delivery_max_attempts` or a permanent 4xx, editor redrive; the
+  `context_webhook_delivery` table is the log.
+* Internal consumer: each workspace with dataset context gets a platform `internal` subscription (`schema_changed`
+  only); on a delivery it re-evaluates the enabled `data_quality` monitors that name the asset (S09 `evaluate_monitor`).
+* Tenancy: `scan` is `@owned_by("context_webhook", ...)`, `attempt` is `@owned_by("context_webhook_delivery", ...)`,
+  `dispatch_due` is a `@platform_loop` in scheduler housekeeping.
+* API `/api/v2/context/webhooks` (list, create, patch, revoke, reauthorize) and `/webhook-deliveries` (log, redrive);
+  UI `ContextWebhooks.tsx` on the Schedules page.
+
+Tests: `tests/unit/test_context_webhooks.py` (filter validation and matching, signals, approval bound to the hash and
+separation of duties, nothing sent before approval, changed filters re-approve and refuse queued sends, tamper refused,
+revoke, signed metadata-only payload, workspace scope and hidden trusts, retry/backoff/dead-letter/redrive, internal
+re-check); `web/src/test/context_webhooks.test.tsx`. Not verified: a live run against Postgres RLS and a real receiver;
+the dispatch pass is unit tested with a fake HTTP transport.

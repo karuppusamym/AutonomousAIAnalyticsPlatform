@@ -156,6 +156,10 @@ def _decide(approval_id: str, user: User, session: Session, approve: bool, reaso
 
             if approval.action == deliveries.APPROVAL_ACTION:  # N-3: an external destination's authorization
                 deliveries.apply_decision(session, approval)
+            elif approval.action == "context_webhook.authorize":  # P1-6: a context change push subscription
+                from analystos.context import webhooks
+
+                webhooks.apply_decision(session, approval)
             elif approval.action == rules.APPROVAL_ACTION:  # S09: a monitor rule's standing approval
                 rules.apply_decision(session, approval)
             elif approval.action == packs.REVIEW_ACTION:  # S09-T4: a recurring pack's brief, reviewed
