@@ -201,3 +201,26 @@ def test_index_documents_are_not_knowledge(db):
         index.refresh(s, WS)
     with session_scope() as s:
         assert not [e for e in s.scalars(select(ContextLedgerEntry)) if "Context index" in e.title]
+
+
+def test_pack_copy_omits_tagged_tables_and_unscoped_callers_see_only_their_domains(db):
+    from analystos.db.base import session_scope
+    from analystos.db.models import SourceColumn
+
+    with session_scope() as s:
+        _seed(s)
+        s.add(SourceColumn(asset_id="a_orders", name="qty", data_type="int", ordinal=1,
+                           tags=["pii"]))
+    with session_scope() as s:
+        model = index.build(s, WS)
+        text = index.render(model)
+        assert "main.orders" not in text and "Customer orders" not in text and "Basket size" not in text
+        assert "main.incident" in text and "Backlog" in text
+        report = index.refresh(s, WS)
+        assert index.domain_path("retail") not in report["written"] and index.domain_path("itsm") in report["written"]
+        # a caller whose data scope lacks the retail tables is not told the domain exists
+        user = _user(s)
+        access = retrieval.access_for(s, user, WS)
+        access.assets.discard("main.orders")
+        assert index.domains(s, WS, access) == ["itsm"]
+        assert index.build(s, WS, access=access)["counts"]["tables"] == 2
