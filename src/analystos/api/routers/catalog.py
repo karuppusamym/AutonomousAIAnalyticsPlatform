@@ -256,21 +256,23 @@ def pii_scan(workspace_id: str, body: PiiLineageIn, user: User = Depends(current
     """Find untagged columns that receive values of pii / restricted / sensitive columns along column lineage and
     queue review drafts that add the tag (P1-5). Never removes or applies a tag."""
     from analystos.evidence.lineage import propagation as prop
+    from analystos.governance.policy import resolve_scope
     from analystos.services import pii_lineage
 
-    require_role(session, user, workspace_id, "editor" if body.propose else "viewer")
+    supplied = bool(body.dbt_manifest or body.sql)
+    # drafting is an editor's action; caller-supplied lineage is analyst work; reading the recorded result is a viewer's
+    minimum = "editor" if body.propose else "analyst" if supplied else "viewer"
+    scope = resolve_scope(session, user, workspace_id, minimum_role=minimum)
     extra = prop.edges_from_dbt_manifest(body.dbt_manifest, body.dialect) if body.dbt_manifest else []
     if body.sql:
-        from analystos.governance.policy import resolve_scope
-
         # unqualified columns resolve against what this caller may read (as POST /recipes/lineage does)
-        scope = resolve_scope(session, user, workspace_id, minimum_role="analyst")
         catalog = {asset: [c for c in cols if f"{asset}.{c}" not in scope.denied_columns]
                    for asset, cols in scope.columns.items()}
         for stmt in body.sql:
             extra += prop.edges_from_sql(stmt, body.dialect, catalog=catalog or None)
+    # only gaps whose every catalogued column this caller may read are returned or drafted
     return pii_lineage.scan(session, workspace_id, actor=f"user:{user.id}", extra_edges=extra,
-                            propose_drafts=body.propose)
+                            propose_drafts=body.propose, scope=scope)
 
 
 @router.get("/workspaces/{workspace_id}/catalog")
