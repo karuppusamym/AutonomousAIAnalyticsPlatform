@@ -55,6 +55,12 @@ def sqlite_db(monkeypatch):
     monkeypatch.setattr(base, "SessionLocal", lambda: factory())
     monkeypatch.setattr(bus, "_redis", False)  # no Redis nudges from unit tests
     yield factory
+    # A scheduler thread another test left running would pick up this engine; disposing it under that
+    # thread is a native crash on Windows, not a test failure. Name the leak instead.
+    import threading
+
+    leaked = [t.name for t in threading.enumerate() if t.name == "inprocess-scheduler" and t.is_alive()]
+    assert not leaked, f"a test left the in-process scheduler running: {leaked}"  # engine kept: no dispose under it
     engine.dispose()
 
 

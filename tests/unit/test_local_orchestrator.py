@@ -324,10 +324,19 @@ def test_api_startup_resumes_local_runs_only_when_asked(fake, monkeypatch):
 def test_the_in_process_scheduler_loops_until_stopped(monkeypatch):
     from analystos.services import schedules
 
+    # Only the loop is under test: every pass's work is a no-op. The real housekeeping opens a dozen
+    # control-plane sessions; with no Postgres on a Windows host each refused connect takes ~2 s, so the
+    # thread outlived this test and ran into the next test's SQLite engine as it was disposed (access violation).
     ticks = []
     monkeypatch.setattr(schedules, "claim_due", lambda: ticks.append(1) or [])
-    monkeypatch.setattr(schedules, "nightly_calibration", lambda: None)
+    for name in ("housekeeping", "nightly_calibration", "nightly_verification_sweep", "nightly_audit_chain",
+                 "nightly_desk_value"):
+        monkeypatch.setattr(schedules, name, lambda: None)
     stop = schedules.start_inprocess_scheduler(poll_seconds=0.01)
-    _until(lambda: len(ticks) >= 3)
-    stop.set()
-    _until(lambda: not [t for t in threading.enumerate() if t.name == "inprocess-scheduler"])
+    try:
+        _until(lambda: len(ticks) >= 3)
+    finally:
+        stop.set()
+        for t in [t for t in threading.enumerate() if t.name == "inprocess-scheduler"]:
+            t.join(timeout=5)
+    assert not [t for t in threading.enumerate() if t.name == "inprocess-scheduler"]
