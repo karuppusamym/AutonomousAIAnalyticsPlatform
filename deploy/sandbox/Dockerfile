@@ -6,6 +6,9 @@
 # Build: docker compose --profile sandbox build sandbox   (tag analystos-sandbox:latest)
 FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+# The base image's Debian packages lag behind fixed CVEs (zlib1g, 2026-11), and the Grype gate in
+# supply-chain.yml fails on them: apply the pending updates before anything is installed.
+RUN apt-get update && apt-get -y upgrade --no-install-recommends && rm -rf /var/lib/apt/lists/*
 # Optional build secret `pipcert`: CA bundle for TLS-inspecting proxies. pip/setuptools/wheel are upgraded first:
 # the base image's copies carry fixed CVEs the Grype gate (supply-chain.yml) fails on.
 RUN --mount=type=secret,id=pipcert,required=false \
