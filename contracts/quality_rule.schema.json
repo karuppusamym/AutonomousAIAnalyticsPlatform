@@ -1,0 +1,207 @@
+{
+  "additionalProperties": false,
+  "description": "One declared rule. `asset` is `schema.table` as the gateway sees it; `column` is set for every column\nrule (all but sql_row / sql_aggregate and a composite unique, which uses `columns`).",
+  "properties": {
+    "type": {
+      "enum": [
+        "not_null",
+        "unique",
+        "accepted_values",
+        "range",
+        "regex",
+        "statistic_range",
+        "sql_row",
+        "sql_aggregate"
+      ],
+      "title": "Type",
+      "type": "string"
+    },
+    "asset": {
+      "maxLength": 330,
+      "title": "Asset",
+      "type": "string"
+    },
+    "column": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Column"
+    },
+    "columns": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 8,
+      "title": "Columns",
+      "type": "array"
+    },
+    "values": {
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "maxItems": 200,
+      "title": "Values",
+      "type": "array"
+    },
+    "min": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Min"
+    },
+    "max": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Max"
+    },
+    "allow_null": {
+      "default": true,
+      "title": "Allow Null",
+      "type": "boolean"
+    },
+    "pattern": {
+      "anyOf": [
+        {
+          "maxLength": 500,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pattern"
+    },
+    "statistic": {
+      "anyOf": [
+        {
+          "enum": [
+            "mean",
+            "min",
+            "max",
+            "sum",
+            "stddev",
+            "median",
+            "count",
+            "distinct_count",
+            "null_rate"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Statistic"
+    },
+    "sql": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sql"
+    },
+    "threshold": {
+      "default": 1.0,
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Threshold",
+      "type": "number"
+    },
+    "dimension": {
+      "anyOf": [
+        {
+          "enum": [
+            "completeness",
+            "uniqueness",
+            "validity",
+            "accuracy",
+            "consistency",
+            "timeliness"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Dimension"
+    },
+    "severity": {
+      "default": "warning",
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "name": {
+      "anyOf": [
+        {
+          "maxLength": 120,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Name"
+    },
+    "description": {
+      "default": "",
+      "maxLength": 1000,
+      "title": "Description",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type",
+    "asset"
+  ],
+  "title": "QualityRule",
+  "type": "object"
+}

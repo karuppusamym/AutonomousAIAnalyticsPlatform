@@ -79,9 +79,8 @@ def suitability(kind: str, chart: ChartDoc) -> str | None:
     elif kind == "histogram":
         if x is None or x.type != "quantitative":
             return "a histogram needs a quantitative x field"
-    elif kind == "heatmap":
-        if x is None or not chart.encoding.series or len(ys) != 1:
-            return "a heatmap needs an x field, a series field and one value"
+    elif kind == "heatmap" and (x is None or not chart.encoding.series or len(ys) != 1):
+        return "a heatmap needs an x field, a series field and one value"
     return None
 
 

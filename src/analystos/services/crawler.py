@@ -109,7 +109,8 @@ def safe_for_domain_assist(column: SourceColumn) -> bool:
 
 
 # Asset semantics a re-derivation keeps: a model's description draft waits for review; a person's domain decision.
-KEPT_SEMANTICS = ("model_description_draft", "domain_reviewed", "renamed_from", "renamed_to", "shape")
+KEPT_SEMANTICS = ("model_description_draft", "domain_reviewed", "renamed_from", "renamed_to", "shape",
+                  "guidelines")  # guidelines: a person's notes for agents (context.lookup); never re-derived
 RENAME_CARRY_SIMILARITY = 0.9  # at or above: curation moves to the renamed table; below: the old one only leaves scope
 
 
@@ -484,6 +485,8 @@ class _Crawl:
         facets.run("glossary_scan", self._glossary_scan, ids)
         # 10. knowledge pack documents (tables, source), value-free query history, graph projection
         facets.run("knowledge", self._knowledge, ids)
+        # 10b. sensitive tags along recorded column lineage: review drafts that add a missing tag (P1-5)
+        facets.run("pii_lineage", self._pii_lineage)
         facets.run("query_history", self._query_history)
         facets.run("graph", self._graph)
         self.stats.update(facets=facets.as_dict(), failed_facets=facets.failed)
@@ -507,6 +510,7 @@ class _Crawl:
                                                           "renamed": [r.model_dump() for r in diff.rename_candidates]},
                      actor=self.run.started_by, session=s)
                 self._notify_selected_changes(s, diff, rows_by_key)
+                self._impact(s, row)
         self.log.stage("publish", "crawl completed" + (f"; failed facets: {', '.join(facets.failed)}" if facets.failed else ""),
                        stats=self.stats)
         return {"stats": self.stats, "changes": changes}
@@ -1373,6 +1377,10 @@ class _Crawl:
             # The pack is now the system of record for crawled tables (the index serves retrieval).
             s.execute(delete(ContextEntry).where(ContextEntry.workspace_id == ws, ContextEntry.kind == "table",
                                                  ContextEntry.origin == "crawler", ContextEntry.name.in_(fqs)))
+        from analystos.context.index import refresh_quietly  # P2-8: the committed catalog and ledger, now listed
+
+        with session_scope() as s:
+            refresh_quietly(s, ws, reason=f"context index after crawl {self.run.id}")
         self.stats.update(knowledge_documents=len(report.written), knowledge_kept_curated=len(report.kept_curated),
                           knowledge_revision=report.revision)
         self.log.stage("publish", f"{len(report.written)} knowledge documents written ({len(report.unchanged)} unchanged, "
@@ -1398,6 +1406,30 @@ class _Crawl:
         self.stats["graph"] = graph.get("ok")
         self.log.stage("publish", f"graph projection {'ok' if graph.get('ok') else 'skipped'}")
         return {}
+
+    def _pii_lineage(self) -> dict[str, Any]:
+        from analystos.services.pii_lineage import scan
+
+        with session_scope() as s:
+            out = scan(s, self.source.workspace_id, actor=self.run.started_by)
+        self.stats["pii_lineage_gaps"] = len(out["gaps"])
+        self.log.stage("publish", f"PII along lineage: {len(out['gaps'])} untagged columns receive tagged values; "
+                       f"{len(out['proposed'])} tag drafts queued for review")
+        return {"count": len(out["gaps"])}
+
+    def _impact(self, s: Session, row: CrawlRun) -> None:
+        """The impact report's counts on an event; the report itself is computed on read (GET /crawls/{id}/impact)."""
+        from analystos.services.change_impact import record_crawl_impact
+
+        try:
+            with s.begin_nested():
+                counts = record_crawl_impact(s, row, self.run.started_by)
+        except Exception as exc:  # noqa: BLE001 - a report must never fail a finished crawl
+            log.warning("crawl %s: impact report failed: %s", row.id, exc)
+            return
+        if counts:
+            self.stats["impact"] = counts
+            row.stats = {**(row.stats or {}), "impact": counts}
 
     def _notify_selected_changes(self, s: Session, diff: cat.CrawlDiff, rows_by_key: dict[str, str]) -> None:
         from analystos.services.notifications import notify

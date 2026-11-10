@@ -42,11 +42,12 @@ export const CLASSIFICATIONS = [
 ] as const;
 
 /** The platform's built-in MCP tools (mcp/grants.py TOOLS), granted by exact name; `context.read` grants every context tool. */
-export const CONTEXT_TOOLS = ["context.search", "context.get", "context.compile", "context.changes"] as const;
+export const CONTEXT_TOOLS = ["context.search", "context.get", "context.compile", "context.changes", "context.lookup"] as const;
 export const BUILTIN_MCP_TOOLS = ["ask", "investigate", "get_finding_evidence", "validate_sql", "request.create", "request.status",
   "conversation.start", "conversation.say", "conversation.summary", "number.check", ...CONTEXT_TOOLS] as const;
 /** What a grant's `tools` list may name besides registry ids and families. */
-export const GRANTABLE_BUILTINS = [...BUILTIN_MCP_TOOLS, "context.read"];
+/** `context.lookup.values` is a grant flag: context.lookup returns profiled data values only when it is named. */
+export const GRANTABLE_BUILTINS = [...BUILTIN_MCP_TOOLS, "context.read", "context.lookup.values"];
 const WRITING_BUILTINS = new Set(["investigate", "request.create", "conversation.start", "conversation.say"]);
 const FAMILIES = ["query.", "http.", "metric.", "verified_query.", "dataset.", "playbook.", "mcp."];
 

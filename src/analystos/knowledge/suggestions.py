@@ -18,7 +18,8 @@ wins. A draft for a subject supersedes that subject's older pending drafts.
 
 Two kinds come from the glossary scan (knowledge/glossary_scan.py) and are applied outside the pack:
 an approved `glossary_term` becomes a trusted workspace glossary entry, an answered
-`description_question` becomes catalog text (a person's words: origin `user`).
+`description_question` becomes catalog text (a person's words: origin `user`). A `quality_rule` draft
+(quality/recommend.py, from the stored profile) becomes an active rule declared by the approving owner.
 """
 from __future__ import annotations
 
@@ -42,6 +43,7 @@ KIND_SPEC: dict[str, tuple[str, str, str]] = {
     "metric": ("Metric", "metrics", "metric"),
     "rule": ("Business Rule", "rules", "rule"),
     "note": ("Note", "notes", "note"),
+    "knowledge_gap": ("Note", "notes", "note"),  # knowledge/gaps.py: an unresolved term people keep asking about
     "negative": ("Negative Knowledge", "negative", "negative"),
     "attested_computation": (attested.TYPE, "findings", attested.KIND),
     "table_description": ("Table", "catalog", "table"),
@@ -50,11 +52,16 @@ KIND_SPEC: dict[str, tuple[str, str, str]] = {
     # Stream E (knowledge/glossary_scan.py): approval writes a glossary entry or catalog text, not a pack file.
     "glossary_term": ("Glossary Term", "glossary", "term"),
     "description_question": ("Note", "notes", "note"),
+    # P1-5 (services/pii_lineage.py): a sensitive tag a column inherits along lineage; approval adds it, never removes.
+    "column_tag": ("Note", "notes", "note"),
+    # P1-7 (quality/recommend.py): approval declares a quality rule on the asset, not a pack file.
+    "quality_rule": ("Quality Rule", "quality-rules", "quality_rule"),
 }
 PRIMARY_FIELD = {"attested_computation": "statement", "table_description": "description",
-                 "column_description": "description", "description_question": "question"}
-# Kinds whose approval is applied outside the pack (a glossary entry, catalog text): no pack document.
-APPLIED_KINDS = ("glossary_term", "description_question")
+                 "column_description": "description", "description_question": "question", "quality_rule": "statement"}
+# Kinds whose approval is applied outside the pack (a glossary entry, catalog text, a tag, a quality rule): no pack document.
+APPLIED_KINDS = ("glossary_term", "description_question", "column_tag", "quality_rule")
+TAGGABLE = frozenset({"pii", "restricted", "sensitive"})  # what a `column_tag` draft may add
 STATUSES = ("pending", "approved", "rejected", "superseded")
 ACTIONS = ("approve", "edit", "reject")
 REVIEW_KEY = "review"  # `analystos.review` marks a document the queue wrote (and may replace)
@@ -239,6 +246,18 @@ def render(row: KnowledgeSuggestion, fields: dict[str, Any], user_id: str, at: s
     return okf.render_document(fm, f"# {heading}\n\n{text.strip()}").encode()
 
 
+def confirm_imported(fields: dict[str, Any], user_id: str, at: str) -> dict[str, Any]:
+    """A reviewer approved an imported draft: its imported fields (provenance `import:*`) reach confidence 1.0 and
+    record who confirmed them. Before this, an import is a claim at a low confidence, never a certified value."""
+    out = {}
+    for name, f in fields.items():
+        prov = f.get("provenance") if isinstance(f, dict) else None
+        if isinstance(prov, dict) and str(prov.get("source") or "").startswith("import:"):
+            f = {**f, "confidence": 1.0, "provenance": {**prov, "confirmed_by": f"user:{user_id}", "confirmed_at": at}}
+        out[name] = f
+    return out
+
+
 def negative_path(row: KnowledgeSuggestion) -> str:
     return f"negative/{slugify(row.kind)}-{slugify(row.subject.split(':', 1)[-1] or row.title, 80)}-{row.content_hash[:8]}.md"
 
@@ -399,6 +418,39 @@ def _revert_description(session: Session, row: KnowledgeSuggestion) -> str:
     return "catalog restored"
 
 
+def _tags_value(fields: dict[str, Any]) -> list[str]:
+    v = _value(fields, "tags") or []
+    items = v.split(",") if isinstance(v, str) else v if isinstance(v, list) else []
+    return sorted({str(t).strip().lower() for t in items if str(t).strip()})
+
+
+def _column_tag_error(fields: dict[str, Any]) -> str | None:
+    tags = _tags_value(fields)
+    if not tags:
+        return "no_tags"
+    if set(tags) - TAGGABLE:
+        return "tag_not_allowed"
+    return None
+
+
+def _apply_column_tag(session: Session, row: KnowledgeSuggestion, fields: dict[str, Any], user: Any) -> str:
+    """Union the approved tags into the column: tags only tighten, so an approval can add and never remove. A person
+    decided it, so the result is a `user` tag set no crawl may loosen."""
+    from analystos.governance.audit import audit
+
+    c = _column(session, row)
+    if c is None:
+        return "column not found"
+    before = sorted(set(c.tags or []))
+    after = sorted(set(before) | set(_tags_value(fields)))
+    if after == before:
+        return "already tagged"
+    c.tags, c.tags_origin = after, "user"
+    audit(f"user:{user.id}", "column.tags_added", workspace_id=row.workspace_id, target=row.subject, decision="allow",
+          details={"before": before, "after": after, "suggestion_id": row.id, "origin": row.origin}, session=session)
+    return "tags added: " + ", ".join(t for t in after if t not in before)
+
+
 # ------------------------------------------------------------------------------------ review
 def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[str, Any]]) -> dict[str, Any]:
     """Decide a batch. Every accepted decision lands in ONE workspace-pack revision; a decision that
@@ -439,6 +491,9 @@ def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[
             old = fields.get(name) or {}
             fields[name] = {**field(value, 1.0, source="human", by=f"user:{user.id}",
                                     edited_from=old.get("provenance")), **({"before": old["before"]} if "before" in old else {})}
+        imported = action == "approve" and str(row.origin).startswith("import:")
+        if imported:
+            fields = confirm_imported(fields, user.id, at)
         if not str(_value(fields, primary_field(row.kind)) or "").strip():
             errors.append({"id": sid, "error": "empty", "field": primary_field(row.kind)})
             continue
@@ -454,6 +509,29 @@ def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[
             if problem:
                 errors.append({"id": sid, "error": problem})
                 continue
+        if row.kind in ("column_tag", "quality_rule"):
+            if row.kind == "column_tag":
+                problem = _column_tag_error(fields)
+                if problem:
+                    errors.append({"id": sid, "error": problem})
+                    continue
+                note = _apply_column_tag(session, row, fields, user)
+            else:
+                from analystos.quality import recommend
+
+                problem = recommend.rule_error(fields)
+                if not problem:
+                    try:
+                        note = recommend.apply_suggestion(session, row, fields, user)
+                    except recommend.ReviewRefused as exc:
+                        problem = str(exc)
+                if problem:
+                    errors.append({"id": sid, "error": problem})
+                    continue
+            if action == "edit":
+                row.fields = fields
+            decided.append((row, "approved", note))
+            continue
         if row.kind in APPLIED_KINDS:
             from analystos.knowledge import glossary_scan
 
@@ -464,8 +542,9 @@ def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[
                 continue
             note = (glossary_scan.apply_glossary_term if glossary else glossary_scan.apply_description_answer)(
                 session, row, fields, user)
-            if action == "edit":
+            if action == "edit" or imported:
                 row.fields = fields
+                row.confidence = min(float(v.get("confidence") or 0.0) for v in fields.values())
             decided.append((row, "approved", note))
             continue
         if row.kind == "attested_computation" and attested.missing(_value(fields, "computation") or {}):
@@ -478,10 +557,31 @@ def review(session: Session, workspace_id: str, user: Any, decisions: list[dict[
         if row.kind == "domain_candidate":
             batch_keywords[str(_value(fields, "keyword"))] = str(_value(fields, "domain"))
         note = _apply_description(session, row, fields) if row.kind == "table_description" else             _apply_column_description(session, row, fields) if row.kind == "column_description" else None
-        if action == "edit":
+        if action == "edit" or imported:
             row.fields = fields
+            row.confidence = min(float(v.get("confidence") or 0.0) for v in fields.values())
         decided.append((row, "approved", note))
     revision = None
+    if decided:
+        # P2-8: what the batch changes in the catalog and ledger is listed in the same revision (one batch, one
+        # revision). Pack documents of this batch are indexed when the revision commits, so they are listed from the
+        # next refresh.
+        from analystos.context.index import pending_files
+
+        session.flush()
+        index_files = pending_files(session, workspace_id)
+        if files:
+            files.update({p: b for p, b in index_files.items() if p not in files})
+        elif index_files:
+            from analystos.context.index import INDEX_ACTOR
+            from analystos.context.index import log as index_log
+
+            try:  # the index alone: best effort, the owner's decisions must not fail because of it
+                with session.begin_nested():
+                    store.commit(session, store.workspace_pack(session, workspace_id), index_files, author=INDEX_ACTOR,
+                                 origin="index", merge=True, reason="context index after knowledge review")
+            except Exception as exc:  # noqa: BLE001
+                index_log.warning("context index: refresh of %s after review failed: %s", workspace_id, exc)
     if files:
         pack = store.workspace_pack(session, workspace_id)
         approved = sum(1 for _, s, _ in decided if s == "approved")

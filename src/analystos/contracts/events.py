@@ -90,6 +90,8 @@ EVENT_TYPES |= {"request.created", "request.duplicate_linked", "request.follower
 EVENT_TYPES |= {"conversation.created", "conversation.branched", "conversation.message", "conversation.correction_applied",
                 "conversation.summarized", "conversation.legal_hold", "conversation.deleted"}
 
+EVENT_TYPES |= {"context.webhook_requested", "context.webhook_authorized", "context.webhook_delivered", "context.webhook_retrying",
+                "context.webhook_dead_lettered", "context.webhook_refused"}  # P1-6 push subscriptions
 EVENT_TYPES |= {"context.binding_saved", "context.binding_validated", "context.evaluation_saved", "context.meaning_recheck", "context.golden_saved"}
 
 # Autonomy engine (S06): goals, remaining budget, budget exhaustion, typed replans
@@ -123,3 +125,10 @@ EVENT_TYPES |= {"report_document.created", "report_document.version_created", "r
 EVENT_TYPES |= {"trigger.received", "trigger.processed", "alert.deferred", "alert.released", "alert_group.opened",
                 "alert_group.merged", "alert_group.resolved", "monitor.rule_approved", "channel.request_created",
                 "pack.reviewed"}
+# P1-5 (review 2026-11-05): a tagged column's values reached an untagged one (a review draft adds the tag); what a
+# crawl's schema change impacts; impacted schedules paused through an approval
+EVENT_TYPES |= {"lineage.pii_gap_detected", "schema.impact_reported", "schedule.paused_for_change"}
+
+# Declared quality rules (P1-7) and data-product access requests (P2-9)
+EVENT_TYPES |= {"quality_rule.declared", "quality_rule.evaluated", "data_product.access_requested",
+                "data_product.access_granted"}

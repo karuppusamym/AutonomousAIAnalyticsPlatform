@@ -2,6 +2,8 @@
 Context Ledger, plus OKF export/import (S03-T6). Every read applies the caller's access before ranking
 (`context/retrieval.py`); a workspace the caller cannot see is a 404.
 
+`/lookup` (S03 §5, review P0-2) returns the context of up to ten named assets in one block (YAML or JSON).
+
 Served under `/api/v2/context` (the spec's `/v2/context`): `/api/context/search` already names the v1 search.
 An export is built for the requesting user's view and downloadable by that user only; like the workspace context
 download it stays inside the platform, so it needs no approval and is audited (`context.exported`).
@@ -19,7 +21,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from analystos.api.deps import current_user, db
-from analystos.context import federation, interchange, ledger, retrieval
+from analystos.context import federation, interchange, ledger, retrieval, webhooks
+from analystos.context import lookup as context_lookup
 from analystos.core.errors import NotFound, UnsupportedCapability
 from analystos.db.models import Artifact, User
 from analystos.governance.audit import audit
@@ -67,6 +70,26 @@ def compile_context(body: CompileIn, user: User = Depends(current_user), session
                                    budget_tokens=body.budget_tokens, kinds=body.kinds, run_id=body.run_id)
     audit(f"user:{user.id}", "context.compiled", workspace_id=body.workspace, target=out["identity_hash"][:40],
           decision="allow", details={"purpose": body.purpose, "receipts": len(out["receipts"])}, session=session)
+    return out
+
+
+class LookupIn(BaseModel):
+    workspace: str
+    assets: list[str] = Field(min_length=1, max_length=context_lookup.MAX_ASSETS)
+    format: Literal["yaml", "json"] = "yaml"
+    budget_chars: int = Field(default=context_lookup.DEFAULT_BUDGET_CHARS, ge=context_lookup.MIN_BUDGET_CHARS,
+                              le=context_lookup.MAX_BUDGET_CHARS)
+
+
+@router.post("/lookup")
+def lookup_context(body: LookupIn, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    """`{content, format, assets, omissions, receipts, identity_hash, budget}` for the named `schema.table` assets
+    the caller may see (others are absent and not counted); 422 when the identities alone exceed the budget."""
+    out = context_lookup.lookup(session, user, body.workspace, body.assets, format=body.format,
+                                budget_chars=body.budget_chars)
+    audit(f"user:{user.id}", "context.looked_up", workspace_id=body.workspace, target=out["identity_hash"][:40],
+          decision="allow", details={"assets": out["assets"], "omissions": len(out["omissions"]), "format": body.format},
+          session=session)
     return out
 
 
@@ -191,3 +214,78 @@ def resync_subscription(subscription_id: str, user: User = Depends(current_user)
 def revoke_subscription(subscription_id: str, user: User = Depends(current_user),
                         session: Session = Depends(db, scope="function")):
     return federation.revoke(session, user, federation.load(session, user, subscription_id, federation.SUBSCRIBER_ROLE))
+
+
+# ------------------------------------------------------------------------------------------- push webhooks (P1-6)
+# Distinct from `/subscriptions` above (federation pulls another workspace's ledger): a webhook pushes this workspace's
+# change metadata out. Creating or changing one asks for an approval (hash-bound); nothing is sent until it is decided.
+class WebhookIn(BaseModel):
+    workspace: str
+    name: str = Field(min_length=1, max_length=200)
+    url: str = Field(min_length=1, max_length=1000)
+    secret_ref: str = Field(min_length=1, max_length=200)
+    filters: dict = Field(default_factory=dict)
+
+
+class WebhookPatch(BaseModel):
+    name: str | None = Field(default=None, max_length=200)
+    url: str | None = Field(default=None, max_length=1000)
+    secret_ref: str | None = Field(default=None, max_length=200)
+    filters: dict | None = None
+
+
+class WebhookRevokeIn(BaseModel):
+    reason: str | None = Field(default=None, max_length=300)
+
+
+@router.get("/webhooks")
+def list_webhooks(workspace: str, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    return webhooks.list_hooks(session, user, workspace)
+
+
+@router.post("/webhooks", status_code=201)
+def create_webhook(body: WebhookIn, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    """Registers the subscription and requests its authorization (approver != requester); it sends nothing until decided."""
+    hook = webhooks.create(session, session.merge(user), body.workspace, name=body.name, url=body.url,
+                           secret_ref=body.secret_ref, filters=body.filters)
+    session.flush()
+    return webhooks.as_dict(hook)
+
+
+@router.patch("/webhooks/{webhook_id}")
+def patch_webhook(webhook_id: str, body: WebhookPatch, user: User = Depends(current_user),
+                  session: Session = Depends(db, scope="function")):
+    """Changed filters, URL or secret reference need a new authorization; a rename does not."""
+    hook = webhooks.update_hook(session, session.merge(user), webhooks.load(session, user, webhook_id),
+                                **body.model_dump(exclude_unset=True))
+    session.flush()
+    return webhooks.as_dict(hook)
+
+
+@router.post("/webhooks/{webhook_id}/revoke")
+def revoke_webhook(webhook_id: str, body: WebhookRevokeIn | None = None, user: User = Depends(current_user),
+                   session: Session = Depends(db, scope="function")):
+    hook = webhooks.revoke(session, session.merge(user), webhooks.load(session, user, webhook_id), body.reason if body else None)
+    session.flush()
+    return webhooks.as_dict(hook)
+
+
+@router.post("/webhooks/{webhook_id}/reauthorize")
+def reauthorize_webhook(webhook_id: str, user: User = Depends(current_user), session: Session = Depends(db, scope="function")):
+    hook = webhooks.reauthorize(session, session.merge(user), webhooks.load(session, user, webhook_id))
+    session.flush()
+    return webhooks.as_dict(hook)
+
+
+@router.get("/webhook-deliveries")
+def list_webhook_deliveries(workspace: str, webhook_id: str | None = None, status: str | None = None,
+                            limit: int = Query(100, ge=1, le=500), user: User = Depends(current_user),
+                            session: Session = Depends(db, scope="function")):
+    """The delivery log (metadata payloads, attempts, errors); `status=dead_letter` is the dead-letter view."""
+    return webhooks.list_deliveries(session, user, workspace, webhook_id=webhook_id, status=status, limit=limit)
+
+
+@router.post("/webhook-deliveries/{delivery_id}/redrive")
+def redrive_webhook_delivery(delivery_id: str, user: User = Depends(current_user),
+                             session: Session = Depends(db, scope="function")):
+    return webhooks.redrive(session, session.merge(user), webhooks.load_delivery(session, user, delivery_id))

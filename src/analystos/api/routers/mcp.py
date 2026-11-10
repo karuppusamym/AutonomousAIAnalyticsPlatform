@@ -56,6 +56,9 @@ class GrantIn(BaseModel):
     tool_patterns: list[str] = Field(default_factory=list)
     rate_per_min: int | None = None
     expires_at: datetime | None = None
+    # P2-8: limit the grant to a slice of the workspace (context tools only); empty = the whole workspace
+    domains: list[str] = Field(default_factory=list)
+    assets: list[str] = Field(default_factory=list)
 
 
 def _server_out(srv: McpServer) -> dict[str, Any]:
@@ -136,9 +139,10 @@ def revoke_client(client_id: str, admin: User = Depends(admin_user), session: Se
 def set_grant(client_id: str, workspace_id: str, body: GrantIn, admin: User = Depends(admin_user),
               session: Session = Depends(db, scope="function")):
     g = mcp_grants.set_grant(session, admin, client_id, workspace_id, role=body.role, tools=body.tools, quotas=body.quotas,
-                             tool_patterns=body.tool_patterns, rate_per_min=body.rate_per_min, expires_at=body.expires_at)
+                             tool_patterns=body.tool_patterns, rate_per_min=body.rate_per_min, expires_at=body.expires_at,
+                             domains=body.domains, assets=body.assets)
     return {"client_id": g.client_id, "workspace_id": g.workspace_id, "role": g.role, "tools": g.tools, "quotas": g.quotas,
-            "tool_patterns": g.tool_patterns, "rate_per_min": g.rate_per_min,
+            "tool_patterns": g.tool_patterns, "rate_per_min": g.rate_per_min, "domains": g.domains, "assets": g.assets,
             "expires_at": g.expires_at.isoformat() if g.expires_at else None}
 
 

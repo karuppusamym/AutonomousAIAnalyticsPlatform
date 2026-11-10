@@ -34,7 +34,8 @@ from analystos.triggers import noise, rules
 
 log = get_logger(__name__)
 ML_KINDS = {"ml_drift", "ml_freshness", "ml_performance"}  # P5-03: analystos/ml/monitoring.py
-KINDS = {"metric_threshold", "metric_drift", "change_point", "forecast_deviation", "data_quality"} | ML_KINDS
+QUALITY_KINDS = {"quality_rules", "data_contract"}  # P1-7 / P2-9: analystos/quality/monitoring.py
+KINDS = {"metric_threshold", "metric_drift", "change_point", "forecast_deviation", "data_quality"} | ML_KINDS | QUALITY_KINDS
 OPS = {">": lambda a, b: a > b, ">=": lambda a, b: a >= b, "<": lambda a, b: a < b, "<=": lambda a, b: a <= b}
 SEVERITY_RANK = {"info": 0, "warning": 1, "critical": 2}
 PERCENT_TOLERANCE = 1e-9
@@ -63,6 +64,10 @@ def create_monitor(session: Session, user: User, workspace_id: str, *, name: str
         from analystos.ml.monitoring import validate
 
         validate(kind, config)
+    elif kind in QUALITY_KINDS:
+        from analystos.quality.monitoring import validate as validate_quality
+
+        validate_quality(session, workspace_id, kind, config)
     elif kind != "data_quality":
         if not (config.get("metric") or config.get("sql_expression")):
             raise InvalidInput("metric monitors need config.metric (a validated metric name) or config.sql_expression")
@@ -549,6 +554,10 @@ def evaluate_monitor(monitor_id: str, *, trigger: str = "manual", observation: d
                 from analystos.ml.monitoring import evaluate as evaluate_ml
 
                 result = evaluate_ml(s, owner, monitor)
+            elif monitor.kind in QUALITY_KINDS:
+                from analystos.quality.monitoring import evaluate as evaluate_quality
+
+                result = evaluate_quality(s, owner, monitor)
             else:
                 series = metric_series(s, owner, monitor)
                 result = {**_evaluate_metric(monitor, series), "metric": series["label"], "query_id": series["query_id"],

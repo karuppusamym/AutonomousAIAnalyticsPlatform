@@ -128,8 +128,11 @@ def test_prompt_tokens_per_run_with_every_chat_purpose_on(control_db, servicenow
         last = s.scalar(select(PlatformSetting).order_by(PlatformSetting.version.desc()).limit(1))
         previous_doc, version = (dict(last.document), last.version) if last else ({}, 0)
         s.add(PlatformSetting(version=version + 1, created_by=admin_id, note="token measurement",
+                              # The dev seed stores pilot_low_cost (ADR-016), which disables all but the cheap models:
+                              # this measurement sets its own policy, every model allowed and no spend cap.
                               document={**previous_doc, "llm": {**previous_doc.get("llm", {}), "purpose_modes": CHAT_ALWAYS,
-                                                                "cache_enabled": False},
+                                                                "cache_enabled": False, "disabled_models": [],
+                                                                "daily_spend_cap_usd": None},
                                         "features": {**previous_doc.get("features", {}), "jev_decisions": False}}))
     platform_settings.invalidate()
     try:
