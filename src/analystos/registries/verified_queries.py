@@ -91,6 +91,11 @@ def lexicon(session: Session, workspace_id: str) -> Lexicon:
     return out
 
 
+def forget_lexicon(workspace_id: str) -> None:
+    """Drop the cached lexicon so the next match reads the session's knowledge (after an apply or a rollback)."""
+    _lexicons.pop(workspace_id, None)
+
+
 def _plain_phrase(text: str | None) -> str:
     return " ".join(_WORD.findall((text or "").lower().replace("_", " ")))
 
@@ -196,13 +201,27 @@ def coerce(param: dict[str, Any], value: Any) -> Any:
     return text
 
 
+_BIND = re.compile(r"\{\{(\w+)\}\}")
+
+
 def render(template: str, params: list[dict[str, Any]], values: dict[str, Any], dialect: str) -> str:
-    sql = template
+    """Bind typed literals in ONE pass over the template: a value is never scanned again, so a value that looks like
+    a placeholder (`{{other}}`) cannot pull another literal inside its quotes (governance review 2026-11-06)."""
+    literals = {}
     for p in params:
         value = coerce(p, values[p["name"]])
         literal = exp.Literal.number(value) if p.get("type") == "number" else exp.Literal.string(str(value))
-        sql = sql.replace("{{" + p["name"] + "}}", literal.sql(dialect=dialect))
-    if "{{" in sql:
+        literals[p["name"]] = literal.sql(dialect=dialect)
+    unbound: list[str] = []
+
+    def bind(m: re.Match[str]) -> str:
+        if m.group(1) not in literals:
+            unbound.append(m.group(1))
+            return m.group(0)
+        return literals[m.group(1)]
+
+    sql = _BIND.sub(bind, template)
+    if unbound or "{{" in _BIND.sub("", template):
         raise InvalidInput("verified query template has an unbound parameter")
     return sql
 

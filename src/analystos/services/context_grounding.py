@@ -502,6 +502,43 @@ def resolve(session, user, workspace_id, body, *, router=None, call_ctx=None, re
             "meaning_review": review, "limitations": [lim["statement"] for lim in review["limitations"]]}
 
 
+GOLDEN_LIMIT = 30
+
+
+def run_golden(session, user, workspace_id, *, use_model: bool = False) -> list[dict[str, Any]]:
+    """Score the workspace's golden questions against the knowledge as it is in this session.
+
+    A case passes when the grounding asks for clarification exactly when expected, resolves the expected
+    columns from reviewed knowledge (a field merely named in the question is not a mapping), and, when the
+    owner named one, the registry serves the expected verified query. Cases the caller may not see are
+    skipped, so the suite never reveals columns outside the caller's scope."""
+    from analystos.contracts.grounding import ResolveIn
+    from analystos.db.models import GoldenQuestion
+    from analystos.registries import verified_queries
+
+    scope = resolve_scope(session, session.merge(user), workspace_id, minimum_role="analyst")
+    cases = list(session.scalars(select(GoldenQuestion).where(GoldenQuestion.workspace_id == workspace_id)
+                                 .order_by(GoldenQuestion.id).limit(GOLDEN_LIMIT)))
+    results = []
+    for case in cases:
+        expected = case.definition
+        if not all(allowed_ref(c, scope) for c in expected.get("expected_columns", [])):
+            continue
+        report = resolve(session, user, workspace_id, ResolveIn(question=expected["question"], use_model=use_model))
+        actual = {c for r in report["resolutions"] if r["state"] == "resolved" and r.get("by") != "catalog" for c in r["columns"]}
+        expected_refs = set(expected.get("expected_columns", []))
+        columns_match = expected_refs <= actual if expected.get("expect_clarification") else expected_refs == actual
+        passed = bool(report["needs_clarification"]) == bool(expected.get("expect_clarification")) and columns_match
+        served = None
+        if expected.get("expected_query"):
+            hit = verified_queries.match(session, workspace_id, expected["question"])
+            served = hit.entry.id if hit else None
+            passed = passed and served == expected["expected_query"]
+        results.append({"id": case.id, "question": expected["question"], "passed": passed, "expected": expected,
+                        "actual_columns": sorted(actual), "served_query": served, "grounding": report})
+    return results
+
+
 def _plan_text(agent_ctx) -> str:
     """The plan's questions and focus, when resolving for a run: terms the plan depends on are collected too."""
     plan = getattr(getattr(agent_ctx, "run", None), "plan", None)

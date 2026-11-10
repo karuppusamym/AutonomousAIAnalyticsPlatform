@@ -28,12 +28,18 @@ from analystos.db.models import McpClient, McpGrant, McpUsage, User, WorkspaceMe
 from analystos.governance.audit import audit
 from analystos.governance.policy import get_workspace
 
-# Context Service (S03-T5): read-only, access-filtered ledger tools; `context.read` grants all four
-CONTEXT_TOOLS = ("context.search", "context.get", "context.compile", "context.changes")
+# Context Service (S03-T5): read-only, access-filtered ledger tools; `context.read` grants all of them
+CONTEXT_TOOLS = ("context.search", "context.get", "context.compile", "context.changes", "context.lookup")
 CONTEXT_READ = "context.read"
-TOOLS = ("ask", "investigate", "get_finding_evidence", "validate_sql", "request.create", "request.status",
+# A grant flag, not a tool: context.lookup returns profiled data values (top values, min/max) only when the grant
+# names it explicitly. `context.read` does not imply it.
+LOOKUP_VALUES = "context.lookup.values"
+# Any MCP application (Copilot, Claude, Cursor, an in-house app) uses the metadata to write SQL or runs a stored,
+# verified query by id; the gateway decides either way (validate, scope, masking, row cap, audit). Read-only.
+ASSISTANT_TOOLS = ("catalog.tables", "sql.run", "queries.list", "queries.run")
+TOOLS = ("ask", "investigate", "get_finding_evidence", "validate_sql", *ASSISTANT_TOOLS, "request.create", "request.status",
          "conversation.start", "conversation.say", "conversation.summary", "number.check", *CONTEXT_TOOLS)
-GRANTABLE = (*TOOLS, CONTEXT_READ)
+GRANTABLE = (*TOOLS, CONTEXT_READ, LOOKUP_VALUES)
 # P7-11: a workspace's published query tools and tested/certified read-only HTTP tools, granted by name
 # (`query.<key>`, `http.<capability id>`) or by family (`query.*`, `http.*`)
 WORKSPACE_TOOL_PREFIXES = ("query.", "http.")
@@ -44,13 +50,14 @@ RATE_KEY = "__rate__"  # mcp_usage row counting a grant's calls in one UTC minut
 RESOURCE_READ = "resources/read"  # quota key for resource reads
 GRANT_ROLES = ("viewer", "analyst")
 TOOL_MIN_ROLE = {"ask": "analyst", "investigate": "analyst", "validate_sql": "analyst",
+                 "catalog.tables": "viewer", "sql.run": "analyst", "queries.list": "viewer", "queries.run": "analyst",
                  "get_finding_evidence": "viewer", RESOURCE_READ: "viewer",
                  # Request Desk (S13): a request may run Ask or start an investigation, so it needs the grant those need
                  "request.create": "analyst", "request.status": "viewer",
                  # Conversations (S04): start/say create Desk requests (so the request grant's role); a summary is a read
                  "conversation.start": "analyst", "conversation.say": "analyst", "conversation.summary": "viewer",
                  "number.check": "analyst",  # S07-T8: runs Ask, so Ask's grant role
-                 **{t: "viewer" for t in (*CONTEXT_TOOLS, CONTEXT_READ)}}
+                 **{t: "viewer" for t in (*CONTEXT_TOOLS, CONTEXT_READ, LOOKUP_VALUES)}}
 DEFAULT_DAILY_QUOTA = 1000
 
 
@@ -84,6 +91,11 @@ def grants_tool(tools: list[str], tool: str, patterns: list[str] | tuple[str, ..
     return f"{tool.split('.', 1)[0]}.*" in tools or any(fnmatch.fnmatchcase(tool, p) for p in patterns)
 
 
+def grants_lookup_values(grant: dict[str, Any] | None) -> bool:
+    """Whether a grant explicitly allows data values in context.lookup (default off)."""
+    return bool(grant) and LOOKUP_VALUES in (grant.get("tools") or [])
+
+
 def _check_patterns(patterns: list[str]) -> list[str]:
     out = list(dict.fromkeys(patterns))
     families = (*WORKSPACE_TOOL_PREFIXES, *REGISTRY_TOOL_PREFIXES)
@@ -91,6 +103,21 @@ def _check_patterns(patterns: list[str]) -> list[str]:
     if bad:
         raise InvalidInput(f"tool patterns {', '.join(bad)} must start with a tool family ({', '.join(families)})")
     return out
+
+
+SLICE_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}$")
+
+
+def _check_slice(values: list[str] | None, *, asset: bool = False) -> list[str]:
+    out = sorted(dict.fromkeys(str(v).strip() for v in values or [] if str(v).strip()))
+    bad = [v for v in out if not SLICE_NAME.match(v) or (asset and v.count(".") != 1)]
+    if bad:
+        raise InvalidInput(f"{'assets must be schema.table' if asset else 'domains must be domain keys'}: {', '.join(bad)}")
+    return out
+
+
+def is_sliced(grant: dict[str, Any]) -> bool:
+    return bool(grant.get("domains") or grant.get("assets"))
 
 
 def expired(grant: dict[str, Any]) -> bool:
@@ -158,7 +185,8 @@ def revoke_client(session: Session, admin: User, client_id: str) -> McpClient:
 def set_grant(session: Session, admin: User, client_id: str, workspace_id: str, *, role: str = "viewer",
               tools: list[str] | None = None, quotas: dict[str, int] | None = None,
               tool_patterns: list[str] | None = None, rate_per_min: int | None = None,
-              expires_at: datetime | None = None) -> McpGrant:
+              expires_at: datetime | None = None, domains: list[str] | None = None,
+              assets: list[str] | None = None) -> McpGrant:
     client = _client(session, client_id)
     if client.status != "active":
         raise Forbidden("the client is revoked")
@@ -178,6 +206,12 @@ def set_grant(session: Session, admin: User, client_id: str, workspace_id: str, 
         raise InvalidInput("rate_per_min must be a positive integer (calls per minute across the grant)")
     if expires_at is not None and expires_at.tzinfo is None:
         raise InvalidInput("expires_at must carry a time zone")
+    domains, assets = _check_slice(domains), _check_slice(assets, asset=True)
+    outside = [t for t in tools if (domains or assets) and t not in (*CONTEXT_TOOLS, CONTEXT_READ, *ASSISTANT_TOOLS)]
+    if outside or ((domains or assets) and patterns):
+        raise InvalidInput("a grant limited to domains or assets can hold only the context and assistant tools "
+                           f"({', '.join((*CONTEXT_TOOLS, *ASSISTANT_TOOLS))}, {CONTEXT_READ}); "
+                           f"remove {', '.join([*outside, *patterns])}")
     quotas = dict(quotas or {})
     for k, v in quotas.items():
         if (k not in (*TOOLS, RESOURCE_READ) and not _patternable(k)) or not isinstance(v, int) or v < 1:
@@ -188,6 +222,7 @@ def set_grant(session: Session, admin: User, client_id: str, workspace_id: str, 
         session.add(grant)
     grant.role, grant.tools, grant.quotas = role, tools, quotas
     grant.tool_patterns, grant.rate_per_min, grant.expires_at = patterns, rate_per_min, expires_at
+    grant.domains, grant.assets = domains, assets
     member = session.scalar(select(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id,
                                                           WorkspaceMember.user_id == client.service_user_id))
     if member is None:
@@ -197,7 +232,8 @@ def set_grant(session: Session, admin: User, client_id: str, workspace_id: str, 
     session.flush()
     audit(f"user:{admin.id}", "mcp.grant_set", workspace_id=workspace_id, target=client_id, decision="allow",
           details={"role": role, "tools": tools, "quotas": quotas, "tool_patterns": patterns, "rate_per_min": rate_per_min,
-                   "expires_at": expires_at.isoformat() if expires_at else None}, session=session)
+                   "expires_at": expires_at.isoformat() if expires_at else None,
+                   "domains": domains, "assets": assets}, session=session)
     return grant
 
 
@@ -223,7 +259,7 @@ def authenticate(session: Session, token: str | None) -> ClientPrincipal:
     client.last_used_at = utcnow()
     grants = {g.workspace_id: {"role": g.role, "tools": list(g.tools or []), "quotas": dict(g.quotas or {}),
                                "tool_patterns": list(g.tool_patterns or []), "rate_per_min": g.rate_per_min,
-                               "expires_at": g.expires_at}
+                               "expires_at": g.expires_at, "domains": list(g.domains or []), "assets": list(g.assets or [])}
               for g in session.scalars(select(McpGrant).where(McpGrant.client_id == client.id))}
     return ClientPrincipal(client_id=client.id, user_id=user.id, grants=grants, tenant_id=user.tenant_id)
 
@@ -247,6 +283,10 @@ def check_grant(principal: ClientPrincipal, workspace_id: str | None, tool: str)
         raise Forbidden(f"the grant for workspace {workspace_id} expired")
     if tool != RESOURCE_READ and not grants_tool(grant["tools"], tool, grant.get("tool_patterns") or ()):
         raise Forbidden(f"the grant for workspace {workspace_id} does not include tool {tool}")
+    # defence in depth: on a slice only the context tools and the assistant tools, which enforce the slice themselves
+    if is_sliced(grant) and tool != RESOURCE_READ and tool not in (*CONTEXT_TOOLS, *ASSISTANT_TOOLS):
+        raise Forbidden(f"the grant for workspace {workspace_id} is limited to a domain slice and covers context and "
+                        "assistant tools only")
     return grant
 
 
@@ -286,6 +326,7 @@ def list_clients(session: Session) -> list[dict[str, Any]]:
                     "last_used_at": c.last_used_at.isoformat() if c.last_used_at else None,
                     "grants": [{"workspace_id": g.workspace_id, "role": g.role, "tools": g.tools, "quotas": g.quotas,
                                 "tool_patterns": g.tool_patterns or [], "rate_per_min": g.rate_per_min,
-                                "expires_at": g.expires_at.isoformat() if g.expires_at else None}
+                                "expires_at": g.expires_at.isoformat() if g.expires_at else None,
+                                "domains": g.domains or [], "assets": g.assets or []}
                                for g in grants]})
     return out

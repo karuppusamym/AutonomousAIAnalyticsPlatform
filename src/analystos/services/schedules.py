@@ -35,6 +35,7 @@ KINDS = {"reanalysis": "analyst", "dataset_refresh": "editor", "report": "analys
 KINDS["saved_analysis"] = "editor"
 KINDS["step"] = "editor"  # a pinned step's frozen query (P7-04, services/step_pins.py)
 KINDS["pipeline"] = "editor"  # P6-02: a published pipeline's incremental run, or a dry run proposing a materialization
+KINDS["knowledge_sync"] = "editor"  # P2-10: re-sync the workspace's read-only knowledge sources into drafts
 KINDS["pack"] = "editor"  # S09-T4: a recurring pack (template playbook + output template, auto-deliver policy)
 MIN_INTERVAL_SECONDS = 15 * 60
 
@@ -296,7 +297,7 @@ def execute(srun_id: str) -> None:
 
         result = {"dataset_refresh": _refresh, "reanalysis": _reanalysis, "report": _report, "monitor": _monitors,
                   "crawl": _crawl, "saved_analysis": saved_analysis, "step": step_pin,
-                  "pipeline": _pipeline, "pack": pack}[kind](
+                  "pipeline": _pipeline, "pack": pack, "knowledge_sync": _knowledge_sync}[kind](
             owner, workspace_id, schedule_id, srun_id, config)
     except AnalystOSError as exc:
         _finish(srun_id, "failed", error=f"{exc.code}: {exc.message}")
@@ -375,6 +376,13 @@ def _crawl(owner: User, workspace_id: str, schedule_id: str, srun_id: str, confi
     if ids and all("error" in v for v in out.values()):
         raise InvalidInput("every crawl failed: " + "; ".join(v["error"] for v in out.values())[:500])
     return {"crawls": out}
+
+
+def _knowledge_sync(owner: User, workspace_id: str, schedule_id: str, srun_id: str, config: dict) -> dict[str, Any]:
+    """Sync the workspace's enabled knowledge sources (or config.source_ids): drafts only, never knowledge."""
+    from analystos.services.knowledge_sources import sync_workspace
+
+    return sync_workspace(workspace_id, actor=f"schedule:{schedule_id}", source_ids=config.get("source_ids"))
 
 
 def _previous_run(workspace_id: str, schedule_id: str) -> str | None:
@@ -582,6 +590,9 @@ def housekeeping() -> dict[str, Any]:
     from analystos.conversations import retention, summaries
 
     out["conversation_summaries"] = len(summaries.summarize_idle_quietly())  # S04: idle 30 min -> summary
+    from analystos.knowledge import gaps
+
+    out["knowledge_gaps"] = gaps.mine_quietly()  # review P1-3: at most hourly; drafts only
     out["conversation_retention"] = retention.apply_retention_quietly()  # S04: at most hourly; skips legal holds
     try:  # S02-T3: result handles past their TTL (files deleted, rows marked purged)
         from analystos.gateway.handles import purge_expired_results
@@ -610,6 +621,12 @@ def housekeeping() -> dict[str, Any]:
         out["deliveries"] = process_due()
     except Exception:
         log.exception("external delivery failed")
+    try:  # P1-6: push ledger changes to approved webhooks; schema changes re-check data quality (bounded retries)
+        from analystos.context.webhooks import dispatch_due
+
+        out["context_webhooks"] = dispatch_due()
+    except Exception:
+        log.exception("context webhook dispatch failed")
     try:  # S03-T7: follow subscribed context ledgers (each subscription at most every SYNC_INTERVAL)
         from analystos.context.federation import sync_due
 

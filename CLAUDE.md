@@ -39,6 +39,8 @@ and DataPilot are donors: port behaviour and tests, never runtime calls (ADR-001
 
 ```bash
 uv venv -p 3.11 .venv && uv pip install -e ".[dev]"      # deps
+.venv/bin/analystos local [--demo]                          # whole platform, bundled Postgres, no Docker (`.[local]`, runbook 15)
+.venv/bin/analystos mcp-client create --workspace W --vscode .vscode/mcp.json   # connect Copilot / any MCP app; `check` to verify
 docker compose up -d postgres redis temporal superset       # infra (Superset image adds psycopg2); Neo4j is optional:
                                                             # --profile graph + ANALYSTOS_GRAPH_ENABLED=true
 .venv/bin/analystos migrate && .venv/bin/analystos seed     # schema + users/registries/glossary

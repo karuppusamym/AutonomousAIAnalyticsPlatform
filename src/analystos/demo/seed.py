@@ -375,7 +375,15 @@ def ensure_semantic_model(admin: Api, approver: Api, wid: str, d: dict[str, Any]
     else:
         log("exists", f"semantic model v{current.get('version')} ({current.get('status')})")
     approved = []
+    # Looked up first, like every other piece of the seed: a metric already approved with this expression is not
+    # proposed again, so a re-run writes nothing.
+    have = {(m["name"], " ".join(str(m.get("expression") or "").split())): m
+            for m in admin.get(f"{base}/metrics", params={"status": "approved"})}
     for body in metric_proposals(spec):
+        row = have.get((body["name"], " ".join(body["expression"].split())))
+        if row is not None:
+            approved.append(f"{body['display_name'] or body['name']} v{row['version']}")
+            continue
         row = admin.post(f"{base}/metrics", body)["metric"]
         if row["status"] == "proposed":
             approver.post(f"{base}/metrics/{body['name']}/approve", {"version": row["version"], "reason": "demo seed (ADR-016)"})

@@ -10,6 +10,11 @@ Configurations, each producing a ranked list per question:
 * `compiler_t03`         P4-T03 selection: whole documents, term overlap, relevance gate
 * `compiler_k05`         P4-K05 selection: index sections fused with term overlap, gate incl. hop
 
+Ledger rerank (`retrieval.rank`, review P1-4), over tests/fixtures/context/usage-benchmark.json, needing no database:
+
+* `ledger_rank`          trust × freshness × in-scope
+* `ledger_rank_usage`    ... × the bounded usage factor (`context/usage.py`)
+
 The compiler configurations count only what passes the relevance gate (what could reach a prompt);
 T03 sends the first `item_chars` of a whole document, so it is credited with a section only when
 that excerpt holds it. Metrics per configuration: document recall@1/@3/@5 and MRR, and section
@@ -27,7 +32,9 @@ from analystos.knowledge import okf
 
 CONTEXT_SET = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "okf" / "context-benchmark.json"
 PARAPHRASE_SET = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "okf" / "paraphrase-benchmark.json"
+USAGE_SET = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "context" / "usage-benchmark.json"
 CONFIGS = ("index_ts_rank_cd", "index_bm25", "index_bm25_hop", "compiler_t03", "compiler_k05")
+USAGE_CONFIGS = ("ledger_rank", "ledger_rank_usage")
 
 
 def load(path: Path = CONTEXT_SET) -> dict[str, Any]:
@@ -149,4 +156,55 @@ def paraphrase_run(session: Session, workspace_id: str, platform_pack_id: str, p
             ranks.append([f"{titles.get(h.path, h.title)}#x" for h in hits])
         m = _metrics(ranks, [f"{q['expected']}#x" for q in labelled])
         out[name] = {k: v for k, v in m.items() if k.startswith("doc_")}
+    return out
+
+
+def usage_run(path: Path = USAGE_SET, *, now: Any = None) -> dict[str, Any]:
+    """The ledger rerank with and without usage over a labelled set: document recall/MRR per configuration and per
+    question type (`tie`: equally relevant entries on a used and an unused table; `control`: a clearly better match
+    that a busier table must not overtake). Pure: entries, usage counts and questions come from the fixture."""
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from analystos.context.embeddings import embed
+    from analystos.context.retrieval import Access, rank
+    from analystos.context.usage import AssetUsage, factor
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    now = now or datetime(2026, 11, 5, tzinfo=UTC)
+    entries = [SimpleNamespace(**{**e, "aliases": e.get("aliases", []), "owner_id": None, "version": 1, "valid_from": now,
+                                  "embedding": embed(f"{e['title']} {e['summary']}")}) for e in data["entries"]]
+    tables = {".".join(r.split(".")[:2]) for e in data["entries"] for r in e["refs"]}
+    access = Access(workspace_id="benchmark", user_id="benchmark", role="viewer", assets=tables, denied=set(),
+                    known_assets=tables)
+    factors = {t: factor(AssetUsage(users=u.get("users", 0), runs=u.get("runs", 0))) for t, u in data["usage"].items()}
+    questions = data["questions"]
+    per_q = [{"ledger_rank": [f"{h.entry.id}#x" for h in rank(entries, q["q"], access, now=now)],
+              "ledger_rank_usage": [f"{h.entry.id}#x" for h in rank(entries, q["q"], access, now=now, usage=factors)]}
+             for q in questions]
+    expected = [f"{q['expected']}#x" for q in questions]
+    report: dict[str, Any] = {"questions": len(questions), "configs": {}}
+    for c in USAGE_CONFIGS:
+        report["configs"][c] = {"all": _metrics([r[c] for r in per_q], expected)}
+        for t in sorted({q.get("type", "all") for q in questions}):
+            idx = [i for i, q in enumerate(questions) if q.get("type") == t]
+            report["configs"][c][t] = _metrics([per_q[i][c] for i in idx], [expected[i] for i in idx])
+    return report
+
+
+def index_first_savings(session: Session, user: Any, workspace_id: str, objective: str, *, purpose: str = "benchmark",
+                        budget_tokens: int = 20_000) -> dict[str, Any]:
+    """P2-8: what reading the context index first costs against the flat bundle, for one objective: tokens used,
+    items carried and omissions of each. The index-first bundle opens with a digest of what exists and carries each
+    item as a short pointer, so it should use fewer tokens for the same receipts."""
+    from analystos.context.retrieval import compile_bundle
+
+    out: dict[str, Any] = {"objective": objective}
+    for name, first in (("flat", False), ("index_first", True)):
+        b = compile_bundle(session, user, workspace_id, purpose=purpose, objective=objective, budget_tokens=budget_tokens,
+                           index_first=first)["bundle"]
+        out[name] = {"tokens": b["budget_used"]["tokens"], "items": len(b["receipts"]), "omissions": len(b["omissions"])}
+    flat, first_tokens = out["flat"]["tokens"], out["index_first"]["tokens"]
+    out["tokens_saved"] = flat - first_tokens
+    out["saved_ratio"] = round((flat - first_tokens) / flat, 4) if flat else 0.0
     return out

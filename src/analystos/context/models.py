@@ -130,3 +130,57 @@ class ContextFederatedEntry(Base):
     valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     retired: Mapped[bool] = mapped_column(Boolean, default=False)
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ContextWebhook(Base):
+    """A push subscription to the workspace's ledger change feed (review P1-6). Not the federation
+    ``ContextSubscription`` above: that one pulls another workspace's ledger, this one pushes this workspace's change
+    metadata to a webhook (``kind='webhook'``, standing external egress, so it is authorized by an approval bound to
+    ``destination_hash`` = filters + destination) or to an internal consumer (``kind='internal'``, platform-defined,
+    no egress). ``cursor`` is the last ledger ``seq`` scanned; it stays NULL until first authorized, so a new
+    subscription sees changes from then on, never a replay."""
+
+    __tablename__ = "context_webhook"
+    __table_args__ = (UniqueConstraint("workspace_id", "name", name="uq_context_webhook_name"),)
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(10), default="webhook")  # webhook | internal
+    url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    secret_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    filters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # kinds, changes, tag_added, schema_changed
+    destination_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(12), default="pending")  # pending|authorized|rejected|lapsed|revoked
+    approval_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    authorized_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    authorized_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cursor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    created_by: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ContextWebhookDelivery(Base):
+    """One push of one ledger change to one subscription: the delivery log. ``payload`` is ledger metadata only (ids,
+    kind, change, version, signals), never a body. Retries are bounded exponential backoff ending in ``dead_letter``."""
+
+    __tablename__ = "context_webhook_delivery"
+    __table_args__ = (UniqueConstraint("webhook_id", "seq", name="uq_context_webhook_delivery_seq"),
+                      Index("ix_context_webhook_delivery_due", "status", "next_attempt_at"))
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    webhook_id: Mapped[str] = mapped_column(ForeignKey("context_webhook.id", ondelete="CASCADE"), index=True)
+    seq: Mapped[int] = mapped_column(BigInteger)
+    entry_id: Mapped[str] = mapped_column(String(40))
+    destination_hash: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    idempotency_key: Mapped[str] = mapped_column(String(64), unique=True)
+    status: Mapped[str] = mapped_column(String(12), default="queued")  # queued|sending|retrying|delivered|dead_letter|refused
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=5)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

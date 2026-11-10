@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { api, type Crawl, type Source } from "../api";
+import { api, type Crawl, type CrawlImpact, type ImpactItem, type PauseRequest, type Source } from "../api";
 import { fmtDate, fmtPct, durationBetween } from "../lib/format";
 import { useAction, useAsync } from "../lib/hooks";
 import {
@@ -182,6 +182,7 @@ export function CrawlDetail({ crawl: c }: { crawl: Crawl }) {
               </table>
             </div>
           )}
+          {c.status === "succeeded" && <ImpactPanel crawlId={c.id} />}
           {!!ch.missing?.length && <DriftList title="Missing (not seen in this crawl)" items={ch.missing} />}
           {!!ch.deprecated?.length && (
             <DriftList title="Deprecated (removed from every scope)" items={ch.deprecated}
@@ -223,5 +224,118 @@ function DriftList({ title, items, note }: { title: string; items: string[]; not
       {note && <p className="muted small">{note}</p>}
       <div className="chip-row">{items.map((k) => <code key={k} className="tag">{k}</code>)}</div>
     </div>
+  );
+}
+
+const IMPACT_GROUPS: [keyof CrawlImpact, string][] = [
+  ["metrics", "Metrics"], ["verified_queries", "Verified queries"], ["dashboards", "Dashboards"],
+  ["monitors", "Monitors"], ["schedules", "Schedules"],
+];
+
+/** Every list present, so an older server (or a partial response) renders as "nothing found". */
+function normalizeImpact(d: Partial<CrawlImpact>): CrawlImpact {
+  const list = <T,>(v: T[] | undefined) => (Array.isArray(v) ? v : []);
+  return {
+    crawl_id: d.crawl_id ?? "", source_id: d.source_id ?? "", counts: d.counts ?? {},
+    changed: list(d.changed), downstream: list(d.downstream), metrics: list(d.metrics),
+    verified_queries: list(d.verified_queries), dashboards: list(d.dashboards), monitors: list(d.monitors),
+    schedules: list(d.schedules),
+  };
+}
+
+/**
+ * What reads the columns this crawl removed, retyped or deprecated (P1-5): downstream columns along recorded
+ * lineage, then metrics, verified queries, dashboards, monitors and schedules. Pausing schedules is an approval
+ * request; the pause runs only once an approver decided it, re-checked against the approved hash.
+ */
+export function ImpactPanel({ crawlId }: { crawlId: string }) {
+  const report = useAsync(() => api.crawlImpact(crawlId), [crawlId]);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [request, setRequest] = useState<PauseRequest | null>(null);
+  const [paused, setPaused] = useState<string[] | null>(null);
+  const act = useAction();
+  const r = report.data ? normalizeImpact(report.data) : null;
+  if (report.error) return <ErrorBox error={report.error} onRetry={report.reload} />;
+  if (!r) return <p className="muted small">Working out what reads the changed columns…</p>;
+  const dependents = IMPACT_GROUPS.reduce((n, [k]) => n + (r[k] as ImpactItem[]).length, 0);
+  const pausable = r.schedules.filter((s) => s.enabled);
+  const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const ask = async () => {
+    const out = await act.run(() => api.requestSchedulePause(crawlId, picked));
+    if (out) setRequest(out);
+  };
+  const execute = async () => {
+    if (!request) return;
+    const out = await act.run(() => api.executeSchedulePause(request.approval_id));
+    if (out) {
+      setPaused(out.paused);
+      report.reload();
+    }
+  };
+  return (
+    <section className="stack" aria-label="Impact of the schema change">
+      <h3 className="group-title">Impact</h3>
+      {r.changed.length === 0 ? <p className="muted small">No column was removed or retyped: nothing downstream can break.</p> : (
+        <>
+          <div className="chip-row">
+            <Tag tone="warning">{r.changed.length} changed columns</Tag>
+            <Tag tone="info">{r.downstream.length} downstream columns</Tag>
+            {IMPACT_GROUPS.map(([k, label]) => (
+              <Tag key={k} tone={(r[k] as ImpactItem[]).length ? "danger" : "neutral"}>{(r[k] as ImpactItem[]).length} {label.toLowerCase()}</Tag>
+            ))}
+          </div>
+          {dependents === 0 && r.downstream.length === 0 && <Notice tone="success">Nothing recorded reads the changed columns.</Notice>}
+          {!!r.downstream.length && (
+            <div>
+              <h4 className="small">Downstream columns (column lineage)</h4>
+              <div className="chip-row">
+                {r.downstream.map((d) => <code key={`${d.asset}.${d.column}`} className="tag" title={`from ${d.from}, ${d.hops} hop(s)`}>{d.asset}.{d.column}</code>)}
+              </div>
+            </div>
+          )}
+          {IMPACT_GROUPS.filter(([k]) => (r[k] as ImpactItem[]).length).map(([k, label]) => (
+            <div key={k} className="table-wrap">
+              <table className="table table-compact">
+                <caption className="small">{label}</caption>
+                <thead><tr>{k === "schedules" && <th><span className="sr-only">Pause</span></th>}<th>Name</th><th>Reads</th><th>Via</th></tr></thead>
+                <tbody>
+                  {(r[k] as ImpactItem[]).map((it) => (
+                    <tr key={it.id}>
+                      {k === "schedules" && (
+                        <td>
+                          <input type="checkbox" aria-label={`Pause ${it.name}`} disabled={!it.enabled || !!request}
+                            checked={picked.includes(it.id)} onChange={() => toggle(it.id)} />
+                        </td>
+                      )}
+                      <td className="small">{it.name}{it.enabled === false && <span className="muted"> (paused)</span>}</td>
+                      <td className="small">{it.reads.length ? it.reads.map((c) => (
+                        <Tag key={`${c.asset}.${c.column}`} tone={c.change === "downstream" ? "info" : "warning"}>{c.asset}.{c.column}</Tag>
+                      )) : "—"}</td>
+                      <td className="small">{it.via?.length ? it.via.join(", ") : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+          {!!pausable.length && !paused && (
+            <div className="toolbar">
+              {!request ? (
+                <button type="button" className="btn btn-sm" disabled={!picked.length || act.busy} onClick={ask}>
+                  Request approval to pause {picked.length || ""} schedule{picked.length === 1 ? "" : "s"}
+                </button>
+              ) : (
+                <>
+                  <span className="small">Approval <code>{request.approval_id}</code> requested. An approver decides it under Approvals; then:</span>
+                  <button type="button" className="btn btn-sm" disabled={act.busy} onClick={execute}>Pause approved schedules</button>
+                </>
+              )}
+            </div>
+          )}
+          {paused && <Notice tone="success">Paused {paused.length} schedule{paused.length === 1 ? "" : "s"}.</Notice>}
+          <ErrorBox error={act.error} />
+        </>
+      )}
+    </section>
   );
 }

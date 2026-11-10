@@ -138,12 +138,33 @@ function scanSuggestions(): KnowledgeSuggestion[] {
   ];
 }
 
-const k = { packs: initialPacks(), suggestions: initialSuggestions(), question: "" };
+const k = { packs: initialPacks(), suggestions: initialSuggestions(), question: "", goldenRegression: false };
 
 export function resetKnowledgeState(): void {
   k.packs = initialPacks();
   k.suggestions = initialSuggestions();
   k.question = "";
+  k.goldenRegression = false;
+}
+
+/** Make approving SUGGESTION_TERM break one passing golden question (the review gate's 409). */
+export function setGoldenRegression(on: boolean): void {
+  k.goldenRegression = on;
+}
+
+/** The effect knowledge/effect.py reports: one golden case, broken by SUGGESTION_TERM when the flag is set. */
+function goldenEffect(decisions: { id: string; action: string }[]): Dict {
+  const breaks = k.goldenRegression && decisions.some((d) => d.id === SUGGESTION_TERM && d.action !== "reject");
+  const after = !breaks;
+  return { evaluated: true, baseline: { passed: 1, total: 2, rate: 0.5 }, projected: { passed: breaks ? 0 : 2, total: 2, rate: breaks ? 0 : 1 },
+    delta_points: breaks ? -50 : 50, counts: { newly_failing: breaks ? 1 : 0, fixed: breaks ? 0 : 1, still_failing: 0, still_passing: breaks ? 0 : 1 },
+    cases: [{ id: "gold_reopen", question: "What is the reopen rate for P1 incidents?", before: true, after, change: breaks ? "newly_failing" : "still_passing",
+      expected_columns: ["itsm.incident.reopen_count"], columns_before: ["itsm.incident.reopen_count"],
+      columns_after: breaks ? [] : ["itsm.incident.reopen_count"], served_before: null, served_after: null },
+    { id: "gold_mttr", question: "What is MTTR by priority?", before: false, after: !breaks, change: breaks ? "still_failing" : "fixed",
+      expected_columns: [], columns_before: [], columns_after: [], served_before: null, served_after: breaks ? null : "vq_mttr" }]
+      .sort((a, b) => Number(a.after) - Number(b.after)),
+    errors: [], fingerprint: "fp" };
 }
 
 /** Queue what a glossary scan would (tests of the Overview count). */
@@ -394,7 +415,16 @@ export function knowledgeRoute(m: string, p: string, url: URL, requestBody: stri
     const status = url.searchParams.get("status") || "pending";
     return { status: 200, body: k.suggestions.filter((s) => s.status === status) };
   }
-  if (m === "POST" && rest === "/suggestions/review") return { status: 200, body: review((body.decisions ?? []) as never[]) };
+  if (m === "POST" && rest === "/suggestions/preview") return { status: 200, body: goldenEffect((body.decisions ?? []) as never[]) };
+  if (m === "POST" && rest === "/suggestions/review") {
+    const decisions = (body.decisions ?? []) as { id: string; action: string }[];
+    const effect = goldenEffect(decisions);
+    if ((effect.counts as Dict).newly_failing && !body.override_reason) {
+      return { status: 409, body: { error: { code: "conflict", message: "This batch makes 1 golden question(s) fail that pass today.",
+        details: { code: "golden_regression", effect } } } };
+    }
+    return { status: 200, body: { ...review(decisions as never[]), effect } };
+  }
   if (m === "GET" && rest === "/suggestions/summary") {
     const pending: Record<string, number> = {};
     for (const s of k.suggestions.filter((x) => x.status === "pending")) pending[s.kind] = (pending[s.kind] ?? 0) + 1;

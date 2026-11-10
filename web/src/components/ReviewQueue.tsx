@@ -1,7 +1,9 @@
 import { useId, useMemo, useState } from "react";
-import { api, type GlossaryScanResult, type KnowledgeSuggestion, type ReviewDecisionBody, type ReviewResult } from "../api";
 import {
-  batchDecisions, editableFields, editedFields, evidenceLines, fieldText, needsAnswer, primaryField, provenanceLine, QUESTION_KINDS,
+  api, ApiError, type GlossaryScanResult, type GoldenEffect, type KnowledgeSuggestion, type ReviewDecisionBody, type ReviewResult,
+} from "../api";
+import {
+  batchDecisions, editableFields, editedFields, evidenceLines, fieldText, gapSummary, needsAnswer, primaryField, provenanceLine, QUESTION_KINDS,
   scanSummary,
 } from "../lib/knowledge";
 import { fmtDate } from "../lib/format";
@@ -12,7 +14,8 @@ const STATUSES = ["pending", "approved", "rejected", "superseded"] as const;
 const KIND_LABEL: Record<string, string> = {
   term: "glossary term", definition: "definition", metric: "metric", rule: "business rule", note: "note", negative: "negative knowledge",
   attested_computation: "attested computation", table_description: "table description", domain_candidate: "domain candidate",
-  column_description: "column description", glossary_term: "suggested glossary term", description_question: "description needed",
+  column_description: "column description", column_tag: "sensitive tag along lineage", knowledge_gap: "knowledge gap",
+  glossary_term: "suggested glossary term", description_question: "description needed", quality_rule: "quality rule",
 };
 
 /**
@@ -32,6 +35,11 @@ export function ReviewQueue({ wsId, canDecide, onOpenDocument }: {
   const [reasonMissing, setReasonMissing] = useState(false);
   const [result, setResult] = useState<ReviewResult | null>(null);
   const act = useAction();
+  const peek = useAction();
+  const [effect, setEffect] = useState<GoldenEffect | null>(null);
+  // A batch that breaks a passing golden question waits here until the reviewer writes why (knowledge/effect.py).
+  const [blocked, setBlocked] = useState<{ decisions: ReviewDecisionBody[]; effect: GoldenEffect } | null>(null);
+  const [override, setOverride] = useState("");
   const scan = useAction();
   const [scanned, setScanned] = useState<GlossaryScanResult | null>(null);
   const rows = useMemo(() => list.data ?? [], [list.data]);
@@ -46,14 +54,32 @@ export function ReviewQueue({ wsId, canDecide, onOpenDocument }: {
     else n.delete(sid);
     return n;
   });
-  const decide = async (decisions: Parameters<typeof api.reviewSuggestions>[1]) => {
-    const r = await act.run(() => api.reviewSuggestions(wsId, decisions));
+  const decide = async (decisions: ReviewDecisionBody[], overrideReason?: string) => {
+    const r = await act.run(async () => {
+      try {
+        return await api.reviewSuggestions(wsId, decisions, overrideReason);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409 && err.details.code === "golden_regression") {
+          setBlocked({ decisions, effect: err.details.effect as GoldenEffect });
+          setEffect(null);
+          return null;
+        }
+        throw err;
+      }
+    });
     if (r) {
       setResult(r);
       setSelected(new Set());
       setReason("");
+      setEffect(null);
+      setBlocked(null);
+      setOverride("");
       await list.reload();
     }
+  };
+  const checkEffect = async () => {
+    const r = await peek.run(() => api.previewSuggestions(wsId, batchDecisions([...selected], "approve", "")));
+    if (r) setEffect(r);
   };
   const runScan = async () => {
     const r = await scan.run(() => api.glossaryScan(wsId));
@@ -95,6 +121,7 @@ export function ReviewQueue({ wsId, canDecide, onOpenDocument }: {
           {result.revision !== null ? <>Workspace pack revision {result.revision}: </> : null}
           {result.approved.length} approved, {result.rejected.length} rejected
           {result.rejected.some((r) => r.path) && <> (recorded as negative knowledge)</>}.
+          {result.effect?.evaluated && <> {goldenSummary(result.effect)}</>}
           {result.approved.some((a) => a.catalog) && (
             <ul className="small plain-list">{result.approved.filter((a) => a.catalog).map((a) => <li key={a.id}>{a.catalog}</li>)}</ul>
           )}
@@ -129,7 +156,25 @@ export function ReviewQueue({ wsId, canDecide, onOpenDocument }: {
               Approve selected ({selected.size})</button>
             <button type="button" className="btn btn-danger btn-sm" disabled={!selected.size || act.busy} onClick={() => void batch("reject")}>
               Reject selected ({selected.size})</button>
+            <button type="button" className="btn btn-sm" disabled={!selected.size || peek.busy || act.busy} onClick={() => void checkEffect()}>
+              {peek.busy ? "Checking…" : "Check effect on golden questions"}</button>
           </div>
+          <ErrorBox error={peek.error} />
+          {effect && !blocked && <GoldenEffectPanel effect={effect} />}
+          {blocked && (
+            <Notice tone="warning">
+              <p><strong>Not approved.</strong> This batch makes {blocked.effect.counts.newly_failing} golden question(s) fail that pass
+                today. Remove the drafts that cause it, or approve with a written reason (it is kept in the audit log).</p>
+              <GoldenEffectPanel effect={blocked.effect} />
+              <label className="small" htmlFor={`${id}-override`}>Why approve anyway</label>
+              <textarea id={`${id}-override`} value={override} maxLength={2000} rows={2} onChange={(e) => setOverride(e.target.value)} />
+              <div className="review-batch">
+                <button type="button" className="btn btn-success btn-sm" disabled={!override.trim() || act.busy}
+                  onClick={() => void decide(blocked.decisions, override.trim())}>Approve anyway</button>
+                <button type="button" className="btn btn-sm btn-ghost" onClick={() => { setBlocked(null); setOverride(""); }}>Cancel</button>
+              </div>
+            </Notice>
+          )}
           {reasonMissing && <p id={`${id}-reason-err`} className="field-error" role="alert">Say why: a rejection is kept as negative knowledge.</p>}
           <ErrorBox error={act.error} />
         </Card>
@@ -149,6 +194,44 @@ export function ReviewQueue({ wsId, canDecide, onOpenDocument }: {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+const CHANGE_LABEL: Record<GoldenEffect["cases"][number]["change"], string> = {
+  newly_failing: "newly failing", fixed: "fixed", still_failing: "still failing", still_passing: "still passing",
+};
+
+/** "Golden questions: 3 of 5 pass now, 4 of 5 with this batch (+20 points)." */
+function goldenSummary(e: GoldenEffect): string {
+  if (!e.evaluated) return "No golden questions to check yet: add some under Grounding so reviews show their effect.";
+  const sign = e.delta_points > 0 ? "+" : "";
+  return `Golden questions: ${e.baseline.passed} of ${e.baseline.total} pass now, ${e.projected.passed} of ${e.projected.total} `
+    + `with this batch (${sign}${e.delta_points} points).`;
+}
+
+/** Per-question effect of a batch, newly failing first; columns and served query shown only where they change. */
+function GoldenEffectPanel({ effect }: { effect: GoldenEffect }) {
+  const changed = effect.cases.filter((c) => c.change === "newly_failing" || c.change === "fixed");
+  return (
+    <div className="stack small" aria-live="polite">
+      <p>{goldenSummary(effect)}</p>
+      {changed.length > 0 && (
+        <ul className="plain-list" aria-label="Golden questions this batch changes">
+          {changed.map((c) => (
+            <li key={c.id}>
+              <Tag tone={c.change === "fixed" ? "success" : "danger"}>{CHANGE_LABEL[c.change]}</Tag> {c.question}
+              {c.columns_before.join(",") !== c.columns_after.join(",") && (
+                <span className="muted"> · columns {c.columns_before.join(", ") || "none"} → {c.columns_after.join(", ") || "none"}</span>
+              )}
+              {c.served_before !== c.served_after && (
+                <span className="muted"> · verified query {c.served_before ?? "none"} → {c.served_after ?? "none"}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {effect.errors.length > 0 && <p className="muted">{effect.errors.length} draft(s) in the selection cannot be applied as they stand.</p>}
     </div>
   );
 }
@@ -183,7 +266,7 @@ function SuggestionCard({ s, selectable, selected, onSelect, busy, onEditApprove
           <div className="suggestion-title">
             <h2 className="h-md">{s.title}</h2>
             <span className="chip-row small">
-              <Tag tone="info">{KIND_LABEL[s.kind] ?? s.kind}</Tag>
+              <Tag tone={s.kind === "knowledge_gap" ? "warning" : "info"}>{KIND_LABEL[s.kind] ?? s.kind}</Tag>
               <span className="muted">{s.origin} · {s.proposed_by} · {fmtDate(s.created_at)}</span>
               {s.status !== "pending" && <Tag tone={s.status === "approved" ? "success" : s.status === "rejected" ? "danger" : "neutral"}>{s.status}</Tag>}
             </span>
@@ -192,6 +275,9 @@ function SuggestionCard({ s, selectable, selected, onSelect, busy, onEditApprove
         </div>
         <p className="small muted">Writes <code>{s.path}</code> · subject <code>{s.subject}</code>{s.revision ? <> · revision {s.revision}</> : null}</p>
         {s.kind === "domain_candidate" && <Notice tone="info">Choose a keyword from the table name or a non-sensitive column name, then approve with edits. That reviewed rule applies in this workspace on the next full crawl; the suggestion alone cannot change the catalog.</Notice>}
+        {s.kind === "knowledge_gap" && gapSummary(s) && (
+          <Notice tone="warning"><strong>Knowledge gap.</strong> {gapSummary(s)} Approving writes the note below into the pack; it defines nothing until you edit it to say what the term means.</Notice>
+        )}
         {s.reason && <p className="small">Reason: {s.reason}</p>}
         {!editing && (
           <div className="table-wrap"><table className="table table-compact suggestion-fields">

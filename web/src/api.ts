@@ -227,6 +227,8 @@ export interface Relationship {
   origin: string;
   from_asset: string | null;
   to_asset: string | null;
+  /** A validated join as a runnable, value-free statement in the source's dialect; null when not validated. */
+  join_sql?: string | null;
 }
 
 export interface RunTask {
@@ -1427,10 +1429,51 @@ export interface ReviewResult {
   approved: { id: string; path: string | null; catalog?: string }[];
   rejected: { id: string; path: string | null; catalog?: string }[];
   errors: { id: string; error: string; [k: string]: unknown }[];
+  effect?: GoldenEffect;
+}
+
+/** How one golden question fares before and with a review batch (knowledge/effect.py). */
+export interface GoldenEffectCase {
+  id: string;
+  question: string;
+  before: boolean;
+  after: boolean;
+  change: "newly_failing" | "fixed" | "still_failing" | "still_passing";
+  expected_columns: string[];
+  columns_before: string[];
+  columns_after: string[];
+  served_before: string | null;
+  served_after: string | null;
+}
+
+export interface GoldenScore { passed: number; total: number; rate: number | null }
+
+/** Golden scores now and with the batch applied; 409 `details.effect` when a batch would break a passing case. */
+export interface GoldenEffect {
+  evaluated: boolean;
+  reason?: string;
+  baseline: GoldenScore;
+  projected: GoldenScore;
+  delta_points: number;
+  counts: Record<GoldenEffectCase["change"], number>;
+  cases: GoldenEffectCase[];
+  errors: { id: string; error: string; [k: string]: unknown }[];
+  fingerprint?: string;
 }
 
 /** Stream D: the workspace context as one download (OKF zip, versioned JSON, or one Markdown file). */
 export type ContextExportFormat = "okf" | "json" | "markdown";
+
+export type GlossarySheetFormat = "csv" | "xlsx";
+export interface GlossaryImportRow {
+  row: number; term: string; status: "queued" | "already_pending" | "already_decided" | "unchanged" | "skipped" | "error";
+  error?: string; reason?: string; suggestion_id?: string; existing_term?: string | null; warnings?: string[]; ignored_columns?: string[];
+}
+export interface GlossaryImportReport {
+  batch: string | null; dry_run: boolean; file_sha256: string; rows: number; queued: number; already_pending: number;
+  already_decided: number; unchanged: number; skipped: number; error: number; ignored_headers: string[]; results: GlossaryImportRow[];
+}
+export interface GlossaryExportFile extends DownloadedFile { terms: number; omittedTerms: number; omittedLinks: number }
 
 export interface ContextPurpose {
   purpose: string;
@@ -1936,6 +1979,40 @@ export interface Schedule {
   recent_runs?: ScheduleRun[];
   revision?: number;
   pins?: Dict | null;
+}
+
+/** A push subscription to the context change feed (P1-6): metadata only, sent while an approval bound to its filters and
+ *  destination stands. `internal` rows are platform consumers (schema change re-checks data quality). */
+export interface ContextWebhook {
+  id: string;
+  workspace_id: string;
+  name: string;
+  kind: "webhook" | "internal";
+  url: string | null;
+  has_secret: boolean;
+  filters: { kinds: string[]; changes: string[]; tag_added: string[]; schema_changed: boolean };
+  status: "pending" | "authorized" | "rejected" | "revoked" | "lapsed" | string;
+  authorized: boolean;
+  authorized_until: string | null;
+  approval_id: string | null;
+  destination_hash: string;
+  cursor: number | null;
+  revision: number;
+  summary: string;
+}
+
+export interface ContextWebhookDelivery {
+  id: string;
+  webhook_id: string;
+  seq: number;
+  entry_id: string;
+  status: "queued" | "sending" | "retrying" | "delivered" | "dead_letter" | "refused" | string;
+  attempts: number;
+  max_attempts: number;
+  last_error: string | null;
+  next_attempt_at: string | null;
+  delivered_at: string | null;
+  created_at: string | null;
 }
 
 /** An external email/webhook target (N-3): sends only while an approval bound to its hash stands. */
@@ -2512,6 +2589,23 @@ export interface Crawl {
   finished_at: string | null;
 }
 
+/** One column the impact report follows: changed by the crawl, or downstream of a changed one along lineage. */
+export interface ImpactColumn { asset: string; column: string; change: "removed" | "retyped" | "table_deprecated" | "downstream" | string; }
+export interface ImpactItem {
+  id: string; name: string; reads: ImpactColumn[]; via?: string[];
+  status?: string; kind?: string; enabled?: boolean; version?: number; revision?: number;
+}
+/** GET /api/crawls/{id}/impact (P1-5): what reads the columns a crawl saw change. */
+export interface CrawlImpact {
+  crawl_id: string; source_id: string;
+  changed: (ImpactColumn & { asset_id: string | null; key: string; from?: string; to?: string })[];
+  downstream: (ImpactColumn & { hops: number; from: string; origins: string[] })[];
+  metrics: ImpactItem[]; verified_queries: ImpactItem[]; dashboards: ImpactItem[]; monitors: ImpactItem[];
+  schedules: ImpactItem[];
+  counts: Record<string, number>;
+}
+export interface PauseRequest { approval_id: string; status: string; payload_hash: string; schedules: { id: string; revision: number }[]; expires_at: string | null; }
+
 /** Request body of POST …/sources/{id}/crawl (generated). */
 export type CrawlInput = Schemas["CrawlIn"];
 
@@ -2606,7 +2700,74 @@ export interface CatalogAsset {
   time_column?: string | null;
   profile_meta?: ProfileMeta | null;
   snapshot?: Dict | null;
+  /** A person's notes for agents reading this table (served by context.lookup); edited by people only. */
+  guidelines?: AssetGuidelines | null;
+  /** Declared quality rules' trust signal (P1-7, quality/service.py `asset_trust`); null when no rule is declared. */
+  quality?: QualityTrust | null;
   columns: CatalogColumn[];
+}
+
+export interface AssetGuidelines {
+  text: string;
+  by: string | null;
+  at: string | null;
+}
+
+// ----------------------------------------------------------------------------------- declared quality rules (P1-7)
+export type QualityTrustLevel = "trusted" | "partial" | "unverified" | "at_risk" | "failing" | "none" | string;
+
+export interface QualityTrust {
+  level: QualityTrustLevel;
+  rules: number;
+  passing: number;
+  failing: number;
+  errors: number;
+  unrun: number;
+  score: number;
+  mean_pass_rate: number | null;
+  by_dimension: Record<string, { rules: number; passing: number }>;
+  last_run_at: string | null;
+  failing_rules: { id: string; name: string; severity: string; pass_rate: number | null }[];
+}
+
+/** A declared rule (contracts/quality.py `QualityRule`, generated). */
+export type QualityRuleSpec = Schemas["QualityRule"];
+
+export interface QualityRuleRow {
+  id: string;
+  workspace_id: string;
+  asset: string;
+  column: string | null;
+  name: string;
+  type: string;
+  dimension: string;
+  severity: string;
+  threshold: number;
+  definition: QualityRuleSpec;
+  status: "active" | "disabled" | string;
+  origin: "owner" | "recommended" | "import:okf" | string;
+  approved_by: string | null;
+  last_status: "passed" | "failed" | "error" | null;
+  last_pass_rate: number | null;
+  last_run_at: string | null;
+}
+
+export interface QualityRuleResultRow {
+  rule_id: string;
+  name: string;
+  asset: string;
+  status: "passed" | "failed" | "error";
+  pass_rate: number | null;
+  evaluated: number | null;
+  value: number | null;
+  error: string | null;
+  threshold: number;
+}
+
+export interface QualityRecommendation {
+  asset: string;
+  queued: { id: string; type: string; column: string; statement: string }[];
+  skipped: number;
 }
 
 /** Query of GET …/catalog (generated parameters). */
@@ -2621,6 +2782,7 @@ export interface CuratedAsset {
   description: string | null;
   description_origin: string | null;
   reviewed: boolean;
+  guidelines?: AssetGuidelines | null;
 }
 
 export interface SqlExplanation {
@@ -2884,6 +3046,8 @@ export interface ToolManifestV2 {
   limits: { timeout_s: number; max_rows: number; rate_per_min: number };
   exposure: { rest: boolean; mcp: boolean; grants_required: string[] };
   signature: { alg: string; key_id: string; value: string } | null;
+  /** Data products only (P2-9): freshness SLA and quality-rule refs, signed with the rest. */
+  contract?: Schemas["DataContract"] | null;
 }
 
 export interface ToolHealth {
@@ -2917,6 +3081,49 @@ export interface ToolVersionRow {
 export interface RegistryToolDetail extends ToolVersionRow {
   health: ToolHealth;
   versions: { version: string; status: string; status_reason: string | null; created_at: string | null }[];
+}
+
+/** A data product's contract and its state now (quality/contracts.py `contract_status`, P2-9). */
+export interface ProductContractCheck {
+  key: string;
+  kind: "freshness" | "quality_rule" | string;
+  state: "ok" | "breach" | "unknown";
+  severity: "info" | "warning" | "critical" | string;
+  message: string;
+  asset?: string;
+  rule_id?: string;
+  age_hours?: number;
+  max_age_hours?: number;
+  pass_rate?: number | null;
+}
+
+export interface ProductContractStatus {
+  tool_id: string;
+  version: string;
+  has_contract: boolean;
+  contract: Schemas["DataContract"] | null;
+  checks: ProductContractCheck[];
+  breaches: ProductContractCheck[];
+  ok: boolean;
+  unknown: number;
+  checked_at?: string;
+}
+
+/** A consumer access request: an approval bound to (product, version, requester, role or grant). */
+export interface ProductAccessRequest {
+  approval_id: string;
+  product: string;
+  version: string;
+  requester: string;
+  role: string | null;
+  grant: { client_id: string; tools: string[]; role: string } | null;
+  status: string;
+  risk_tier: string;
+  reason: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  created_at: string | null;
+  expires_at: string | null;
 }
 
 export interface ToolPublished extends ToolVersionRow {
@@ -2993,6 +3200,9 @@ export interface McpGrantRow {
   tool_patterns: string[];
   rate_per_min: number | null;
   expires_at: string | null;
+  /** P2-8: a slice of the workspace (context tools only); empty = the whole workspace */
+  domains?: string[];
+  assets?: string[];
 }
 
 /** An MCP / API client of the platform (GET /api/admin/mcp/clients). */
@@ -4259,6 +4469,11 @@ export const api = {
   listCrawls: (ws: string, sourceId?: string) =>
     get("/api/workspaces/{workspace_id}/crawls", { path: W(ws), query: { source_id: sourceId } }) as Promise<Crawl[]>,
   getCrawl: (id: string) => get("/api/crawls/{crawl_id}", { path: { crawl_id: id } }) as Promise<Crawl>,
+  crawlImpact: (id: string) => get("/api/crawls/{crawl_id}/impact", { path: { crawl_id: id } }) as Promise<CrawlImpact>,
+  requestSchedulePause: (id: string, scheduleIds: string[]) =>
+    post("/api/crawls/{crawl_id}/impact/pause", { path: { crawl_id: id }, body: { schedule_ids: scheduleIds } }) as Promise<PauseRequest>,
+  executeSchedulePause: (approvalId: string) =>
+    post("/api/approvals/{approval_id}/execute-schedule-pause", { path: { approval_id: approvalId } }) as Promise<{ paused: string[]; approval_id: string }>,
   catalog: (ws: string, filter: CatalogFilter = {}) =>
     get("/api/workspaces/{workspace_id}/catalog", {
       path: W(ws),
@@ -4332,6 +4547,20 @@ export const api = {
     get("/api/workspaces/{workspace_id}/deliveries", { path: W(ws) }) as Promise<Delivery[]>,
   redriveDelivery: (id: string) =>
     post("/api/deliveries/{delivery_id}/redrive", { path: { delivery_id: id } }) as Promise<Delivery>,
+
+  // context change push subscriptions (P1-6): authorization is decided in the approvals inbox
+  listContextWebhooks: (ws: string) =>
+    get("/api/v2/context/webhooks", { query: { workspace: ws } }) as Promise<ContextWebhook[]>,
+  createContextWebhook: (body: Schemas["WebhookIn"]) =>
+    post("/api/v2/context/webhooks", { body }) as Promise<ContextWebhook>,
+  reauthorizeContextWebhook: (id: string) =>
+    post("/api/v2/context/webhooks/{webhook_id}/reauthorize", { path: { webhook_id: id } }) as Promise<ContextWebhook>,
+  revokeContextWebhook: (id: string) =>
+    post("/api/v2/context/webhooks/{webhook_id}/revoke", { path: { webhook_id: id } }) as Promise<ContextWebhook>,
+  listContextWebhookDeliveries: (ws: string) =>
+    get("/api/v2/context/webhook-deliveries", { query: { workspace: ws } }) as Promise<ContextWebhookDelivery[]>,
+  redriveContextWebhookDelivery: (id: string) =>
+    post("/api/v2/context/webhook-deliveries/{delivery_id}/redrive", { path: { delivery_id: id } }) as Promise<ContextWebhookDelivery>,
 
   // monitors & alerts (§38)
   listMonitors: (ws: string) => get("/api/workspaces/{workspace_id}/monitors", { path: W(ws) }) as Promise<Monitor[]>,
@@ -4552,6 +4781,29 @@ export const api = {
     get("/v2/tools", { query: { workspace_id: ws, ...filter } }) as Promise<RegistryTool[]>,
   getRegistryTool: (ws: string, toolId: string) =>
     get("/v2/tools/{tool_id}", { path: { tool_id: toolId }, query: W(ws) }) as Promise<RegistryToolDetail>,
+  productContract: (ws: string, toolId: string) =>
+    get("/v2/tools/{tool_id}/contract", { path: { tool_id: toolId }, query: W(ws) }) as Promise<ProductContractStatus>,
+  productAccessRequests: (ws: string, toolId: string) =>
+    get("/v2/tools/{tool_id}/access-requests", { path: { tool_id: toolId }, query: W(ws) }) as Promise<ProductAccessRequest[]>,
+  requestProductAccess: (ws: string, toolId: string, body: { role?: string; mcp_client_id?: string; reason?: string } = {}) =>
+    post("/v2/tools/{tool_id}/access-requests", { path: { tool_id: toolId }, body: { workspace_id: ws, ...body } }) as
+      Promise<{ approval_id: string; status: string; risk_tier: string }>,
+  decideProductAccess: (approvalId: string, approve: boolean, reason?: string) =>
+    post("/v2/access-requests/{approval_id}:decide", { path: { approval_id: approvalId }, body: { approve, reason: reason ?? null } }) as
+      Promise<{ approval_id: string; status: string } & Dict>,
+  // declared quality rules (P1-7)
+  qualityRules: (ws: string, asset?: string) =>
+    get("/api/workspaces/{workspace_id}/quality-rules", { path: W(ws), query: asset ? { asset } : {} }) as Promise<QualityRuleRow[]>,
+  declareQualityRule: (ws: string, rule: QualityRuleSpec) =>
+    post("/api/workspaces/{workspace_id}/quality-rules", { path: W(ws), body: rule }) as Promise<QualityRuleRow & { created: boolean }>,
+  setQualityRuleStatus: (ruleId: string, status: "active" | "disabled") =>
+    post("/api/quality-rules/{rule_id}/status", { path: { rule_id: ruleId }, body: { status } }) as Promise<QualityRuleRow>,
+  runQualityRules: (ws: string, assets?: string[]) =>
+    post("/api/workspaces/{workspace_id}/quality-rules:run", { path: W(ws), body: { assets: assets ?? null } }) as
+      Promise<{ results: QualityRuleResultRow[]; trust: Record<string, QualityTrust> }>,
+  recommendQualityRules: (ws: string, assetId: string) =>
+    post("/api/workspaces/{workspace_id}/assets/{asset_id}/quality-rules:recommend", { path: { workspace_id: ws, asset_id: assetId } }) as
+      Promise<QualityRecommendation>,
   registryToolUsage: (ws: string, toolId: string, days = 7) =>
     get("/v2/tools/{tool_id}/usage", { path: { tool_id: toolId }, query: { workspace_id: ws, days } }) as Promise<ToolUsage>,
   publishTool: (body: ToolPublishBody) => post("/v2/tools:publish", { body }) as Promise<ToolPublished>,
@@ -4636,12 +4888,39 @@ export const api = {
       Promise<{ document_id: string; pack_id: string; path: string; title: string; revision: number }>,
   knowledgeSuggestions: (ws: string, status: string = "pending") =>
     get("/api/workspaces/{workspace_id}/knowledge/suggestions", { path: W(ws), query: { status } }) as Promise<KnowledgeSuggestion[]>,
-  reviewSuggestions: (ws: string, decisions: ReviewDecisionBody[]) =>
-    post("/api/workspaces/{workspace_id}/knowledge/suggestions/review", { path: W(ws), body: { decisions } }) as Promise<ReviewResult>,
+  reviewSuggestions: (ws: string, decisions: ReviewDecisionBody[], overrideReason?: string) =>
+    post("/api/workspaces/{workspace_id}/knowledge/suggestions/review", {
+      path: W(ws), body: overrideReason ? { decisions, override_reason: overrideReason } : { decisions },
+    }) as Promise<ReviewResult>,
+  previewSuggestions: (ws: string, decisions: ReviewDecisionBody[]) =>
+    post("/api/workspaces/{workspace_id}/knowledge/suggestions/preview", { path: W(ws), body: { decisions } }) as Promise<GoldenEffect>,
   suggestionSummary: (ws: string) =>
     get("/api/workspaces/{workspace_id}/knowledge/suggestions/summary", { path: W(ws) }) as Promise<SuggestionSummary>,
   glossaryScan: (ws: string, body: { use_model?: boolean; include_ask?: boolean; include_descriptions?: boolean } = {}) =>
     post("/api/workspaces/{workspace_id}/knowledge/glossary/scan", { path: W(ws), body }) as Promise<GlossaryScanResult>,
+  exportGlossarySheet: async (ws: string, format: GlossarySheetFormat): Promise<GlossaryExportFile> => {
+    const path = apiPath("get", "/api/workspaces/{workspace_id}/knowledge/glossary/export", { path: W(ws), query: { format } });
+    let resp: Response;
+    try {
+      resp = await fetch(`${API_BASE}${path}`, { method: "GET", headers: { ...authHeaders() } });
+    } catch (err) {
+      throw new ApiError(0, "network_error", `API unreachable: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    if (!resp.ok) {
+      const err = await parseError(resp);
+      if (resp.status === 401) unauthorizedHandler?.();
+      throw err;
+    }
+    const num = (h: string) => Number(resp.headers.get(h) ?? 0) || 0;
+    return { blob: await resp.blob(), filename: filenameFromDisposition(resp.headers.get("Content-Disposition"), `glossary.${format}`),
+      terms: num("X-Terms"), omittedTerms: num("X-Omitted-Terms"), omittedLinks: num("X-Omitted-Links") };
+  },
+  importGlossarySheet: (ws: string, file: File, dryRun: boolean) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("dry_run", dryRun ? "true" : "false");
+    return post("/api/workspaces/{workspace_id}/knowledge/glossary/import", { path: W(ws), body: fd }) as Promise<GlossaryImportReport>;
+  },
   importKnowledge: (ws: string, file: File, slug: string) => {
     const fd = new FormData();
     fd.append("file", file);

@@ -1,6 +1,78 @@
 {
   "components": {
     "schemas": {
+      "AccessDecisionIn": {
+        "properties": {
+          "approve": {
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "approve"
+        ],
+        "title": "AccessDecisionIn",
+        "type": "object"
+      },
+      "AccessRequestIn": {
+        "properties": {
+          "mcp_client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mcp Client Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id"
+        ],
+        "title": "AccessRequestIn",
+        "type": "object"
+      },
       "AgentForm": {
         "additionalProperties": false,
         "properties": {
@@ -1009,6 +1081,18 @@
             ],
             "title": "Description"
           },
+          "guidelines": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guidelines"
+          },
           "reviewed": {
             "anyOf": [
               {
@@ -1350,6 +1434,25 @@
         "title": "Body_import_context_api_v2_context_import_post",
         "type": "object"
       },
+      "Body_import_glossary_api_workspaces__workspace_id__knowledge_glossary_import_post": {
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_glossary_api_workspaces__workspace_id__knowledge_glossary_import_post",
+        "type": "object"
+      },
       "Body_import_ossie_api_workspaces__workspace_id__semantic_import_ossie_post": {
         "properties": {
           "document": {
@@ -1380,6 +1483,20 @@
           "slug"
         ],
         "title": "Body_import_pack_api_workspaces__workspace_id__knowledge_import_post",
+        "type": "object"
+      },
+      "Body_import_rules_api_workspaces__workspace_id__quality_rules_import_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_rules_api_workspaces__workspace_id__quality_rules_import_post",
         "type": "object"
       },
       "Body_upload_api_workspaces__workspace_id__uploads_post": {
@@ -2606,6 +2723,45 @@
           }
         },
         "title": "DashboardViewIn",
+        "type": "object"
+      },
+      "DataContract": {
+        "additionalProperties": false,
+        "description": "A data product's promise to its consumers (P2-9). Rule refs are `quality_rule` ids that must be active\nwhen the product is published; the monitor reads their latest results and the freshness of `assets`.",
+        "properties": {
+          "freshness": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FreshnessSla"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "min_pass_rate": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Pass Rate"
+          },
+          "quality_rules": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Quality Rules",
+            "type": "array"
+          }
+        },
+        "title": "DataContract",
         "type": "object"
       },
       "DataScope": {
@@ -3904,6 +4060,32 @@
         "title": "ForkIn",
         "type": "object"
       },
+      "FreshnessSla": {
+        "additionalProperties": false,
+        "properties": {
+          "assets": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Assets",
+            "type": "array"
+          },
+          "max_age_hours": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 8784.0,
+            "title": "Max Age Hours",
+            "type": "number"
+          }
+        },
+        "required": [
+          "max_age_hours",
+          "assets"
+        ],
+        "title": "FreshnessSla",
+        "type": "object"
+      },
       "GlossaryScanIn": {
         "properties": {
           "include_ask": {
@@ -4052,6 +4234,18 @@
             "title": "Expected Columns",
             "type": "array"
           },
+          "expected_query": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Query"
+          },
           "notes": {
             "default": "",
             "maxLength": 2000,
@@ -4073,6 +4267,20 @@
       },
       "GrantIn": {
         "properties": {
+          "assets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Assets",
+            "type": "array"
+          },
+          "domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Domains",
+            "type": "array"
+          },
           "expires_at": {
             "anyOf": [
               {
@@ -4791,6 +4999,103 @@
         "title": "JoinExpectation",
         "type": "object"
       },
+      "KnowledgeSourceIn": {
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "kind": {
+            "pattern": "^(github|confluence)$",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "secret_ref": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Ref"
+          }
+        },
+        "required": [
+          "kind",
+          "name"
+        ],
+        "title": "KnowledgeSourceIn",
+        "type": "object"
+      },
+      "KnowledgeSourcePatch": {
+        "properties": {
+          "config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "secret_ref": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Ref"
+          }
+        },
+        "title": "KnowledgeSourcePatch",
+        "type": "object"
+      },
       "LegalHoldIn": {
         "properties": {
           "hold": {
@@ -4832,6 +5137,45 @@
           "password"
         ],
         "title": "Login",
+        "type": "object"
+      },
+      "LookupIn": {
+        "properties": {
+          "assets": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Assets",
+            "type": "array"
+          },
+          "budget_chars": {
+            "default": 16000,
+            "maximum": 200000.0,
+            "minimum": 200.0,
+            "title": "Budget Chars",
+            "type": "integer"
+          },
+          "format": {
+            "default": "yaml",
+            "enum": [
+              "yaml",
+              "json"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "workspace": {
+            "title": "Workspace",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace",
+          "assets"
+        ],
+        "title": "LookupIn",
         "type": "object"
       },
       "MLSpec": {
@@ -6132,6 +6476,56 @@
         "title": "OwnershipOfferIn",
         "type": "object"
       },
+      "PauseIn": {
+        "properties": {
+          "schedule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Schedule Ids",
+            "type": "array"
+          }
+        },
+        "title": "PauseIn",
+        "type": "object"
+      },
+      "PiiLineageIn": {
+        "properties": {
+          "dbt_manifest": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dbt Manifest"
+          },
+          "dialect": {
+            "default": "postgres",
+            "title": "Dialect",
+            "type": "string"
+          },
+          "propose": {
+            "default": true,
+            "title": "Propose",
+            "type": "boolean"
+          },
+          "sql": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Sql",
+            "type": "array"
+          }
+        },
+        "title": "PiiLineageIn",
+        "type": "object"
+      },
       "PilotCheck": {
         "properties": {
           "action": {
@@ -7076,6 +7470,24 @@
         "title": "PresetIn",
         "type": "object"
       },
+      "PreviewIn": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewDecision"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Decisions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "decisions"
+        ],
+        "title": "PreviewIn",
+        "type": "object"
+      },
       "ProcessAnalyzeIn": {
         "properties": {
           "activity_column": {
@@ -7521,6 +7933,16 @@
             ],
             "title": "Columns"
           },
+          "contract": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DataContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "description": {
             "anyOf": [
               {
@@ -7618,6 +8040,205 @@
           "approval_id"
         ],
         "title": "PushIn",
+        "type": "object"
+      },
+      "QualityRule": {
+        "additionalProperties": false,
+        "description": "One declared rule. `asset` is `schema.table` as the gateway sees it; `column` is set for every column\nrule (all but sql_row / sql_aggregate and a composite unique, which uses `columns`).",
+        "properties": {
+          "allow_null": {
+            "default": true,
+            "title": "Allow Null",
+            "type": "boolean"
+          },
+          "asset": {
+            "maxLength": 330,
+            "title": "Asset",
+            "type": "string"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Columns",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Description",
+            "type": "string"
+          },
+          "dimension": {
+            "anyOf": [
+              {
+                "enum": [
+                  "completeness",
+                  "uniqueness",
+                  "validity",
+                  "accuracy",
+                  "consistency",
+                  "timeliness"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern"
+          },
+          "severity": {
+            "default": "warning",
+            "enum": [
+              "info",
+              "warning",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "sql": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sql"
+          },
+          "statistic": {
+            "anyOf": [
+              {
+                "enum": [
+                  "mean",
+                  "min",
+                  "max",
+                  "sum",
+                  "stddev",
+                  "median",
+                  "count",
+                  "distinct_count",
+                  "null_rate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statistic"
+          },
+          "threshold": {
+            "default": 1.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Threshold",
+            "type": "number"
+          },
+          "type": {
+            "enum": [
+              "not_null",
+              "unique",
+              "accepted_values",
+              "range",
+              "regex",
+              "statistic_range",
+              "sql_row",
+              "sql_aggregate"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "maxItems": 200,
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "type",
+          "asset"
+        ],
+        "title": "QualityRule",
         "type": "object"
       },
       "QueryHistoryIn": {
@@ -8360,6 +8981,18 @@
             "minItems": 1,
             "title": "Decisions",
             "type": "array"
+          },
+          "override_reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Reason"
           }
         },
         "required": [
@@ -8390,6 +9023,19 @@
           "version"
         ],
         "title": "RollbackIn",
+        "type": "object"
+      },
+      "RuleStatusIn": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "RuleStatusIn",
         "type": "object"
       },
       "RunIn": {
@@ -8582,6 +9228,42 @@
           }
         },
         "title": "RunLimits",
+        "type": "object"
+      },
+      "RunRulesIn": {
+        "properties": {
+          "assets": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 200,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assets"
+          },
+          "rule_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Ids"
+          }
+        },
+        "title": "RunRulesIn",
         "type": "object"
       },
       "ScenarioAdjustment": {
@@ -10359,6 +11041,117 @@
           "field"
         ],
         "title": "ViewFilterIn",
+        "type": "object"
+      },
+      "WebhookIn": {
+        "properties": {
+          "filters": {
+            "additionalProperties": true,
+            "title": "Filters",
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "secret_ref": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Secret Ref",
+            "type": "string"
+          },
+          "url": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          },
+          "workspace": {
+            "title": "Workspace",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace",
+          "name",
+          "url",
+          "secret_ref"
+        ],
+        "title": "WebhookIn",
+        "type": "object"
+      },
+      "WebhookPatch": {
+        "properties": {
+          "filters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filters"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "secret_ref": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Ref"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "title": "WebhookPatch",
+        "type": "object"
+      },
+      "WebhookRevokeIn": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "WebhookRevokeIn",
         "type": "object"
       },
       "WorkBudget": {
@@ -13978,6 +14771,79 @@
         ]
       }
     },
+    "/api/approvals/{approval_id}/execute-schedule-pause": {
+      "post": {
+        "description": "Pause exactly the approved schedules after `verify_for_execution` re-checks the hash binding.",
+        "operationId": "execute_schedule_pause_api_approvals__approval_id__execute_schedule_pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute Schedule Pause",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/approvals/{approval_id}/reject": {
       "post": {
         "operationId": "reject_api_approvals__approval_id__reject_post",
@@ -16424,6 +17290,162 @@
         ]
       }
     },
+    "/api/crawls/{crawl_id}/impact": {
+      "get": {
+        "description": "What reads the columns this crawl saw removed, retyped or deprecated (P1-5): downstream columns along\nrecorded lineage, metrics, verified queries, dashboards, monitors and schedules. Read-only.",
+        "operationId": "crawl_impact_api_crawls__crawl_id__impact_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "crawl_id",
+            "required": true,
+            "schema": {
+              "title": "Crawl Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Crawl Impact",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/crawls/{crawl_id}/impact/pause": {
+      "post": {
+        "description": "Request approval to pause impacted schedules. Nothing changes until the approval is decided and executed.",
+        "operationId": "request_schedule_pause_api_crawls__crawl_id__impact_pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "crawl_id",
+            "required": true,
+            "schema": {
+              "title": "Crawl Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Schedule Pause",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/dashboards/{artifact_id}/publish": {
       "post": {
         "operationId": "publish_dashboard_api_dashboards__artifact_id__publish_post",
@@ -18031,6 +19053,160 @@
         "summary": "Rollback",
         "tags": [
           "artifacts"
+        ]
+      }
+    },
+    "/api/quality-rules/{rule_id}": {
+      "get": {
+        "operationId": "get_rule_api_quality_rules__rule_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Rule",
+        "tags": [
+          "quality"
+        ]
+      }
+    },
+    "/api/quality-rules/{rule_id}/status": {
+      "post": {
+        "operationId": "set_rule_status_api_quality_rules__rule_id__status_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleStatusIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Rule Status",
+        "tags": [
+          "quality"
         ]
       }
     },
@@ -20274,6 +21450,80 @@
         ]
       }
     },
+    "/api/v2/context/lookup": {
+      "post": {
+        "description": "`{content, format, assets, omissions, receipts, identity_hash, budget}` for the named `schema.table` assets\nthe caller may see (others are absent and not counted); 422 when the identities alone exceed the budget.",
+        "operationId": "lookup_context_api_v2_context_lookup_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LookupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lookup Context",
+        "tags": [
+          "context"
+        ]
+      }
+    },
     "/api/v2/context/reconcile": {
       "post": {
         "description": "Catch the workspace's ledger up with its owners (owner role) and report the consistency check.",
@@ -20825,6 +22075,583 @@
           }
         },
         "summary": "Sync Subscription",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v2/context/webhook-deliveries": {
+      "get": {
+        "description": "The delivery log (metadata payloads, attempts, errors); `status=dead_letter` is the dead-letter view.",
+        "operationId": "list_webhook_deliveries_api_v2_context_webhook_deliveries_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "title": "Workspace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "webhook_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Webhook Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Webhook Deliveries",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v2/context/webhook-deliveries/{delivery_id}/redrive": {
+      "post": {
+        "operationId": "redrive_webhook_delivery_api_v2_context_webhook_deliveries__delivery_id__redrive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "delivery_id",
+            "required": true,
+            "schema": {
+              "title": "Delivery Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Redrive Webhook Delivery",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v2/context/webhooks": {
+      "get": {
+        "operationId": "list_webhooks_api_v2_context_webhooks_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "title": "Workspace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Webhooks",
+        "tags": [
+          "context"
+        ]
+      },
+      "post": {
+        "description": "Registers the subscription and requests its authorization (approver != requester); it sends nothing until decided.",
+        "operationId": "create_webhook_api_v2_context_webhooks_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Webhook",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v2/context/webhooks/{webhook_id}": {
+      "patch": {
+        "description": "Changed filters, URL or secret reference need a new authorization; a rename does not.",
+        "operationId": "patch_webhook_api_v2_context_webhooks__webhook_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "required": true,
+            "schema": {
+              "title": "Webhook Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Webhook",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v2/context/webhooks/{webhook_id}/reauthorize": {
+      "post": {
+        "operationId": "reauthorize_webhook_api_v2_context_webhooks__webhook_id__reauthorize_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "required": true,
+            "schema": {
+              "title": "Webhook Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reauthorize Webhook",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v2/context/webhooks/{webhook_id}/revoke": {
+      "post": {
+        "operationId": "revoke_webhook_api_v2_context_webhooks__webhook_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "required": true,
+            "schema": {
+              "title": "Webhook Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/WebhookRevokeIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Webhook",
         "tags": [
           "context"
         ]
@@ -29758,6 +31585,88 @@
         ]
       }
     },
+    "/api/workspaces/{workspace_id}/assets/{asset_id}/quality-rules:recommend": {
+      "post": {
+        "description": "Deterministic recommendations from the stored profile, queued as review drafts (kind `quality_rule`).",
+        "operationId": "recommend_rules_api_workspaces__workspace_id__assets__asset_id__quality_rules_recommend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recommend Rules",
+        "tags": [
+          "quality"
+        ]
+      }
+    },
     "/api/workspaces/{workspace_id}/audit": {
       "get": {
         "operationId": "audit_log_api_workspaces__workspace_id__audit_get",
@@ -37082,6 +38991,171 @@
         ]
       }
     },
+    "/api/workspaces/{workspace_id}/knowledge/glossary/export": {
+      "get": {
+        "description": "The workspace glossary (term, definition, synonyms, linked columns, owner, trust, status) as a spreadsheet for\nstewards. Terms linked only to columns your data scope hides are left out and counted in `X-Omitted-Terms`.",
+        "operationId": "export_glossary_api_workspaces__workspace_id__knowledge_glossary_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "csv",
+              "enum": [
+                "csv",
+                "xlsx"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Glossary",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/knowledge/glossary/import": {
+      "post": {
+        "description": "Queue a glossary spreadsheet (.csv or .xlsx, the export format) as review drafts with provenance `import:csv`.\nNothing reaches the glossary until a reviewer approves; rows with problems are reported, the rest queue. Re-importing\nthe same file queues nothing twice. `dry_run` reports without queuing.",
+        "operationId": "import_glossary_api_workspaces__workspace_id__knowledge_glossary_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_glossary_api_workspaces__workspace_id__knowledge_glossary_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Glossary",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
     "/api/workspaces/{workspace_id}/knowledge/glossary/scan": {
       "post": {
         "description": "Scan the catalog and recent unanswered Ask questions for glossary terms and missing descriptions; queue\nthem for review. Rules first; nothing is written to the glossary or the catalog until a person approves.",
@@ -38270,6 +40344,411 @@
         ]
       }
     },
+    "/api/workspaces/{workspace_id}/knowledge/sources": {
+      "get": {
+        "description": "Read-only GitHub / Confluence knowledge sources of the workspace and their last sync.",
+        "operationId": "list_knowledge_sources_api_workspaces__workspace_id__knowledge_sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Knowledge Sources",
+        "tags": [
+          "catalog"
+        ]
+      },
+      "post": {
+        "operationId": "create_knowledge_source_api_workspaces__workspace_id__knowledge_sources_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeSourceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Knowledge Source",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/knowledge/sources/{source_id}": {
+      "delete": {
+        "operationId": "delete_knowledge_source_api_workspaces__workspace_id__knowledge_sources__source_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Knowledge Source",
+        "tags": [
+          "catalog"
+        ]
+      },
+      "patch": {
+        "operationId": "update_knowledge_source_api_workspaces__workspace_id__knowledge_sources__source_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeSourcePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Knowledge Source",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/knowledge/sources/{source_id}/sync": {
+      "post": {
+        "description": "Sync now: fetch the source and merge the files into the pack as untrusted drafts (a person reviews them).",
+        "operationId": "sync_knowledge_source_api_workspaces__workspace_id__knowledge_sources__source_id__sync_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sync Knowledge Source",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/workspaces/{workspace_id}/knowledge/suggestions": {
       "get": {
         "description": "The review queue: drafts with per-field value, confidence and provenance.",
@@ -38402,9 +40881,92 @@
         ]
       }
     },
+    "/api/workspaces/{workspace_id}/knowledge/suggestions/preview": {
+      "post": {
+        "description": "Golden-question scores now and with this batch applied; nothing is changed.",
+        "operationId": "preview_suggestions_api_workspaces__workspace_id__knowledge_suggestions_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Suggestions",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
     "/api/workspaces/{workspace_id}/knowledge/suggestions/review": {
       "post": {
-        "description": "Approve, edit-then-approve or reject drafts in one batch: one workspace-pack revision.",
+        "description": "Approve, edit-then-approve or reject drafts in one batch: one workspace-pack revision. A batch that\nmakes a passing golden question fail is refused (409 `golden_regression`) unless `override_reason` is set.",
         "operationId": "review_suggestions_api_workspaces__workspace_id__knowledge_suggestions_review_post",
         "parameters": [
           {
@@ -38676,6 +41238,89 @@
         "summary": "Lineage",
         "tags": [
           "artifacts"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/lineage/pii-scan": {
+      "post": {
+        "description": "Find untagged columns that receive values of pii / restricted / sensitive columns along column lineage and\nqueue review drafts that add the tag (P1-5). Never removes or applies a tag.",
+        "operationId": "pii_scan_api_workspaces__workspace_id__lineage_pii_scan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PiiLineageIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pii Scan",
+        "tags": [
+          "catalog"
         ]
       }
     },
@@ -44169,6 +46814,521 @@
         ]
       }
     },
+    "/api/workspaces/{workspace_id}/quality-rules": {
+      "get": {
+        "operationId": "list_rules_api_workspaces__workspace_id__quality_rules_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "asset",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Asset"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Rules",
+        "tags": [
+          "quality"
+        ]
+      },
+      "post": {
+        "description": "An owner declares a rule on an asset of this workspace's catalog: active at once (a person decided it).",
+        "operationId": "declare_rule_api_workspaces__workspace_id__quality_rules_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QualityRule"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Declare Rule",
+        "tags": [
+          "quality"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/quality-rules/export": {
+      "get": {
+        "description": "Active rules as an OKF v0.2 pack (zip): rules kept as code.",
+        "operationId": "export_rules_api_workspaces__workspace_id__quality_rules_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Rules",
+        "tags": [
+          "quality"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/quality-rules/import": {
+      "post": {
+        "description": "An OKF rules pack into the review queue: every rule is a draft until an owner approves it.",
+        "operationId": "import_rules_api_workspaces__workspace_id__quality_rules_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_rules_api_workspaces__workspace_id__quality_rules_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Rules",
+        "tags": [
+          "quality"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/quality-rules:run": {
+      "post": {
+        "description": "Run active rules now through the gateway, in the caller's own data scope (analyst or above).",
+        "operationId": "run_rules_api_workspaces__workspace_id__quality_rules_run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunRulesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Rules",
+        "tags": [
+          "quality"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/quality-trust": {
+      "get": {
+        "operationId": "quality_trust_api_workspaces__workspace_id__quality_trust_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assets",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assets"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quality Trust",
+        "tags": [
+          "quality"
+        ]
+      }
+    },
     "/api/workspaces/{workspace_id}/query": {
       "post": {
         "description": "Manual SQL console: same gateway, same scope and audit as agents (no bypass).",
@@ -45453,6 +48613,7 @@
     },
     "/api/workspaces/{workspace_id}/relationships": {
       "get": {
+        "description": "Every recorded join with where it came from (`origin`), its measured confidence and, for a validated one, the\njoin as a runnable value-free statement (`join_sql`) in the source's dialect.",
         "operationId": "relationships_api_workspaces__workspace_id__relationships_get",
         "parameters": [
           {
@@ -51901,6 +55062,161 @@
         ]
       }
     },
+    "/v2/access-requests/{approval_id}:apply": {
+      "post": {
+        "description": "Apply a request approved elsewhere (the generic approvals screen). Needs an approver role.",
+        "operationId": "apply_product_access_v2_access_requests__approval_id__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Product Access",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/v2/access-requests/{approval_id}:decide": {
+      "post": {
+        "operationId": "decide_product_access_v2_access_requests__approval_id__decide_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessDecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Product Access",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
     "/v2/admin/models/evaluations": {
       "get": {
         "operationId": "model_evaluations_v2_admin_models_evaluations_get",
@@ -53678,6 +56994,254 @@
           }
         },
         "summary": "Get Tool",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/v2/tools/{tool_id}/access-requests": {
+      "get": {
+        "description": "Owners and approvers see every request for the product; anyone else sees their own.",
+        "operationId": "list_product_access_v2_tools__tool_id__access_requests_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "title": "Tool Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Product Access",
+        "tags": [
+          "tools"
+        ]
+      },
+      "post": {
+        "operationId": "request_product_access_v2_tools__tool_id__access_requests_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "title": "Tool Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Product Access",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/v2/tools/{tool_id}/contract": {
+      "get": {
+        "description": "The product's contract and its state now (freshness, rule results): breaches are shown on the product.",
+        "operationId": "product_contract_v2_tools__tool_id__contract_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "title": "Tool Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Product Contract V2 Tools  Tool Id  Contract Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Product Contract",
         "tags": [
           "tools"
         ]

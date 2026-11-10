@@ -192,6 +192,13 @@ thresholds or business facts. When the metadata does not tell you what a term me
 A person reviews every draft. Return JSON {"terms": [{"key": str (exactly as given), "definition": str (<= 300 chars,
 one or two plain sentences; for a code set name each code), "synonyms": [str] (<= 5), "confidence": number 0-1}]}.
 """ + UNTRUSTED_NOTE,
+
+    "knowledge_gap_note.v1": """You word a note for a data team's review queue. People keep asking Ask about a term the
+workspace does not define. `term` is the term, `conversations` how many separate conversations used it over `days` days,
+`outcomes` how the questions ended (clarify, decline, low_confidence), `rephrased` how many were asked again in other
+words, `examples` redacted questions. State the gap plainly and ask the reviewer to say what the term means; never guess
+or invent its meaning, tables, numbers or thresholds. Return JSON {"note": str (<= 400 chars, one to three plain sentences)}.
+""" + UNTRUSTED_NOTE,
 }
 
 

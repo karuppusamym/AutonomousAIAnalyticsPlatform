@@ -1,5 +1,46 @@
 # Capability register (evidence)
 
+## 2026-11-05 — `context.lookup` and usage as a ranking signal (GKC-P0-2, GKC-P1-4)
+
+From the Google Knowledge Catalog review (`docs/70-reviews/2026-11-05-google-knowledge-catalog-review.md`).
+
+| Capability | Code | Evidence |
+|---|---|---|
+| `POST /api/v2/context/lookup {workspace, assets[≤10], format: yaml\|json, budget_chars}`: one deterministic block per call. Fill order identity+keys → curated description + guidelines → validated joins between the requested assets (with join SQL) → glossary/metrics/verified queries → quality → profile → usage. Identities over budget are refused (422), later sections left out with omissions | `context/lookup.py`, `api/routers/context_v2.py` (audited `context.looked_up`) | `tests/unit/test_context_lookup.py::test_yaml_contract_is_sorted_deterministic_and_in_fill_order`, `test_a_small_budget_keeps_keys_and_joins_and_records_omissions`, `test_identities_over_budget_are_refused_not_trimmed` |
+| Scope: same `access_for` as search/compile; an out-of-scope or unknown asset is absent and not counted; denied columns never named; profile values only for untagged columns from stored vocabulary; quality value-free (no message text) | `context/lookup.py` | `test_an_out_of_scope_asset_is_absent_and_not_counted`, `test_denied_columns_and_values_never_appear`, `test_profile_values_are_withheld_for_a_sensitive_column_the_caller_may_see` |
+| MCP tool `context.lookup` (read-only; granted by `context.lookup` or `context.read`) | `mcp/server.py`, `mcp/grants.py`, `web/src/lib/toolRegistry.ts` | `test_mcp_tool_is_a_read_only_context_grant` (handler called directly; the `mcp` extra is not installed on this dev host, so the HTTP transport was not run) |
+| `guidelines` on an asset: written by a person only (a service account is refused), kept across crawls, in the table's OKF document and the Catalog editor | `SourceAsset.semantics["guidelines"]` (no migration), `api/routers/catalog.py`, `services/crawler.KEPT_SEMANTICS`, `knowledge/crawl_docs.py`, `web/src/pages/Catalog.tsx` | `test_guidelines_are_written_by_people_only_and_survive_a_crawl`, `test_table_document_carries_the_guidelines`, `increment3.test.tsx` "shows each join's origin…" |
+| Usage factor in the ledger rerank (trust × freshness × in-scope × usage): distinct users and runs over 30 days from audited `query_execution`, platform statements excluded, bounded to [1.0, 1.10]; common filter columns by operator class (no literals) in the lookup block | `context/usage.py`, `context/retrieval.rank/search` | `test_usage_factor_is_bounded_and_neutral_without_usage`, `test_asset_usage_counts_distinct_users_and_runs_in_the_window_only`, `test_rerank_lifts_the_used_table_but_never_beats_a_clearly_better_match` |
+| Usage benchmark configuration `ledger_rank` vs `ledger_rank_usage` | `context/benchmark.usage_run`, `tests/fixtures/context/usage-benchmark.json` | `test_usage_benchmark_configuration_measures_the_gain`: on the fixture, tie questions recall@1 0.0 → 1.0, control questions 1.0 → 1.0. The fixture is synthetic: it shows the factor breaks ties without overriding relevance, not a gain on a customer corpus |
+| Catalog shows each join's origin, confidence, validated state and the validated join SQL | `GET /api/workspaces/{ws}/relationships` (`join_sql`), `skills/relationships.join_sql`, `Catalog.tsx` `AssetRelationships` | `increment3.test.tsx`, `test_join_sql_is_value_free_and_dialect_aware` |
+
+Not run: a live call on the compose stack. OpenAPI regenerated (`web/openapi.json`, `web/src/generated/openapi.ts`).
+## 2026-11-05 — Declared quality rules and data-product contracts (GKC-P1-7, GKC-P2-9)
+
+From the Google Knowledge Catalog review (`docs/70-reviews/2026-11-05-google-knowledge-catalog-review.md`, P1-7 and
+P2-9). Migration `0080_quality_rules` (renumbered at the integration merge; follows `0079_mcp_grant_slice`).
+
+| Capability | Code path | Evidence (2026-11-05) |
+|---|---|---|
+| An owner declares a quality rule on a catalog asset or column: not_null, unique, accepted_values, range (the recipe gate types), regex, statistic range, owner SQL row condition or aggregate; each with a pass threshold, dimension and severity | `contracts/quality.py`, `quality/service.py::declare`, `POST /api/workspaces/{ws}/quality-rules` | `tests/unit/test_quality_rules.py::test_rule_contract_shapes`, `test_declare_validates_against_the_catalog_and_is_idempotent`, `test_named_source_owners_decide_their_assets_rules` |
+| Rules render to one read-only aggregate statement through `skills/sqlbuild`, run through `QueryGateway.execute` in the runner's scope; owner SQL is refused unless it is an expression over the asset's own columns; a refused statement is an error, never a pass | `skills/quality_rules.py`, `quality/service.py::run_rules` | `test_rules_compile_run_and_judge_on_duckdb` (13 rule shapes on DuckDB), `test_rule_sql_is_one_aggregate_statement_in_every_dialect`, `test_owner_sql_is_an_expression_over_the_asset_only`, `test_a_refused_statement_is_an_error_never_a_pass`, `test_rule_on_an_asset_outside_the_runner_scope_is_an_error` |
+| Persisted with tenant isolation | `quality/models.py`, `migrations/versions/0080_quality_rules.py` | `tests/unit/test_tenancy_rls_coverage.py::test_quality_rule_tables_are_owned_by_their_workspace`; on a throwaway Postgres 16 (pgvector/pg16): `alembic upgrade head` from empty to 0077, both tables with RLS on, `tenant_isolation` policy, `tenancy_fill` trigger, `tenant_id NOT NULL`; downgrade to 0076 drops them, re-upgrade restores |
+| Recommendations from the stored profile land as review drafts; an owner approves (or edits) them; never a literal on a PII column | `quality/recommend.py`, `knowledge/suggestions.py` kind `quality_rule` | `test_profile_recommendations_land_as_drafts_and_an_owner_approves` |
+| Monitors run approved rules on schedule and alert on failing warning/critical rules | `quality/monitoring.py`, `services/monitors.py` kind `quality_rules` | `test_quality_rules_monitor_alerts_on_failing_rules` |
+| Pass rate as a trust signal on the asset (API + Catalog) | `quality/service.py::asset_trust`, `api/routers/catalog.py` (`quality`), `web/src/components/QualityRules.tsx` | `test_run_rules_through_the_gateway_records_counts_and_trust`, `web/src/test/qualityRules.test.tsx` |
+| Rules as code: OKF v0.2 export, import as drafts, identical bytes after a round trip | `quality/okf_rules.py`, `GET/POST /api/workspaces/{ws}/quality-rules/{export,import}` | `test_rules_round_trip_through_okf` |
+| A data product's signed `contract` block (freshness SLA, rule refs), validated at publish; old manifests still verify | `contracts/tool_manifest.py`, `toolreg/publish.py`, `quality/contracts.py` | `tests/unit/test_data_product_contracts.py::test_contract_block_is_signed_and_absent_blocks_hash_as_before`, `test_publish_validates_and_signs_the_contract`; `tests/unit/test_tool_registry.py` unchanged and passing |
+| Contract breaches judged without a query, shown on the product, alerted by a `data_contract` monitor | `quality/contracts.py::contract_status`, `GET /v2/tools/{id}/contract`, `web/src/components/ProductContract.tsx` | `test_contract_status_and_monitor_report_breaches`, `web/src/test/qualityRules.test.tsx` |
+| Consumer access request = approval bound to (product, version, requester, role); a person decides, code applies the role or MCP grant after `verify_for_execution`, once | `toolreg/access.py`, `governance/approvals.py` (`data_product.access` always separate duties; `requester_min_role`) | `test_access_request_is_decided_by_a_person_and_applied_by_code`, `test_separation_of_duties_and_binding`, `test_a_new_product_version_invalidates_an_open_request`, `test_mcp_grant_request_adds_the_product_to_the_clients_grant` |
+
+Live: `tests/integration/test_quality_rules_live.py` 2 passed (2026-11-05) on a throwaway Postgres 16 with strict
+tenancy: rules declared over HTTP on a staged parquet table ran through the real `QueryGateway` (query ids recorded;
+accepted_values 199/200), the catalog showed `quality.level = at_risk`, the OKF export zip held 4 rule documents; a
+verified query published with a contract showed `ok`, a viewer's access request was refused to the requester and
+applied by the approver (viewer → analyst). Without Postgres the file skips cleanly. Not verified: Redis, Temporal and
+the scheduler were not running (rules ran on request, not on a schedule tick); no live browser check of the two panels. The context lookup
+(`context/lookup.py`, another branch) does not yet read rule pass rates; `quality.service.asset_trust` is the call.
+
 ## 2026-10-30 — Registry screens fixed; MCP endpoint shipped; prompts editable (REG-FIX-01/02, PROMPT-01)
 
 Found in the browser on the redeployed stack (Settings → Capability registry):
@@ -1396,6 +1437,151 @@ rules only, on a copy of the rehearsal database; no analyst results).
 
 Live evidence: [`evidence/pilot-fix-investigate-20261030.md`](evidence/pilot-fix-investigate-20261030.md) (rules only, no model
 call). Not verified: a live run with models; the guided source choice on a live two-source workspace (unit tested only).
+
+## 2026-11-05 — S03-T8: a knowledge review batch is tested against golden questions before approval
+
+From the Google Knowledge Catalog review ([`70-reviews/2026-11-05-google-knowledge-catalog-review.md`](../70-reviews/2026-11-05-google-knowledge-catalog-review.md), P0-1).
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| Effect preview | `knowledge/effect.preview`: the selected decisions run through `suggestions.review` inside a savepoint, `services/context_grounding.run_golden` scores the golden questions before and after (no model call), the savepoint rolls back; per case `fixed / newly_failing / still_failing / still_passing`, baseline, projected and delta in points. `POST /api/workspaces/{ws}/knowledge/suggestions/preview` (editor) | `tests/unit/test_knowledge_effect.py`; `tests/integration/test_knowledge_effect_api.py::test_preview_scores_the_batch_without_applying_it_then_review_reports_the_effect` (draft still pending, no glossary entry, no cached synonym after the preview) |
+| Regression gate | `knowledge/effect.review_checked` behind `POST .../suggestions/review`: a batch that makes a passing golden case fail answers 409 `details.code = golden_regression` with the effect; with `override_reason` it applies and audits `knowledge.review.golden_effect` (decision `override`, reason, case ids, both scores, revision). An improving or neutral batch applies and returns `effect` | unit gate tests; the existing knowledge/glossary/studio/grounding integration tests pass through the gate (21 passed, Postgres 16, 2026-11-05) |
+| Golden question names a verified query | `GoldenIn.expected_query` (must be a verified query of the workspace, 422 otherwise); the case passes only when `verified_queries.match` serves it, so a synonym change that breaks or fixes Ask's tool-first answer shows | `test_golden_question_must_name_a_verified_query_of_its_own_workspace`; served query before/after in the preview |
+| Lexicon cache safety | `verified_queries.forget_lexicon` before the projected run and after the rollback: the 60 s workspace lexicon cache never keeps an unapproved batch's synonyms for Ask | asserted in the integration test |
+| Web | `ReviewQueue.tsx`: "Check effect on golden questions", blocked-approval panel with a required reason, effect line in the result; `web/openapi.json` and generated types regenerated | `web/src/test/knowledge.test.tsx` (2 new: preview, 409, approve with reason; improving batch) |
+
+Limits: golden cases are capped at 30 per workspace (as before), and an approved glossary term is stored with origin `agent`,
+which grounding does not use, so glossary drafts change only the verified-query part of a case. Optional auto-approve for
+low-risk kinds is not built. Not run against a live model or the compose stack.
+## 2026-11-05 — GKC-P1-5: PII along column lineage, impact report on a schema change
+
+From the Google Knowledge Catalog review ([P1-5](../70-reviews/2026-11-05-google-knowledge-catalog-review.md)). Rules
+decide; nothing is applied without a person. No migration.
+
+| Capability | Code | Evidence |
+|---|---|---|
+| Column edges from every recorded lineage | `evidence/lineage/propagation.py`: `edges_from_sql` (CTEs, subqueries; catalog resolves bare columns), `edges_from_dbt_manifest`, `edges_from_recipe` (`recipe_run.lineage`), `edges_from_openlineage` (`build_job.openlineage` column facets). FILTERED / `*` / INDIRECT edges move no values and are not followed | `tests/unit/test_pii_lineage_impact.py` (CTE chain over two statements, dbt model chain, OpenLineage + recipe adapters, filters raise nothing) |
+| Tag gaps, add-only | `propagate`: multi-source BFS per tag (pii, restricted, sensitive), shortest witness path, confidence from the weakest hop (copy 0.95, derivation 0.8, aggregate 0.6); cycles terminate | same file (missing tags listed, cycles) |
+| Review drafts that add the tag | `services/pii_lineage.scan` (crawl facet `pii_lineage`, `POST /api/workspaces/{ws}/lineage/pii-scan`): one `column_tag` draft per catalogued column via `knowledge/suggestions.propose`; uncatalogued targets reported only. Approval (`_apply_column_tag`) unions tags in the TAGGABLE set, sets `tags_origin=user`, audits `column.tags_added`; an edit to a non-sensitive tag or an empty list is refused; a rejected tag for a column is never proposed again, whatever path the lineage takes. Event `lineage.pii_gap_detected` | `test_scan_proposes_add_only_drafts_through_a_recipe_chain`, `test_approval_adds_tags_and_never_removes_one`, `test_uncatalogued_targets_are_reported_not_drafted` |
+| Impact report | `services/change_impact.py`, `GET /api/crawls/{id}/impact`: removed/retyped columns and deprecated tables, downstream columns along recorded lineage, then metrics, verified queries (parsed SQL, placeholders bound), dashboards, monitors, schedules (config + pins), with `via` links (a schedule of an impacted monitor). Counts on event `schema.impact_reported` and `crawl.stats.impact` | `test_impact_lists_what_reads_a_removed_column`, `test_a_deprecated_table_impacts_everything_reading_it` |
+| Pause impacted schedules (rule 6) | `POST /api/crawls/{id}/impact/pause` requests approval `schedule.pause_for_change` bound to schedule ids + revisions; `POST /api/approvals/{id}/execute-schedule-pause` re-derives the impact and payload, `verify_for_execution`, `consume` (single use), then disables. An edited schedule changes the hash | `test_pausing_impacted_schedules_needs_a_bound_approval`, `test_a_schedule_edited_after_approval_needs_a_new_one` |
+| UI | `CrawlPanel.tsx` `ImpactPanel` on a succeeded crawl with drift (counts, downstream columns, dependents, pause request → execute); ReviewQueue label `column_tag` | `web/src/test/crawlImpact.test.tsx` (2), `increment3.test.tsx` CrawlPanel still green |
+
+Not verified: a live crawl on the compose stack. Matching for dashboards, monitors and schedules is on identifiers
+(asset then column), so it over-reports rather than misses. Published Superset datasets are not a lineage source yet
+(they carry no column lineage). Found in passing: `evidence/lineage/dbt.py` loses a model's column lineage when its
+compiled SQL has a numeric literal (redaction writes `<NUM>`, which does not parse).
+## 2026-11-05 — Review P1-6 Context change push subscriptions (S03 §5)
+
+Filtered push of the ledger change stream to a webhook (`context/webhooks.py`, migration `0077_context_webhooks`, based
+on head `0076_run_leases`: `context_webhook` and `context_webhook_delivery`, both owned by the workspace with RLS, policy
+and fill trigger; `tests/unit/test_tenancy_rls_coverage.py::test_context_webhook_tables_are_owned_by_their_workspace`).
+Not the federation `context_subscription` (that pulls another workspace's ledger).
+* Filters: `kinds`, `changes` (`create|update|deprecate`), `tag_added` (`pii|sensitive|restricted`) and `schema_changed`.
+  `kinds` and `changes` narrow; when a signal filter is set the change must raise one of them. The signals are diffs of
+  consecutive dataset versions: the dataset projection (`context/ledger._datasets`) now records the asset's structural
+  fingerprint and sensitive column tags in provenance (one new dataset version per asset at rollout; a version without a
+  fingerprint is never a schema change). Column tags change the dataset only once the asset row is flushed or `analystos
+  context reconcile` runs.
+* Approval (rule 6): create/update asks `context_webhook.authorize` bound to the hash of filters + URL + secret reference
+  (`ALWAYS_SEPARATE_DUTIES`; decided in the approvals inbox, `artifacts._decide`). A rename needs nothing. Every send
+  calls `verify_for_execution` right before the POST and re-checks the outbound guard; a row edited behind the API is
+  refused and the subscription shows `lapsed`. A new subscription starts at the ledger head (no replay).
+* Delivery: `services/deliveries` URL guard, HMAC signature and pinned outbound call are reused. The body is ledger
+  metadata only (ids, kind, change, version, signals), never a title or body; personal and suggested entries are not
+  announced; scanning is by workspace and bounded by the creator's current access (`retrieval.access_for`, resolved each
+  scan): an entry the creator cannot see is withheld (the cursor still moves), and a creator who is gone or no longer a
+  member lapses the subscription. At least once with an idempotency key, one delivery per `(subscription, seq)`;
+  bounded exponential backoff, `dead_letter` after `delivery_max_attempts` or a permanent 4xx, editor redrive; the
+  `context_webhook_delivery` table is the log.
+* Internal consumer: each workspace with dataset context gets a platform `internal` subscription (`schema_changed`
+  only); on a delivery it re-evaluates the enabled `data_quality` monitors that name the asset (S09 `evaluate_monitor`).
+* Tenancy: `scan` is `@owned_by("context_webhook", ...)`, `attempt` is `@owned_by("context_webhook_delivery", ...)`,
+  `dispatch_due` is a `@platform_loop` in scheduler housekeeping.
+* API `/api/v2/context/webhooks` (list, create, patch, revoke, reauthorize) and `/webhook-deliveries` (log, redrive);
+  UI `ContextWebhooks.tsx` on the Schedules page.
+
+Tests: `tests/unit/test_context_webhooks.py` (filter validation and matching, signals, approval bound to the hash and
+separation of duties, nothing sent before approval, changed filters re-approve and refuse queued sends, tamper refused,
+revoke, signed metadata-only payload, workspace scope and hidden trusts, retry/backoff/dead-letter/redrive, internal
+re-check); `web/src/test/context_webhooks.test.tsx`. Not verified: a live run against Postgres RLS and a real receiver;
+the dispatch pass is unit tested with a fake HTTP transport.
+## 2026-11-05 — P2-8 context index and MCP grant slice (Google Knowledge Catalog review)
+
+| Capability | Where | Evidence |
+|---|---|---|
+| Generated context index (machine draft) | `context/index.py`: deterministic `index.md` per workspace and `domains/<d>/index.md` per catalog domain (`semantics.domain`, reviewed or rule-derived) listing verified queries, tables, metrics, glossary terms and documents, one line and a path each. Written by `knowledge/drafts.write_drafts` (curated documents kept, unchanged index writes no revision), kind `index` / `trusted: false` so retrieval and the ledger never treat it as knowledge. Refreshed after a crawl (`services/crawler.py::_knowledge`) and after a knowledge review (`knowledge/suggestions.review`) | `tests/unit/test_context_index.py` (determinism, curated kept, idempotent, not projected into the ledger) |
+| Index read first | `retrieval.compile_bundle(index_first=True, domain=...)` opens with the caller's index digest and carries items as short pointers; MCP `context.compile` args `index_first`, `domain`; MCP resources `analystos://<ws>/index/<workspace\|domain>` built per caller over their `Access`. Savings measured by `context/benchmark.index_first_savings` | `test_index_first_compile_reads_the_index_and_spends_fewer_tokens`; tokens saved asserted > 20% on a 16-entry fixture, live figure not measured |
+| Grant slice (`domains`, `assets`) | `mcp_grant.domains/assets` (migration `0079_mcp_grant_slice`, after 0078 when merged), `mcp/grants.set_grant`/`check_grant` (a sliced grant holds only context tools; the gate refuses any other), `retrieval.Access.slice_assets`: an entry outside the slice is withheld in `candidates` before ranking, so it is never scored, counted, omitted or put in a receipt; same for `get`, `changes`, resources and the index. Entries with no table reference are in a domain only through their `domain_pack` provenance. Admin UI: Domains/Assets fields in the grant editor (`ToolRegistry.tsx`) | `test_slice_hides_out_of_domain_entries_before_ranking_and_counts`, `test_grant_slice_is_context_only_and_enforced_at_the_gate`, `test_mcp_tools_and_resources_follow_the_slice` |
+
+Not done: a domain hierarchy (deferred per the review); removing the index document of a domain that has disappeared;
+no UI test for the new fields; live MCP client run against a sliced grant.
+## 2026-11-05 — P2-10 Read-only knowledge sources: GitHub and Confluence
+
+Review item P2-10 of [`2026-11-05-google-knowledge-catalog-review.md`](../70-reviews/2026-11-05-google-knowledge-catalog-review.md).
+A workspace registers a GitHub path (README, docs Markdown, dbt `schema.yml`/`sources.yml`, `.sql`) or one Confluence space; a sync turns
+every file into an untrusted draft in the review queue, never knowledge directly.
+
+| Capability | Where | Evidence |
+|---|---|---|
+| Source registry | `knowledge_source` table (migration `0078_knowledge_sources`, after 0077 when merged, RLS installed), `services/knowledge_sources.py`, API `GET/POST /api/workspaces/{id}/knowledge/sources`, `PATCH/DELETE .../{source_id}`, `POST .../{source_id}/sync` | `tests/unit/test_knowledge_sources.py` (service tests on SQLite; RLS coverage `test_tenancy_rls_coverage.py`) |
+| Credentials | `secret_ref` only (`connectors/secrets.py` policy at registration and at sync); a config key such as `token` or `password` is refused; nothing resolved is stored, logged or returned | `test_a_credential_in_the_config_is_refused`, `test_a_secret_ref_outside_the_operator_policy_is_refused`, `test_the_credential_goes_in_a_header_only` |
+| SSRF-safe fetch | `knowledge/sources.py` over `tools/http.call`: https only, host allowlist = `api.github.com`, `*.atlassian.net` + the operator's `http_tool_allowlist`, public addresses only, pinned connection, no redirects, response byte cap, 20 s timeout | `test_only_known_hosts_are_reachable_unless_the_operator_lists_more`, `test_non_public_resolution_is_refused`, `test_redirects_are_not_followed`, `test_response_byte_cap_is_enforced_by_the_http_layer` |
+| Screening | every file through `knowledge/documents.screen` (redaction, instruction-line markers, control characters, link neutralising), their frontmatter dropped, SQL/YAML inside a fence that cannot be closed from inside; drafts carry `trusted: false`, `status: draft` | `test_files_are_screened_like_uploads_and_arrive_as_untrusted_drafts`, `test_sql_and_yaml_are_data_inside_a_fence_and_cannot_close_it` |
+| Caps | 200 files/pages, 256 KiB per file (declared and downloaded size), 8 MiB per sync, 600 requests, 50 pages per Confluence request | `test_caps_on_file_size_count_and_total`, `test_confluence_incremental_and_page_cap` |
+| Incremental | per path: remote revision (git blob sha, Confluence version) skips the download, sha256 of the bytes skips the rewrite; removed remote files are reported, never deleted | `test_second_sync_skips_unchanged_files_without_fetching_them`, `test_changed_file_is_fetched_and_same_bytes_under_a_new_revision_are_not_rewritten`, `test_removed_remote_files_are_reported_not_deleted` |
+| Schedule | schedule kind `knowledge_sync` (existing scheduler claim-then-execute, editor role, 15-minute minimum interval) | `test_schedule_kind_is_registered` |
+| UI | Data dictionary → Import & export → "Remote sources" (`web/src/components/KnowledgeSources.tsx`): add, sync now, pause, remove, daily schedule | Not exercised in a browser or type-checked in the building session (no `node_modules` in the worktree) |
+
+Not verified: a live call to GitHub or Confluence (unit tests use a mock transport only); a Postgres run of migration 0077 (the SQLite unit
+fixtures and the RLS coverage test pass; the integration migration test was not run). dbt `schema.yml` is shown as screened text, not parsed
+into catalog descriptions (the manifest path in `knowledge/dbt_manifest.py` stays the structured route). Jira and other kinds are not built.
+## 2026-11-05 — P2-11 Glossary spreadsheet round trip (Google Knowledge Catalog review)
+
+| Capability | Where | Evidence |
+|---|---|---|
+| Export the workspace glossary (term, definition, synonyms, linked columns, owner, trust, status) as CSV or XLSX | `knowledge/glossary_sheet.py`, `GET /api/workspaces/{id}/knowledge/glossary/export` (viewer; audited `knowledge.glossary_exported`). Cells are neutralised against formula injection: CSV prefixes an apostrophe (exactly reversible on import), XLSX writes every cell as text through `reports/excel.put` | `tests/unit/test_glossary_sheet.py` (injection, plain text, XLSX cell types) |
+| Access: a term linked only to columns the caller's data scope hides is omitted, a hidden column in a visible term's links is dropped; both counted in `X-Omitted-Terms` / `X-Omitted-Links`, never named | same, `resolve_scope` (restricted tag, PII, ABAC) | `test_restricted_links_and_terms_are_omitted_and_counted` (owner and viewer) |
+| Import the same format as review drafts: `POST …/knowledge/glossary/import` (editor; `dry_run`; audited). Each row is a `glossary_term` suggestion via `suggestions.propose`, provenance `import:csv`, field confidence 0.5; `suggestions.review` raises imported fields to 1.0 and records `confirmed_by` only on approval. Nothing is certified by an import; `owner`/`trust`/`status` in a file are ignored and reported | `knowledge/suggestions.py::confirm_imported` | `test_round_trip_is_identical_and_certifies_nothing_until_approved` (csv and xlsx), `test_importing_needs_no_existing_confidence_claim` |
+| Per-row report: unknown columns (a hidden column reads the same as a missing one) are dropped and named, term/definition errors, duplicates in the file, existing term flagged, instruction-like definition text screened (`knowledge/documents.screen`) | same | `test_row_errors_…`, `test_unknown_headers_…`, `test_import_cannot_link_a_hidden_column`, `test_instruction_like_definitions_are_screened`, `test_existing_term_is_flagged…` |
+| Idempotent re-import (draft content hash); unchanged rows skipped; caps 2 MB, 2000 rows, term 300, definition 4000, 10 synonyms, 50 links, XLSX unpacked size | same | `test_reimport_is_idempotent`, `test_size_and_row_caps`, `test_synonym_and_link_caps` |
+| UI: Data → Catalog & definitions → Import & export → Glossary spreadsheet (download with omitted counts, check-only and queue, per-row problems) | `web/src/components/ContextExport.tsx`, `web/src/api.ts`, OpenAPI schema and types regenerated | not run in a browser; `tsc`/vitest not run (no `node_modules` in this worktree) |
+
+Limits: links exported are the term's own `mapped_columns` (crawler auto-links are heuristics, not steward data); the owner column is the entry origin (the glossary has no steward field); pack vocabulary is not exported; a file-level approval screen groups by batch in the existing review queue, nothing new there.
+## 2026-11-05 — Review P1-3: knowledge-gap mining from failed Ask questions
+
+Source: [`70-reviews/2026-11-05-google-knowledge-catalog-review.md`](../70-reviews/2026-11-05-google-knowledge-catalog-review.md) item P1-3 (S03 / S04).
+
+| Capability | Where | Evidence |
+|---|---|---|
+| Mining of Ask outcomes (`clarify`, `not_answerable` decline, ad-hoc model answer with >= 2 SQL repairs) plus a repeated rephrase in the same conversation, grouped by the normalised unresolved term (`glossary_scan.ask_terms` against catalog names, code values and glossary) | `knowledge/gaps.py` `collect`, `outcome_of` | `tests/unit/test_knowledge_gaps.py` (grouping, outcomes, rephrase, known vocabulary) |
+| Threshold and window: a term in >= k distinct conversations over the last N days; both and a per-pass draft cap are platform settings `knowledge_gaps.{min_conversations (3), window_days (14), max_drafts_per_run (10)}` | `contracts/platform.py` `KnowledgeGapSettings` | `test_knowledge_gaps.py` (threshold, window, settings) |
+| Redaction: only the question text is read, passed through `redact_question` first; placeholders are never terms; `result` and `sql` are not selected, so no result value is read or stored | `gaps.redacted_plain`, `gaps._turns` | `test_questions_are_redacted_before_terms_and_examples_are_read` |
+| A `knowledge_gap` Note draft per term through `knowledge/suggestions.propose`: counts, outcome mix, example turn ids and redacted example questions; routed to the named owner of the source the conversations touched, else the workspace owner (business first) | `gaps.mine_workspace`, `gaps.route`; `KIND_SPEC["knowledge_gap"]` | `test_models_off_pass_proposes_one_note_...`, `test_routes_to_the_owner_of_the_source_...` |
+| De-duplication against pending, rejected (and approved) drafts of the same subject, and against rejected wording (`rejected_values`) | `gaps.decided`, `mine_workspace` | `test_pending_and_rejected_drafts_are_not_proposed_again` |
+| Models `off`: the rules rung writes the whole note. Optional wording purpose `knowledge_gap_note` (`config/models.yaml`: cache, rules, llm_small; low_cost; never escalates; cacheable). Called only in mode `always`; otherwise `record_skip` shows the saved call. Output is screened (injection, placeholder, 400 chars) and falls back to the rules text; the counts are never the model's | `gaps._wording`, prompt `knowledge_gap_note.v1` | `test_model_not_called_unless_always_...`, `test_always_mode_words_the_note_...`, `test_bad_model_wording_falls_back_...` |
+| Background rule: `mine_all` is a `@platform_loop` that only lists active workspaces; each is mined inside `as_owner_of("workspace", id)`. Wired into scheduler `housekeeping()` at most hourly per process (`mine_quietly`) | `gaps.mine_all`, `services/schedules.py` | code path; the live scheduler pass is not run |
+| Review queue shows the draft distinctly: warning tag "knowledge gap", a notice with conversations, outcome mix, rephrases and the routed owner; only the note text is editable | `web/src/components/ReviewQueue.tsx`, `web/src/lib/knowledge.ts` `gapSummary` | `web/src/test/knowledge.test.tsx` |
+
+Not verified: a live scheduler pass against real Ask history with a model (unit tested only; no migration, no new table).
+Cross-reference: [`01-tracker.md`](01-tracker.md) is untouched; this item is a review follow-up, not a v2 task ID.
+
+## 2026-11-06 — Local mode with nothing installed; MCP for any application (S12-LOCAL, S10-T6)
+
+| Capability | Implementation | Evidence / limits |
+|---|---|---|
+| One-command local run | `analystos local [--demo]` (`local.py`): Postgres 16.2 + pgvector 0.6 from the `pgserver` wheel in a data folder, 127.0.0.1 only; roles and databases of `deploy/postgres/01-init.sql`; `migrate` + `seed`; API, MCP and the built web app on one port; a per-install JWT secret; waits out crash recovery after a hard kill | Live, Windows 11, 2026-11-06: fresh folder → health 200 in 90 s; `--demo` loaded 4 ServiceNow tables (118k rows) and the process-mining workspace; restart after a kill recovered (WAL redo) and answered |
+| Local database hardened | every role, the superuser included, gets a generated password kept owner-only in the data folder; pg_hba trust becomes scram-sha-256; the API binds loopback only unless --allow-remote with no dev defaults (governance review 2026-11-06) | live: after upgrading an existing folder, a passwordless superuser login is refused; unit test_trust_rules_become_scram_and_comments_stay, test_a_local_run_listens_on_loopback_unless_shared_without_dev_defaults |
+| No vector store to run | embeddings stay a pgvector column of the bundled database; `ANALYSTOS_VECTOR_BACKEND=array` still works | SQLite was rejected for the control plane: RLS tenancy, per-workspace analytics roles, run leases and spend locks are Postgres features (runbook 15 §1) |
+| Web on the API port | `api/web_static.py`: registered after every route; API-shaped paths keep their JSON 404; files only from inside `web/dist`; the web CSP of `web/nginx.conf` (the API default `default-src 'none'` blanked the page) | `test_web_static_serves_the_app_but_never_shadows_api_paths`; checked in the browser: sign-in and the workspace home render |
+| Metadata for an application's own SQL | MCP `catalog.tables` (sources, dialect, tables, columns minus denied ones; scope and grant slice) and the existing `context.lookup` | live: 6 tables in 2 sources |
+| Stored queries for any application | MCP `queries.list` (visible = every table in scope and slice, no denied column; enum values and defaults only with `context.lookup.values`; `question` returns the best match with extracted values) and `queries.run` (one-pass typed binding: a value cannot capture another placeholder; `needs_input`, hit counted) | live: "priority 3" extracted from a new question; no value → `needs_input`; `"2; DROP TABLE x"` refused as not a number; run returned 5 rows |
+| The application's own SQL | MCP `sql.run` through `_governed_run`: on a slice the parsed table list is checked first (one generic refusal, before the validator's hints), then the validator under the client's scope, `QueryGateway.execute` (masking, caps, audit), ≤ 200 rows back | unit: row cap, refusal audited and never executed, outside-slice refused before running; live: COUNT(*) = 3000, DELETE refused (`sql_rejected`) |
+| Connect a client | `analystos mcp-client create` (client + grant as the admin screens, audited; VS Code `mcp.json` with a password prompt instead of the token; generic `mcpServers` JSON) and `analystos mcp-client check` | live: client created for the demo workspace, `check` all ok |
+| Knowledge source approval in the UI | `KnowledgeSources.tsx`: binding state tag, note with the approvals inbox link, Sync now enabled only when approved | `web/src/test/knowledgeSources.test.tsx` |
+
+Not verified: GitHub Copilot in VS Code itself (the check uses the same MCP SDK transport Copilot speaks; VS Code was
+not driven here); macOS/Linux local runs; the `ask` tool without any model configured answers only from stored queries.
 
 ## 2026-10-30 — S07-T8 Number check (from the blue ocean discovery)
 

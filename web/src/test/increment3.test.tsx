@@ -395,6 +395,44 @@ describe("CatalogPage", () => {
     expect(screen.getAllByText("reviewed").length).toBeGreaterThan(0);
   });
 
+  it("shows each join's origin, confidence and validated SQL, and lets an editor write guidelines for agents", async () => {
+    const fetchMock = mockApi([
+      ["GET", /\/api\/workspaces\/ws_1$/, { id: "ws_1", name: "W", role: "editor", counts: {}, policy: {}, members: [] }],
+      ["GET", /\/catalog/, [ASSET({ guidelines: { text: "Use order_date for revenue timing.", by: "u_1", at: "2026-11-01T00:00:00Z" } })]],
+      ["GET", /\/relationships$/, [
+        { id: "rel_1", workspace_id: "ws_1", from_asset_id: "ast_1", from_column: "customer_id", to_asset_id: "ast_9", to_column: "id",
+          cardinality: "many_to_one", confidence: 0.97, validated: true, evidence: {}, origin: "declared", from_asset: "sales.orders",
+          to_asset: "sales.customers", join_sql: 'SELECT COUNT(*) AS "joined_rows" FROM "sales"."orders" AS "f" INNER JOIN "sales"."customers" AS "t" ON "f"."customer_id" = "t"."id"' },
+        { id: "rel_2", workspace_id: "ws_1", from_asset_id: "ast_1", from_column: "region", to_asset_id: "ast_8", to_column: "code",
+          cardinality: "many_to_many", confidence: 0.41, validated: false, evidence: {}, origin: "discovered", from_asset: "sales.orders",
+          to_asset: "geo.region", join_sql: null },
+        { id: "rel_3", workspace_id: "ws_1", from_asset_id: "ast_7", from_column: "a", to_asset_id: "ast_6", to_column: "b",
+          cardinality: "many_to_one", confidence: 1, validated: true, evidence: {}, origin: "user", from_asset: "hr.people",
+          to_asset: "hr.teams", join_sql: "SELECT 1" },
+      ]],
+      ["PATCH", /\/api\/assets\/ast_1\/metadata$/, (_u: string, init: RequestInit) => ({
+        id: "ast_1", business_name: "Orders", description: "One row per order.", description_origin: "rule", reviewed: false,
+        guidelines: { text: bodyOf(init).guidelines, by: "u_1", at: "2026-11-05T00:00:00Z" },
+      })],
+    ]);
+    renderCatalog();
+    fireEvent.click(await screen.findByRole("button", { name: "Columns (2)" }));
+    const joins = await screen.findByRole("table", { name: "Joins of sales.orders" });
+    expect(within(joins).getAllByRole("row")).toHaveLength(3);  // header + this table's two joins, not hr.people's
+    expect(within(joins).getByText("declared").getAttribute("title")).toMatch(/foreign key/);
+    expect(within(joins).getByText(/INNER JOIN "sales"\."customers"/)).toBeTruthy();
+    expect(within(joins).getByText("Shown once validated")).toBeTruthy();
+    expect(screen.getByText("Use order_date for revenue timing.")).toBeTruthy();
+    expect(calls(fetchMock, "GET", /\/relationships$/)).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit description" }));
+    fireEvent.change(screen.getByLabelText("Guidelines for agents"), { target: { value: "Exclude test orders." } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls(fetchMock, "PATCH", /metadata$/)).toHaveLength(1));
+    expect(bodyOf(calls(fetchMock, "PATCH", /metadata$/)[0][1])).toEqual({ guidelines: "Exclude test orders." });
+    expect(await screen.findByText("Exclude test orders.")).toBeTruthy();
+  });
+
   it("does not offer curation to viewers", async () => {
     mockApi([
       ["GET", /\/api\/workspaces\/ws_1$/, { id: "ws_1", name: "W", role: "viewer", counts: {}, policy: {}, members: [] }],

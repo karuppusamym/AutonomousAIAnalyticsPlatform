@@ -27,6 +27,9 @@ RUN --mount=type=secret,id=pipcert,required=false \
 FROM python:3.11-slim
 ARG EXTRAS=reports,ml,mcp
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+# The base image's Debian packages lag behind fixed CVEs (zlib1g, 2026-11), and the Grype gate in
+# supply-chain.yml fails on them: apply the pending updates before anything is installed.
+RUN apt-get update && apt-get -y upgrade --no-install-recommends && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 # Operators select a models file by path (Helm: ANALYSTOS_MODELS_CONFIG=/app/config/models*.yaml); the same
 # files are the wheel's defaults. var/ (artifacts, uploads, builds) is written below the working directory.

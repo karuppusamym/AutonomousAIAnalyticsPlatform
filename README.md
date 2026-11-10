@@ -54,6 +54,16 @@ docker compose up -d --build      # lite profile: UI http://localhost:5173 · AP
                                   # sign in as admin@analystos.local / ChangeMe123! (dev only)
 ```
 
+No Docker, no database server, no vector store (Windows, macOS, Linux):
+
+```bash
+pip install -e ".[local]"
+analystos local --demo          # bundled Postgres + pgvector; web, API and MCP on http://127.0.0.1:8000
+analystos mcp-client create --workspace <id or name> --vscode .vscode/mcp.json   # connect Copilot or any MCP app
+```
+
+See [runbook 15](docs/30-runbooks/15-local-and-mcp-clients.md).
+
 From source:
 
 ```bash

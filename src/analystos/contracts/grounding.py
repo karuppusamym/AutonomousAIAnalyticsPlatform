@@ -82,6 +82,9 @@ class GoldenIn(BaseModel):
     question: str = Field(min_length=5, max_length=2000)
     expected_columns: list[str] = Field(default_factory=list, max_length=30)
     expect_clarification: bool = False
+    # The verified query the registry rung should serve for this question (its id); the check is the
+    # deterministic match, so a knowledge change that breaks Ask's tool-first answer shows as a failure.
+    expected_query: str | None = Field(default=None, max_length=100)
     notes: str = Field(default="", max_length=2000)
 
 

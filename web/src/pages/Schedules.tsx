@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { roleAtLeast, to } from "../routes";
 import { SchedulePins } from "../components/SchedulePins";
 import { DeliveryDestinations } from "../components/DeliveryDestinations";
+import { ContextWebhooks } from "../components/ContextWebhooks";
 import { api, type Schedule, type ScheduleRun } from "../api";
 import { Card, EmptyState, ErrorBox, Field, KeyValue, Loading, Notice, PageHeader, StatusBadge, Tag } from "../components/ui";
 import { fmtDate } from "../lib/format";
@@ -51,6 +52,7 @@ export function SchedulesPage({ embedded = false }: { embedded?: boolean } = {})
         ))}
       </div>
       <DeliveryDestinations wsId={wsId} canEdit={canEdit} />
+      <ContextWebhooks wsId={wsId} canEdit={canEdit} />
     </div>
   );
 }
